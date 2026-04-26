@@ -1,0 +1,37 @@
+{
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/PMVDL/DownloadManager.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadManager.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadManager.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadManager.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadManager.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadManager.swiftdeps"
+  },
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/PMVDL/DownloadProgressDelegate.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadProgressDelegate.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadProgressDelegate.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadProgressDelegate.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadProgressDelegate.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadProgressDelegate.swiftdeps"
+  },
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/PMVDL/GDriveManager.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/GDriveManager.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/GDriveManager.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/GDriveManager.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/GDriveManager.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/GDriveManager.swiftdeps"
+  },
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/PMVDL/TransferManager.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/TransferManager.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/TransferManager.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/TransferManager.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/TransferManager.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/TransferManager.swiftdeps"
+  },
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/GeneratedAssetSymbols.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/build/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/GeneratedAssetSymbols.swiftdeps"
+  }
+}

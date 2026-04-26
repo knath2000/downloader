@@ -1,0 +1,44 @@
+{
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/PMVDL/AboutWindow.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/AboutWindow.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/AboutWindow.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/AboutWindow.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/AboutWindow.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/AboutWindow.swiftdeps"
+  },
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/PMVDL/DropHandler.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DropHandler.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DropHandler.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DropHandler.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DropHandler.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DropHandler.swiftdeps"
+  },
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/PMVDL/PaddleManager.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/PaddleManager.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/PaddleManager.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/PaddleManager.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/PaddleManager.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/PaddleManager.swiftdeps"
+  },
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/PMVDL/ProFeatureGate.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/ProFeatureGate.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/ProFeatureGate.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/ProFeatureGate.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/ProFeatureGate.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/ProFeatureGate.swiftdeps"
+  },
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/PMVDL/UpdateManager.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/UpdateManager.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/UpdateManager.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/UpdateManager.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/UpdateManager.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/UpdateManager.swiftdeps"
+  },
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/PMVDL/UpgradeOverlay.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/UpgradeOverlay.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/UpgradeOverlay.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/UpgradeOverlay.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/UpgradeOverlay.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/UpgradeOverlay.swiftdeps"
+  }
+}

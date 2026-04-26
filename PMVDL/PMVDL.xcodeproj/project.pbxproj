@@ -1,0 +1,488 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+	A10001 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20001; };
+	A10002 /* PMVScraper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20002; };
+	A10003 /* ClipboardManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20003; };
+	A10004 /* PMVDLApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20004; };
+	A10005 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20005; };
+	A10042 /* CloudSyncScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20042; };
+	A10043 /* WidgetDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20043; };
+	A10047 /* ActiveWorkTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20047; };
+	A10008 /* MegaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20009; };
+	A10011 /* GDriveManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20011; };
+	A10012 /* TransferManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20012; };
+	A10010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20010; };
+	A10013 /* AppStateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20013; };
+	A10014 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20014; };
+	A10015 /* ThumbnailCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20015; };
+	A10016 /* VideoLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20016; };
+	A10017 /* DownloadQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20017; };
+	A10018 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20018; };
+	A10019 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20019; };
+	A10020 /* DownloadQueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20020; };
+	A10052 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20052; };
+	A10021 /* DropHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20021; };
+	A10022 /* AboutWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20022; };
+	A10023 /* UpdateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20023; };
+	A10024 /* PaddleManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20024; };
+	A10025 /* ProFeatureGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20025; };
+	A10026 /* UpgradeOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20026; };
+	A10027 /* IntentHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20027; };
+	A10028 /* ScraperEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20028; };
+	A10029 /* PMVHavenExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20029; };
+	A10030 /* YtDlpExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20030; };
+	A10031 /* M3U8Extractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20031; };
+	A10032 /* ScraperErrors.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20032; };
+	A10033 /* CloudHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20033; };
+	A10034 /* CronParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20034; };
+	A10035 /* ScheduledTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20035; };
+	A10036 /* SchedulerEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20036; };
+	A10037 /* SchedulerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20037; };
+	A10038 /* VideoProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20038; };
+	A10039 /* ProcessingProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20039; };
+	A10040 /* ProcessingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20040; };
+	A10041 /* CloudKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20041; };
+	A10053 /* VidaraExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20053; };
+	A10055 /* LuluStreamExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20055; };
+	A10056 /* AllPornStreamExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20056; };
+	A10054 /* DownloadProgressDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20054; };
+	A10057 /* StreamTapeExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20057; };
+	A10058 /* MixDropExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20058; };
+	A10059 /* DoodStreamExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20059; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+	A20001 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+	A20002 /* PMVScraper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PMVScraper.swift; sourceTree = "<group>"; };
+	A20003 /* ClipboardManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardManager.swift; sourceTree = "<group>"; };
+	A20004 /* PMVDLApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PMVDLApp.swift; sourceTree = "<group>"; };
+	A20005 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+	A20010 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+	A20008 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+	A20009 /* MegaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MegaManager.swift; sourceTree = "<group>"; };
+	A20011 /* GDriveManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GDriveManager.swift; sourceTree = "<group>"; };
+	A20012 /* TransferManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransferManager.swift; sourceTree = "<group>"; };
+	A20013 /* AppStateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateManager.swift; sourceTree = "<group>"; };
+	A20014 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
+	A20015 /* ThumbnailCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailCache.swift; sourceTree = "<group>"; };
+	A20016 /* VideoLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoLibrary.swift; sourceTree = "<group>"; };
+	A20017 /* DownloadQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadQueue.swift; sourceTree = "<group>"; };
+	A20018 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+	A20019 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+	A20020 /* DownloadQueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadQueueView.swift; sourceTree = "<group>"; };
+	A20021 /* DropHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DropHandler.swift; sourceTree = "<group>"; };
+	A20022 /* AboutWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutWindow.swift; sourceTree = "<group>"; };
+	A20023 /* UpdateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateManager.swift; sourceTree = "<group>"; };
+	A20024 /* PaddleManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleManager.swift; sourceTree = "<group>"; };
+	A20025 /* ProFeatureGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProFeatureGate.swift; sourceTree = "<group>"; };
+	A20026 /* UpgradeOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradeOverlay.swift; sourceTree = "<group>"; };
+	A20027 /* IntentHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentHandler.swift; sourceTree = "<group>"; };
+	A20028 /* ScraperEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScraperEngine.swift; sourceTree = "<group>"; };
+	A20029 /* PMVHavenExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PMVHavenExtractor.swift; sourceTree = "<group>"; };
+	A20030 /* YtDlpExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YtDlpExtractor.swift; sourceTree = "<group>"; };
+	A20031 /* M3U8Extractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = M3U8Extractor.swift; sourceTree = "<group>"; };
+	A20032 /* ScraperErrors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScraperErrors.swift; sourceTree = "<group>"; };
+	A20053 /* VidaraExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VidaraExtractor.swift; sourceTree = "<group>"; };
+	A20055 /* LuluStreamExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LuluStreamExtractor.swift; sourceTree = "<group>"; };
+	A20056 /* AllPornStreamExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AllPornStreamExtractor.swift; sourceTree = "<group>"; };
+	A20054 /* DownloadProgressDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadProgressDelegate.swift; sourceTree = "<group>"; };
+	A20033 /* CloudHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudHub.swift; sourceTree = "<group>"; };
+	A20034 /* CronParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronParser.swift; sourceTree = "<group>"; };
+	A20035 /* ScheduledTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduledTask.swift; sourceTree = "<group>"; };
+	A20036 /* SchedulerEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulerEngine.swift; sourceTree = "<group>"; };
+	A20037 /* SchedulerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulerView.swift; sourceTree = "<group>"; };
+	A20038 /* VideoProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoProcessor.swift; sourceTree = "<group>"; };
+	A20039 /* ProcessingProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingProfile.swift; sourceTree = "<group>"; };
+	A20040 /* ProcessingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingView.swift; sourceTree = "<group>"; };
+	A20041 /* CloudKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitManager.swift; sourceTree = "<group>"; };
+	A20042 /* CloudSyncScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncScheduler.swift; sourceTree = "<group>"; };
+	A20043 /* WidgetDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataStore.swift; sourceTree = "<group>"; };
+	A20047 /* ActiveWorkTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkTracker.swift; sourceTree = "<group>"; };
+	A20044 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
+	A20045 /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = background.js; sourceTree = "<group>"; };
+	A20046 /* contentScript.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = contentScript.js; sourceTree = "<group>"; };
+	A20050 /* CHANGELOG.md */ = {isa = PBXFileReference; lastKnownFileType = text; name = CHANGELOG.md; path = Resources/CHANGELOG.md; sourceTree = "<group>"; };
+	A20051 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; name = LICENSE; path = Resources/LICENSE; sourceTree = "<group>"; };
+	A20052 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
+	A20029a /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Extensions/SafariExtension/manifest.json; sourceTree = "<group>"; };
+	A20029b /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = Extensions/SafariExtension/background.js; sourceTree = "<group>"; };
+	A20029c /* contentScript.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = Extensions/SafariExtension/contentScript.js; sourceTree = "<group>"; };
+	A20029d /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions/ShareExtension/ShareViewController.swift; sourceTree = "<group>"; };
+	A20057 /* StreamTapeExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamTapeExtractor.swift; sourceTree = "<group>"; };
+	A20058 /* MixDropExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MixDropExtractor.swift; sourceTree = "<group>"; };
+	A20059 /* DoodStreamExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoodStreamExtractor.swift; sourceTree = "<group>"; };
+	A30001 /* PMVDL.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PMVDL.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+	A40001 /* Frameworks */ = {
+		isa = PBXFrameworksBuildPhase;
+		buildActionMask = 2147483647;
+		files = (
+		);
+		runOnlyForDeploymentPostprocessing = 0;
+	};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+	A50001 = {
+		isa = PBXGroup;
+		children = (
+			A50002 /* PMVDL */,
+			A50003 /* Products */,
+			A50004 /* Extensions */,
+			A50005 /* Resources */,
+		);
+		sourceTree = "<group>";
+	};
+	A50002 /* PMVDL */ = {
+		isa = PBXGroup;
+		children = (
+			A20004 /* PMVDLApp.ws */,
+			A20005 /* ContentView.ws */,
+			A20018 /* HomeView.ws */,
+			A20019 /* LibraryView.ws */,
+			A20020 /* DownloadQueueView.ws */,
+			A20037 /* SchedulerView.ws */,
+			A20040 /* ProcessingView.ws */,
+			A20002 /* PMVScraper.ws */,
+			A20003 /* ClipboardManager.ws */,
+			A20001 /* Models.ws */,
+			A20028 /* ScraperEngine.ws */,
+			A50010 /* Extractors */,
+			A20013 /* AppStateManager.ws */,
+			A20012 /* TransferManager.ws */,
+			A20009 /* MegaManager.ws */,
+			A20011 /* GDriveManager.ws */,
+			A20033 /* CloudHub.ws */,
+			A20017 /* DownloadQueue.ws */,
+			A20016 /* VideoLibrary.ws */,
+			A20015 /* ThumbnailCache.ws */,
+			A20014 /* NotificationManager.ws */,
+			A20027 /* IntentHandler.ws */,
+			A20021 /* DropHandler.ws */,
+			A20023 /* UpdateManager.ws */,
+			A20024 /* PaddleManager.ws */,
+			A20025 /* ProFeatureGate.ws */,
+			A20026 /* UpgradeOverlay.ws */,
+			A20022 /* AboutWindow.ws */,
+			A20047 /* ActiveWorkTracker.ws */,
+			A20036 /* SchedulerEngine.ws */,
+			A20035 /* ScheduledTask.ws */,
+			A20034 /* CronParser.ws */,
+			A20038 /* VideoProcessor.ws */,
+			A20039 /* ProcessingProfile.ws */,
+			A20041 /* CloudKitManager.ws */,
+			A20042 /* CloudSyncScheduler.ws */,
+			A20043 /* WidgetDataStore.ws */,
+			A20010 /* Assets.xcassets */,
+			A20008 /* Info.plist */,
+			A20052 /* DownloadManager.ws */,
+			A20054 /* DownloadProgressDelegate.ws */,
+		);
+		path = PMVDL;
+		sourceTree = "<group>";
+	};
+	A50003 /* Products */ = {
+		isa = PBXGroup;
+		children = (
+			A30001 /* PMVDL.app */,
+		);
+		name = Products;
+		sourceTree = "<group>";
+	};
+	A50004 /* Extensions */ = {
+		isa = PBXGroup;
+		children = (
+			A50006 /* SafariExtension */,
+			A50007 /* ShareExtension */,
+			A50008 /* ChromeExtension */,
+		);
+		sourceTree = "<group>";
+	};
+	A50005 /* Resources */ = {
+		isa = PBXGroup;
+		children = (
+			A20050 /* CHANGELOG.md */,
+			A20051 /* LICENSE */,
+		);
+		name = Resources;
+		sourceTree = "<group>";
+	};
+	A50006 /* SafariExtension */ = {
+		isa = PBXGroup;
+		children = (
+			A20029a /* manifest.json */,
+			A20029b /* background.js */,
+			A20029c /* contentScript.js */,
+		);
+		name = SafariExtension;
+		sourceTree = "<group>";
+		path = Extensions/SafariExtension;
+	};
+	A50007 /* ShareExtension */ = {
+		isa = PBXGroup;
+		children = (
+			A20029d /* ShareViewController.ws */,
+		);
+		name = ShareExtension;
+		sourceTree = "<group>";
+		path = Extensions/ShareExtension;
+	};
+	A50008 /* ChromeExtension */ = {
+		isa = PBXGroup;
+		children = (
+			A20044 /* manifest.json */,
+			A20045 /* background.js */,
+			A20046 /* contentScript.js */,
+		);
+		name = ChromeExtension;
+		sourceTree = "<group>";
+		path = Extensions/ChromeExtension;
+	};
+	A50010 /* Extractors */ = {
+		isa = PBXGroup;
+		children = (
+			A20029 /* PMVHavenExtractor.ws */,
+			A20030 /* YtDlpExtractor.ws */,
+			A20031 /* M3U8Extractor.ws */,
+			A20032 /* ScraperErrors.ws */,
+			A20053 /* VidaraExtractor.ws */,
+			A20055 /* LuluStreamExtractor.ws */,
+			A20056 /* AllPornStreamExtractor.ws */,
+			A20057 /* StreamTapeExtractor.ws */,
+			A20058 /* MixDropExtractor.ws */,
+			A20059 /* DoodStreamExtractor.ws */,
+		);
+		name = Extractors;
+		sourceTree = "<group>";
+		path = Extractors;
+	};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+	A60001 /* PMVDL */ = {
+		isa = PBXNativeTarget;
+		buildConfigurationList = A80001;
+		buildPhases = (
+			A70001 /* Sources */,
+			A40001 /* Frameworks */,
+			A70002 /* Resources */,
+		);
+		buildRules = (
+		);
+		dependencies = (
+		);
+		name = PMVDL;
+		productName = PMVDL;
+		productReference = A30001 /* PMVDL.app */;
+		productType = "com.apple.product-type.application";
+	};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+	A90001 /* Project object */ = {
+		isa = PBXProject;
+		attributes = {
+			BuildIndependentTargetsInParallel = 1;
+			LastSwiftUpdateCheck = 1600;
+			LastUpgradeCheck = 1600;
+		};
+		buildConfigurationList = A80002;
+		compatibilityVersion = "Xcode 14.0";
+		developmentRegion = en;
+		hasScannedForEncodings = 0;
+		knownRegions = (
+			en,
+			Base,
+		);
+		mainGroup = A50001;
+		productRefGroup = A50003 /* Products */;
+		projectDirPath = "";
+		projectRoot = "";
+		targets = (
+			A60001 /* PMVDL */,
+		);
+	};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+	A70002 /* Resources */ = {
+		isa = PBXResourcesBuildPhase;
+		buildActionMask = 2147483647;
+		files = (
+			A10010 /* Assets.xcassets in Resources */,
+			A10050 /* CHANGELOG.md in Resources */,
+			A10051 /* LICENSE in Resources */,
+		);
+		runOnlyForDeploymentPostprocessing = 0;
+	};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+	A70001 /* Sources */ = {
+		isa = PBXSourcesBuildPhase;
+		buildActionMask = 2147483647;
+		files = (
+			A10001 /* Models.ws in Sources */,
+			A10002 /* PMVScraper.ws in Sources */,
+			A10003 /* ClipboardManager.ws in Sources */,
+			A10004 /* PMVDLApp.ws in Sources */,
+			A10005 /* ContentView.ws in Sources */,
+			A10013 /* AppStateManager.ws in Sources */,
+			A10014 /* NotificationManager.ws in Sources */,
+			A10015 /* ThumbnailCache.ws in Sources */,
+			A10016 /* VideoLibrary.ws in Sources */,
+			A10017 /* DownloadQueue.ws in Sources */,
+			A10018 /* HomeView.ws in Sources */,
+			A10019 /* LibraryView.ws in Sources */,
+			A10020 /* DownloadQueueView.ws in Sources */,
+			A10021 /* DropHandler.ws in Sources */,
+			A10022 /* AboutWindow.ws in Sources */,
+			A10023 /* UpdateManager.ws in Sources */,
+			A10024 /* PaddleManager.ws in Sources */,
+			A10025 /* ProFeatureGate.ws in Sources */,
+			A10026 /* UpgradeOverlay.ws in Sources */,
+			A10027 /* IntentHandler.ws in Sources */,
+			A10028 /* ScraperEngine.ws in Sources */,
+			A10029 /* PMVHavenExtractor.ws in Sources */,
+			A10030 /* YtDlpExtractor.ws in Sources */,
+			A10031 /* M3U8Extractor.ws in Sources */,
+			A10032 /* ScraperErrors.ws in Sources */,
+			A10053 /* VidaraExtractor.ws in Sources */,
+			A10055 /* LuluStreamExtractor.ws in Sources */,
+			A10056 /* AllPornStreamExtractor.ws in Sources */,
+			A10033 /* CloudHub.ws in Sources */,
+			A10034 /* CronParser.ws in Sources */,
+			A10035 /* ScheduledTask.ws in Sources */,
+			A10036 /* SchedulerEngine.ws in Sources */,
+			A10037 /* SchedulerView.ws in Sources */,
+			A10038 /* VideoProcessor.ws in Sources */,
+			A10039 /* ProcessingProfile.ws in Sources */,
+			A10040 /* ProcessingView.ws in Sources */,
+			A10041 /* CloudKitManager.ws in Sources */,
+			A10042 /* CloudSyncScheduler.swift in Sources */,
+			A10043 /* WidgetDataStore.swift in Sources */,
+			A10047 /* ActiveWorkTracker.swift in Sources */,
+			A10008 /* MegaManager.swift in Sources */,
+			A10011 /* GDriveManager.swift in Sources */,
+			A10012 /* TransferManager.swift in Sources */,
+			A10052 /* DownloadManager.swift in Sources */,
+			A10054 /* DownloadProgressDelegate.swift in Sources */,
+			A10057 /* StreamTapeExtractor.swift in Sources */,
+			A10058 /* MixDropExtractor.swift in Sources */,
+			A10059 /* DoodStreamExtractor.swift in Sources */,
+		);
+		runOnlyForDeploymentPostprocessing = 0;
+	};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+	B10001 /* Debug */ = {
+		isa = XCBuildConfiguration;
+		buildSettings = {
+			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+			ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+			CODE_SIGN_STYLE = Manual;
+			DEAD_CODE_STRIPPING = YES;
+			DEBUG_INFORMATION_FORMAT = dwarf;
+			ENABLE_HARDENED_RUNTIME = YES;
+			GCC_OPTIMIZATION_LEVEL = 0;
+			INFOPLIST_FILE = PMVDL/Info.plist;
+			PRODUCT_NAME = PMVDL;
+			INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+			MACOSX_DEPLOYMENT_TARGET = 14.0;
+			MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+			ONLY_ACTIVE_ARCH = YES;
+			PRODUCT_BUNDLE_IDENTIFIER = com.pmvdl.app;
+			SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG";
+			SWIFT_VERSION = 5.0;
+		};
+		name = Debug;
+	};
+	B10002 /* Release */ = {
+		isa = XCBuildConfiguration;
+		buildSettings = {
+			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+			ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+			CODE_SIGN_STYLE = Manual;
+			DEAD_CODE_STRIPPING = YES;
+			DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+			ENABLE_HARDENED_RUNTIME = YES;
+			INFOPLIST_FILE = PMVDL/Info.plist;
+			PRODUCT_NAME = PMVDL;
+			INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+			MACOSX_DEPLOYMENT_TARGET = 14.0;
+			MTL_ENABLE_DEBUG_INFO = NO;
+			PRODUCT_BUNDLE_IDENTIFIER = com.pmvdl.app;
+			SWIFT_COMPILATION_MODE = wholemodule;
+			SWIFT_OPTIMIZATION_LEVEL = "-O";
+			SWIFT_VERSION = 5.0;
+		};
+		name = Release;
+	};
+	B20001 /* Debug */ = {
+		isa = XCBuildConfiguration;
+		buildSettings = {
+			ALWAYS_SEARCH_USER_PATHS = NO;
+			CLANG_ENABLE_MODULES = YES;
+			DEAD_CODE_STRIPPING = YES;
+			DEBUG_INFORMATION_FORMAT = dwarf;
+			GCC_OPTIMIZATION_LEVEL = 0;
+			MACOSX_DEPLOYMENT_TARGET = 14.0;
+			MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+			ONLY_ACTIVE_ARCH = YES;
+			SDKROOT = macosx;
+			SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG";
+			SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			SWIFT_VERSION = 5.0;
+		};
+		name = Debug;
+	};
+	B20002 /* Release */ = {
+		isa = XCBuildConfiguration;
+		buildSettings = {
+			ALWAYS_SEARCH_USER_PATHS = NO;
+			CLANG_ENABLE_MODULES = YES;
+			DEAD_CODE_STRIPPING = YES;
+			DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+			MACOSX_DEPLOYMENT_TARGET = 14.0;
+			MTL_ENABLE_DEBUG_INFO = NO;
+			SDKROOT = macosx;
+			SWIFT_COMPILATION_MODE = wholemodule;
+			SWIFT_OPTIMIZATION_LEVEL = "-O";
+			SWIFT_VERSION = 5.0;
+		};
+		name = Release;
+	};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+	A80001 /* Build configuration list for PBXNativeTarget "PMVDL" */ = {
+		isa = XCConfigurationList;
+		buildConfigurations = (
+			B10001 /* Debug */,
+			B10002 /* Release */,
+		);
+		defaultConfigurationIsVisible = 0;
+		defaultConfigurationName = Release;
+	};
+	A80002 /* Build configuration list for PBXProject "PMVDL" */ = {
+		isa = XCConfigurationList;
+		buildConfigurations = (
+			B20001 /* Debug */,
+			B20002 /* Release */,
+		);
+		defaultConfigurationIsVisible = 0;
+		defaultConfigurationName = Release;
+	};
+/* End XCConfigurationList section */
+};
+rootObject = A90001 /* Project object */;
+}

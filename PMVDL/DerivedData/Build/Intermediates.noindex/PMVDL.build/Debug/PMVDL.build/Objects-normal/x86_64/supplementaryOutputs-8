@@ -1,0 +1,44 @@
+{
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/GeneratedAssetSymbols.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/GeneratedAssetSymbols.swiftdeps"
+  },
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/PMVDL/DownloadManager.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadManager.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadManager.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadManager.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadManager.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadManager.swiftdeps"
+  },
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/PMVDL/DownloadProgressDelegate.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadProgressDelegate.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadProgressDelegate.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadProgressDelegate.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadProgressDelegate.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DownloadProgressDelegate.swiftdeps"
+  },
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/PMVDL/Extractors/DoodStreamExtractor.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DoodStreamExtractor.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DoodStreamExtractor.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DoodStreamExtractor.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DoodStreamExtractor.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/DoodStreamExtractor.swiftdeps"
+  },
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/PMVDL/Extractors/MixDropExtractor.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/MixDropExtractor.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/MixDropExtractor.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/MixDropExtractor.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/MixDropExtractor.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/MixDropExtractor.swiftdeps"
+  },
+  "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/PMVDL/Extractors/StreamTapeExtractor.swift" : {
+    "const-values" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/StreamTapeExtractor.swiftconstvalues",
+    "dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/StreamTapeExtractor.d",
+    "diagnostics" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/StreamTapeExtractor.dia",
+    "object" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/StreamTapeExtractor.o",
+    "swift-dependencies" : "/Users/kalyannath/Projects/pmvhavendownloader/PMVDL/DerivedData/Build/Intermediates.noindex/PMVDL.build/Debug/PMVDL.build/Objects-normal/x86_64/StreamTapeExtractor.swiftdeps"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "source" : "ExtractedAppShortcutsMetadata",
+  "tables" : {
+    "Localizable" : [
+      {
+        "key" : "Download ${url} to ${remotePath}"
+      },
+      {
+        "key" : "Extract video from ${url}"
+      },
+      {
+        "key" : "Upload ${file} to ${provider}"
+      }
+    ]
+  },
+  "version" : 1
+}

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>VidDL</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.pmvdl.app</string>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>CFBundleShortVersionString</key>
+	<string>2.0.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<key>NSUserNotificationUsageDescription</key>
+	<string>VidDL uses notifications to inform you about download and upload status</string>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+
+	<!-- URL scheme: pmvdl://extract?url=... -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.pmvdl.app.extract</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>pmvdl</string>
+			</array>
+		</dict>
+	</array>
+
+	<!-- App Intents for Siri Shortcuts -->
+	<key>INIntentsSupported</key>
+	<array>
+		<string>ExtractVideoIntent</string>
+		<string>DownloadVideoIntent</string>
+		<string>UploadToCloudIntent</string>
+	</array>
+</dict>
+</plist>
