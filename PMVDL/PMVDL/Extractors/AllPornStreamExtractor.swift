@@ -210,10 +210,10 @@ struct AllPornStreamExtractor: VideoSiteExtractor {
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return results }
 
         for match in regex.matches(in: html, range: NSRange(html.startIndex..., in: html)) {
-            let payloadStart = html.index(html.startIndex, offsetBy: match.range.location + match.range.length)
-            guard payloadStart < html.endIndex, html[payloadStart] == "\"" else { continue }
+            let quotePosition = html.index(html.startIndex, offsetBy: match.range.location + match.range.length - 1)
+            guard quotePosition < html.endIndex, html[quotePosition] == "\"" else { continue }
 
-            let fromStart = String(html[payloadStart...])
+            let fromStart = String(html[quotePosition...])
             if let jsonString = extractJsonStringValue(from: fromStart) {
                 results.append(jsonString)
             }
