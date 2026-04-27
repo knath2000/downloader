@@ -1,0 +1,44 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Xcode
+PMVDL/build/
+PMVDL/DerivedData/
+PMVDL/PMVDL.xcodeproj/project.xcworkspace/
+PMVDL/PMVDL.xcodeproj/xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Misc
+*.log
+*.tmp
+*.temp
+mixdrop.html
+iframe.html
+mega_to_gdrive_colab.ipynb
+sync_mega_to_gdrive.sh
+test.html
+testingplan.rtf
+pmvdl.py.backup
+
+# Workspace
+*.code-workspace
+
+# Local .kilo
+.kilo/

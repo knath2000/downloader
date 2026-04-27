@@ -55,6 +55,7 @@
 	A10057 /* StreamTapeExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20057; };
 	A10058 /* MixDropExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20058; };
 	A10059 /* DoodStreamExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20059; };
+	A10060 /* WebViewExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20060 /* WebViewExtractor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -117,6 +118,7 @@
 	A20057 /* StreamTapeExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamTapeExtractor.swift; sourceTree = "<group>"; };
 	A20058 /* MixDropExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MixDropExtractor.swift; sourceTree = "<group>"; };
 	A20059 /* DoodStreamExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoodStreamExtractor.swift; sourceTree = "<group>"; };
+	A20060 /* WebViewExtractor.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WebViewExtractor.swift; sourceTree = "<group>"; };
 	A30001 /* PMVDL.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PMVDL.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -185,6 +187,7 @@
 			A20008 /* Info.plist */,
 			A20052 /* DownloadManager.ws */,
 			A20054 /* DownloadProgressDelegate.ws */,
+			A20060 /* WebViewExtractor.swift */,
 		);
 		path = PMVDL;
 		sourceTree = "<group>";
@@ -378,6 +381,7 @@
 			A10057 /* StreamTapeExtractor.swift in Sources */,
 			A10058 /* MixDropExtractor.swift in Sources */,
 			A10059 /* DoodStreamExtractor.swift in Sources */,
+			A10060 /* WebViewExtractor.swift in Sources */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};
