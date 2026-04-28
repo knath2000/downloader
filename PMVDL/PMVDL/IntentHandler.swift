@@ -10,7 +10,7 @@ struct ExtractVideoIntent: AppIntent {
     @Parameter(title: "PMVHaven URL")
     var url: URL
 
-    static var parameterSummary: ParameterSummary {
+    static var parameterSummary: any ParameterSummary {
         Summary("Extract video from \(\.$url)")
     }
 
@@ -35,7 +35,7 @@ struct DownloadVideoIntent: AppIntent {
     @Parameter(title: "Remote Path", default: "/Cloud/PMVDL/")
     var remotePath: String
 
-    static var parameterSummary: ParameterSummary {
+    static var parameterSummary: any ParameterSummary {
         Summary("Download \(\.$url) to \(\.$remotePath)")
     }
 
@@ -60,7 +60,7 @@ struct UploadToCloudIntent: AppIntent {
     @Parameter(title: "Cloud Provider")
     var provider: CloudProvider
 
-    static var parameterSummary: ParameterSummary {
+    static var parameterSummary: any ParameterSummary {
         Summary("Upload \(\.$file) to \(\.$provider)")
     }
 

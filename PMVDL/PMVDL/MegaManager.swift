@@ -193,7 +193,7 @@ struct MegaManager {
     // MARK: - Upload from URL (download first)
 
     @MainActor
-    static func upload(url: String, remotePath: String = defaultPath, onProgress: @escaping (ProgressEvent) -> Void) async throws -> UploadResult {
+    static func upload(url: String, remotePath: String = defaultPath, headers: [String: String]? = nil, onProgress: @escaping (ProgressEvent) -> Void) async throws -> UploadResult {
         guard let megaExec = findMegaExec() else { throw MegaUpError.notInstalled }
         guard isLoggedIn else { throw MegaUpError.notLoggedIn }
 
@@ -204,10 +204,11 @@ struct MegaManager {
         defer { try? FileManager.default.removeItem(at: tempFile) }
 
         // Use URLSession with typed progress
-        let delegate = DownloadProgressPEDelegate(onProgress: { pct, msg in onProgress(.uploading(msg: msg, pct: pct)) }, destURL: tempFile)
+        let delegate = DownloadProgressPEDelegate(onProgress: { pct, msg in onProgress(.downloading(msg: msg, pct: pct)) }, destURL: tempFile)
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
         var request = URLRequest(url: URL(string: url)!)
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", forHTTPHeaderField: "User-Agent")
+        headers?.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         try await delegate.performDownload(session: session, request: request)
 
         ThumbnailCache.generateAndCache(fromLocalFile: tempFile.path, forRemoteUrl: url)

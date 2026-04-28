@@ -16,7 +16,7 @@ class WebViewExtractor {
 }
 
 @MainActor
-private class WebViewExtractorTask: NSObject, WKNavigationDelegate {
+private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     private var webView: WKWebView?
     private var continuation: CheckedContinuation<String, Error>?
     private var lastNavigationUrl: URL?
@@ -27,6 +27,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate {
     private var finalUrl: URL?
     private var isCloudflareChallenge = false
     private var hasStartedPolling = false
+    private let messageHandlerName = "videoCandidate"
     
     func extract(url: URL, timeout: TimeInterval) async throws -> String {
         return try await withCheckedThrowingContinuation { cont in
@@ -38,6 +39,12 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate {
             let configuration = WKWebViewConfiguration()
             configuration.preferences.javaScriptEnabled = true
             configuration.websiteDataStore = .default()
+            configuration.userContentController.add(self, name: messageHandlerName)
+            configuration.userContentController.addUserScript(WKUserScript(
+                source: Self.candidateCollectorScript(handlerName: messageHandlerName),
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: false
+            ))
 
             self.webView = WKWebView(frame: .zero, configuration: configuration)
             self.webView?.navigationDelegate = self
@@ -53,11 +60,22 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate {
                 if let c = self.continuation {
                     print("[WebView] Timeout reached after \(timeout) seconds")
                     self.continuation = nil
-                    self.webView?.stopLoading()
+                    self.cleanup()
                     c.resume(throwing: WebViewError.timeout)
                 }
             }
         }
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == messageHandlerName,
+              let body = message.body as? [String: Any],
+              let rawUrl = body["url"] as? String else {
+            return
+        }
+
+        let type = body["type"] as? String ?? "message"
+        _ = handleCandidate(rawUrl, type: type)
     }
     
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
@@ -129,6 +147,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate {
         // Don't cancel immediately for cancelled requests (-999) - these might be normal during redirects
         if nsError.code != -999, let c = self.continuation {
             self.continuation = nil
+            self.cleanup()
             c.resume(throwing: error)
         }
     }
@@ -139,6 +158,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate {
         // Don't cancel immediately for cancelled requests (-999) - these might be normal during redirects
         if nsError.code != -999, let c = self.continuation {
             self.continuation = nil
+            self.cleanup()
             c.resume(throwing: error)
         }
     }
@@ -330,18 +350,10 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate {
                     return
                 }
 
-                if let videoUrl = resultDict["url"] as? String, !videoUrl.isEmpty,
-                   let type = resultDict["type"] as? String {
-                    // Ignore a returned URL equal to targetUrl?.absoluteString
-                    if videoUrl == self.targetUrl?.absoluteString {
-                        print("[WebView] Got page URL, continuing to poll...")
-                    } else if videoUrl.contains("dood.video") && (videoUrl.contains(".mp4") || videoUrl.contains("token=") || videoUrl.contains("key=")) {
-                        print("[WebView] Found valid video URL via \(type): \(videoUrl)")
-                        self.continuation?.resume(returning: videoUrl)
-                        self.continuation = nil
+                if let videoUrl = resultDict["url"] as? String, !videoUrl.isEmpty {
+                    let type = resultDict["type"] as? String ?? "poll"
+                    if self.handleCandidate(videoUrl, type: type) {
                         return
-                    } else {
-                        print("[WebView] Skipping invalid URL via \(type): \(videoUrl)")
                     }
                 }
             }
@@ -362,7 +374,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate {
         // If no video-specific URL is found, use the final page URL if it contains dood.video
         if let final = self.finalUrl, final.absoluteString.contains("dood.video") {
             let urlString = final.absoluteString
-            if urlString.contains(".mp4") || urlString.contains("token=") || urlString.contains("key=") {
+            if isFinalDoodVideoUrl(urlString) {
                 print("[WebView] Using final page URL: \(urlString)")
                 self.continuation?.resume(returning: urlString)
             } else {
@@ -372,7 +384,290 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate {
         } else {
             self.continuation?.resume(throwing: WebViewError.noVideoUrlFound)
         }
+        cleanup()
         self.continuation = nil
+    }
+
+    private func handleCandidate(_ rawUrl: String, type: String) -> Bool {
+        guard let candidate = normalizedCandidate(rawUrl), candidate != targetUrl?.absoluteString else {
+            return false
+        }
+
+        guard !isRejectedAsset(candidate) else {
+            print("[WebView] Skipping invalid URL via \(type): \(candidate)")
+            return false
+        }
+
+        if isFinalDoodVideoUrl(candidate) || isFullCloudMediaUrl(candidate) {
+            print("[WebView] Found candidate URL via \(type): \(candidate)")
+            let c = continuation
+            continuation = nil
+            cleanup()
+            c?.resume(returning: candidate)
+            return true
+        }
+
+        if candidate.lowercased().contains("dood.video") || candidate.lowercased().contains("cloudatacdn.com") {
+            print("[WebView] Observed intermediate URL via \(type): \(candidate)")
+            return false
+        }
+
+        return false
+    }
+
+    private func cleanup() {
+        webView?.stopLoading()
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: messageHandlerName)
+        webView?.navigationDelegate = nil
+        webView = nil
+    }
+
+    private func normalizedCandidate(_ rawUrl: String) -> String? {
+        let trimmed = rawUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed.hasPrefix("blob:") || trimmed.hasPrefix("data:") {
+            return nil
+        }
+        if trimmed.hasPrefix("//") {
+            return "https:" + trimmed
+        }
+        return trimmed
+    }
+
+    private func isRejectedAsset(_ url: String) -> Bool {
+        let lower = url.lowercased()
+        if lower.contains("no_video") || lower.contains("placeholder") || lower.contains("favicon") {
+            return true
+        }
+
+        let path = URL(string: url)?.path.lowercased() ?? lower.components(separatedBy: "?").first ?? lower
+        let rejectedExtensions = [".ico", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".css", ".js"]
+        if rejectedExtensions.contains(where: { path.hasSuffix($0) }) {
+            return true
+        }
+
+        return false
+    }
+
+    private func isFinalDoodVideoUrl(_ url: String) -> Bool {
+        guard !isRejectedAsset(url),
+              let components = URLComponents(string: url),
+              let host = components.host?.lowercased(),
+              host.contains("dood.video") else {
+            return false
+        }
+
+        let path = components.percentEncodedPath
+        guard !path.isEmpty, path != "/" else { return false }
+        let queryItems = components.queryItems ?? []
+        return queryItems.contains(where: { $0.name == "token" }) &&
+            queryItems.contains(where: { $0.name == "expiry" })
+    }
+
+    private func isFullCloudMediaUrl(_ url: String) -> Bool {
+        guard !isRejectedAsset(url),
+              let components = URLComponents(string: url),
+              let host = components.host?.lowercased(),
+              host.contains("cloudatacdn.com") else {
+            return false
+        }
+
+        let path = components.percentEncodedPath
+        guard path.contains("~"), path.count > 12 else { return false }
+        let queryItems = components.queryItems ?? []
+        return queryItems.contains(where: { $0.name == "token" }) &&
+            queryItems.contains(where: { $0.name == "expiry" })
+    }
+
+    private static func candidateCollectorScript(handlerName: String) -> String {
+        """
+        (function() {
+            if (window.__pmvdlCollectorInstalled) return;
+            window.__pmvdlCollectorInstalled = true;
+
+            var handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(handlerName);
+            if (!handler) return;
+
+            function makeFullCandidate(value) {
+                try {
+                    if (!value) return null;
+                    var text = String(value).trim();
+                    if (!text) return null;
+                    if (text.indexOf("//") === 0) text = "https:" + text;
+                    if (text.indexOf("cloudatacdn.com") === -1 || text.indexOf("~") === -1) return text;
+                    if (text.indexOf("?token=") !== -1 || text.indexOf("&token=") !== -1) return text;
+                    if (typeof window.makePlay === "function") return text + window.makePlay();
+                    return text;
+                } catch (e) {
+                    return value;
+                }
+            }
+
+            function report(value, type) {
+                try {
+                    if (!value) return;
+                    var text = makeFullCandidate(value);
+                    if (!text || text.indexOf("blob:") === 0 || text.indexOf("data:") === 0) return;
+                    if (text.indexOf("dood.video") === -1 && text.indexOf("cloudatacdn.com") === -1) return;
+                    handler.postMessage({ url: text, type: type || "unknown", page: window.location.href });
+                } catch (e) {}
+            }
+
+            function reportSourceObject(value, type) {
+                try {
+                    if (!value) return;
+                    if (typeof value === "string") {
+                        report(value, type);
+                    } else if (value.src) {
+                        report(value.src, type + ":src");
+                    } else if (value.file) {
+                        report(value.file, type + ":file");
+                    } else if (Array.isArray(value)) {
+                        for (var i = 0; i < value.length; i++) reportSourceObject(value[i], type + ":item");
+                    } else {
+                        scanText(JSON.stringify(value), type + ":json");
+                    }
+                } catch (e) {}
+            }
+
+            function scanText(text, type) {
+                try {
+                    if (!text) return;
+                    var matches = String(text).match(/(?:https?:)?\\/\\/[^"'\\s<>]+(?:dood\\.video|cloudatacdn\\.com)[^"'\\s<>]*/gi);
+                    if (!matches) return;
+                    for (var i = 0; i < matches.length; i++) report(matches[i], type);
+                } catch (e) {}
+            }
+
+            function scanElement(el, type) {
+                try {
+                    if (!el) return;
+                    var attrs = ["src", "href", "data-src", "data-url", "data-video", "poster"];
+                    for (var i = 0; i < attrs.length; i++) report(el.getAttribute && el.getAttribute(attrs[i]), type + ":" + attrs[i]);
+                    if (el.currentSrc) report(el.currentSrc, type + ":currentSrc");
+                    if (el.src) report(el.src, type + ":src");
+                    if (el.href) report(el.href, type + ":href");
+                    scanText(el.outerHTML, type + ":html");
+                } catch (e) {}
+            }
+
+            function scanDocument(type) {
+                try {
+                    report(window.location.href, type + ":location");
+                    scanText(document.documentElement && document.documentElement.innerHTML, type + ":document");
+                    var nodes = document.querySelectorAll("video, source, iframe, a, script, [src], [href], [data-src], [data-url], [data-video]");
+                    for (var i = 0; i < nodes.length; i++) scanElement(nodes[i], type);
+                } catch (e) {}
+            }
+
+            try {
+                var originalFetch = window.fetch;
+                if (originalFetch) {
+                    window.fetch = function(input, init) {
+                        try {
+                            report(typeof input === "string" ? input : input && input.url, "fetch");
+                        } catch (e) {}
+                        return originalFetch.apply(this, arguments).then(function(response) {
+                            try {
+                                report(response && response.url, "fetch:response");
+                                if (response && response.clone) {
+                                    response.clone().text().then(function(text) {
+                                        scanText(text, "fetch:body");
+                                        report(text, "fetch:body");
+                                    }).catch(function() {});
+                                }
+                            } catch (e) {}
+                            return response;
+                        });
+                    };
+                }
+            } catch (e) {}
+
+            try {
+                var originalOpen = XMLHttpRequest.prototype.open;
+                XMLHttpRequest.prototype.open = function(method, url) {
+                    this.__pmvdlUrl = url;
+                    report(url, "xhr");
+                    return originalOpen.apply(this, arguments);
+                };
+                var originalSend = XMLHttpRequest.prototype.send;
+                XMLHttpRequest.prototype.send = function() {
+                    try {
+                        this.addEventListener("load", function() {
+                            try {
+                                report(this.responseURL || this.__pmvdlUrl, "xhr:response");
+                                if (typeof this.responseText === "string") {
+                                    scanText(this.responseText, "xhr:body");
+                                    report(this.responseText, "xhr:body");
+                                }
+                            } catch (e) {}
+                        });
+                    } catch (e) {}
+                    return originalSend.apply(this, arguments);
+                };
+            } catch (e) {}
+
+            try {
+                var originalWindowOpen = window.open;
+                window.open = function(url) {
+                    report(url, "window.open");
+                    return originalWindowOpen.apply(this, arguments);
+                };
+            } catch (e) {}
+
+            try {
+                var originalSetAttribute = Element.prototype.setAttribute;
+                Element.prototype.setAttribute = function(name, value) {
+                    report(value, "setAttribute:" + name);
+                    return originalSetAttribute.apply(this, arguments);
+                };
+            } catch (e) {}
+
+            try {
+                var mediaDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "src");
+                if (mediaDescriptor && mediaDescriptor.set) {
+                    Object.defineProperty(HTMLMediaElement.prototype, "src", {
+                        get: mediaDescriptor.get,
+                        set: function(value) {
+                            report(value, "media.src");
+                            return mediaDescriptor.set.call(this, value);
+                        }
+                    });
+                }
+            } catch (e) {}
+
+            function scanPlayers() {
+                try {
+                    if (window.dsplayer) {
+                        try { reportSourceObject(window.dsplayer.src && window.dsplayer.src(), "dsplayer:src"); } catch (e) {}
+                        try { reportSourceObject(window.dsplayer.currentSource && window.dsplayer.currentSource(), "dsplayer:currentSource"); } catch (e) {}
+                        try { reportSourceObject(window.dsplayer.currentSources && window.dsplayer.currentSources(), "dsplayer:currentSources"); } catch (e) {}
+                    }
+                    var names = ["jwplayer", "player", "videojs", "flowplayer", "Plyr"];
+                    for (var i = 0; i < names.length; i++) {
+                        var value = window[names[i]];
+                        scanText(JSON.stringify(value), "global:" + names[i]);
+                    }
+                } catch (e) {}
+            }
+
+            try {
+                new MutationObserver(function(mutations) {
+                    for (var i = 0; i < mutations.length; i++) {
+                        for (var j = 0; j < mutations[i].addedNodes.length; j++) {
+                            scanElement(mutations[i].addedNodes[j], "mutation");
+                        }
+                    }
+                    scanPlayers();
+                }).observe(document.documentElement || document, { childList: true, subtree: true, attributes: true });
+            } catch (e) {}
+
+            scanDocument("initial");
+            setTimeout(function() { scanDocument("timeout:1"); scanPlayers(); }, 1000);
+            setTimeout(function() { scanDocument("timeout:3"); scanPlayers(); }, 3000);
+            document.addEventListener("DOMContentLoaded", function() { scanDocument("domcontentloaded"); scanPlayers(); });
+            window.addEventListener("load", function() { scanDocument("load"); scanPlayers(); });
+        })();
+        """
     }
 }
 

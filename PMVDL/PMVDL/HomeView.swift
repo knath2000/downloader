@@ -346,7 +346,7 @@ struct HomeView: View {
                             onProgress: { pct in updateQueue(id: queueId, status: .downloading, progress: pct) }
                         )
                         destFile = try await DownloadManager.shared.downloadDirectWithDelegate(
-                            url: finalUrl, title: title, delegate: delegate
+                            url: finalUrl, title: title, headers: finalHlsHeaders, delegate: delegate
                         )
                     }
                     // Update library with local path
@@ -417,7 +417,7 @@ struct HomeView: View {
                 Task {
                     do {
                         updateQueue(id: queueId, status: .downloading, progress: 0)
-                        let uploadResult = try await MegaManager.upload(url: finalUrl, remotePath: megaRemotePath) { event in
+                        let uploadResult = try await MegaManager.upload(url: finalUrl, remotePath: megaRemotePath, headers: finalHlsHeaders) { event in
                             updateQueue(id: queueId, status: event.phase == .completing ? .completed : event.phase == .uploading ? .uploading : .downloading, progress: event.percent)
                             Task { @MainActor in tracker.megaUploads[key] = .uploading(event.message) }
                         }
@@ -491,7 +491,7 @@ struct HomeView: View {
                 Task {
                     do {
                         DownloadQueue.shared.updateProgress(id: queueId, status: .downloading, progress: 0)
-                        try await GDriveManager.upload(url: finalUrl, remoteName: gdriveRemoteName, remotePath: gdriveRemotePath) { msg in
+                        try await GDriveManager.upload(url: finalUrl, remoteName: gdriveRemoteName, remotePath: gdriveRemotePath, headers: finalHlsHeaders) { msg in
                             Task { @MainActor in tracker.gdriveUploads[key] = .uploading(msg) }
                         }
                         if let megaPath = megaRemote {
@@ -630,6 +630,12 @@ struct VideoResultRow: View {
         .padding(.vertical, 8)
     }
 
+    private func copyToClipboard(_ text: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
+
     @ViewBuilder
     private func sourceButtons(for source: VideoSource) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -643,6 +649,8 @@ struct VideoResultRow: View {
                     Button("Mega") { onMega(mp4) }
                         .buttonStyle(.bordered)
                     Button("GDrive") { onGDrive(mp4) }
+                        .buttonStyle(.bordered)
+                    Button("Copy") { copyToClipboard(mp4) }
                         .buttonStyle(.bordered)
                 }
             }
@@ -659,6 +667,8 @@ struct VideoResultRow: View {
                             Button("Mega") { onMega(quality.url) }
                                 .buttonStyle(.bordered)
                             Button("GDrive") { onGDrive(quality.url) }
+                                .buttonStyle(.bordered)
+                            Button("Copy") { copyToClipboard(quality.url) }
                                 .buttonStyle(.bordered)
                         }
                     }

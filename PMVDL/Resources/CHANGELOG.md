@@ -16,6 +16,7 @@
 - AES-128 encrypted HLS handling now decrypts segments locally before muxing
 - HLS queue progress now stays accurate through segment download, decrypt, and remux
 - Vidara HLS manifests are surfaced down to 480p instead of being hidden by UI filtering
+- Playmogo extraction now captures the tokenized Cloud CDN media URL from WebView player activity and sends the required Playmogo referer/user-agent headers through local, Mega, and GDrive direct downloads
 
 ## v1.2.0 (Apr 2026)
 - Batch MP4 download to Mega

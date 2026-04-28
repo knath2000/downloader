@@ -33,78 +33,51 @@ struct DoodStreamExtractor: VideoSiteExtractor {
     var thumbnail: String? = nil
     var finalVideoUrl: String?
 
-    // Playmogo: Try HTML parsing first (faster and avoids WebView issues)
     if host.contains("playmogo") {
-      print("Playmogo detected. Trying HTML parsing first...")
-      
-      // Fetch the page HTML
+      print("Playmogo detected. Trying WebView extraction first...")
+
       if let pageHtml = try? await fetchPage(url: targetUrl) {
         title = extractTitle(from: pageHtml) ?? "Playmogo Video"
         thumbnail = extractThumbnail(from: pageHtml)
-        
-        // Try multiple extraction methods
-        // 1. Look for dood.video URLs in HTML (must contain dood.video AND be a valid video URL)
-        let doodVideoRegex = try? NSRegularExpression(pattern: "https://[^\"'\\s]*dood\\.video[^\"'\\s]*", options: [])
-        if let matches = doodVideoRegex?.matches(in: pageHtml, options: [], range: NSRange(pageHtml.startIndex..., in: pageHtml)) {
-          for match in matches {
-            if let range = Range(match.range, in: pageHtml) {
-              let potentialUrl = String(pageHtml[range])
-              // Validate: must contain dood.video AND have .mp4 or token= or key= (not just any dood.video URL)
-              if potentialUrl.contains("dood.video") && (potentialUrl.contains(".mp4") || potentialUrl.contains("token=") || potentialUrl.contains("key=")) {
-                finalVideoUrl = potentialUrl
-                print("[DoodStream] Found valid dood.video URL via HTML regex: \(potentialUrl)")
-                break
-              } else {
-                print("[DoodStream] Skipping invalid dood.video URL: \(potentialUrl)")
-              }
-            }
-          }
+      } else {
+        title = "Playmogo Video"
+      }
+
+      do {
+        finalVideoUrl = try await WebViewExtractor.shared.extractVideoUrl(from: targetUrl, timeout: 90)
+        if let url = finalVideoUrl, isValidCandidate(url) {
+          print("[DoodStream] WebView extracted candidate URL: \(url)")
+        } else if let url = finalVideoUrl {
+          print("[DoodStream] Warning: WebView extracted invalid URL, rejecting: \(url)")
+          finalVideoUrl = nil
         }
-        
-        // 2. Try standard extraction methods
+      } catch {
+        print("[DoodStream] WebView extraction failed: \(error)")
+        finalVideoUrl = nil
+      }
+
+      if finalVideoUrl == nil, let pageHtml = try? await fetchPage(url: targetUrl) {
+        if title.isEmpty {
+          title = extractTitle(from: pageHtml) ?? "Playmogo Video"
+        }
+        if thumbnail == nil {
+          thumbnail = extractThumbnail(from: pageHtml)
+        }
+
+        if let foundUrl = findDoodOrCloudCandidate(in: pageHtml) {
+          finalVideoUrl = foundUrl
+          print("[DoodStream] Found static helper candidate: \(foundUrl)")
+        }
+
         if finalVideoUrl == nil {
           if let foundUrl = findVideoUrl(in: pageHtml) ?? findVideoUrlViaPacker(pageHtml) {
-            // Validate the URL
-            if foundUrl.contains("dood.video") && (foundUrl.contains(".mp4") || foundUrl.contains("token=") || foundUrl.contains("key=")) {
+            if isValidCandidate(foundUrl) {
               finalVideoUrl = foundUrl
               print("[DoodStream] Found valid dood.video URL via standard extraction: \(foundUrl)")
             } else {
               print("[DoodStream] Skipping invalid URL from standard extraction: \(foundUrl)")
             }
           }
-        }
-        
-        // 3. If still no valid URL, try WebView as last resort
-        if finalVideoUrl == nil {
-          print("HTML parsing failed to find valid dood.video URL. Falling back to WebViewExtractor...")
-          do {
-            finalVideoUrl = try await WebViewExtractor.shared.extractVideoUrl(from: targetUrl, timeout: 90)
-            
-            // Validate extracted URL
-            if let url = finalVideoUrl {
-              if url.contains("dood.video") && (url.contains(".mp4") || url.contains("token=") || url.contains("key=")) {
-                print("[DoodStream] WebView extracted valid URL: \(url)")
-              } else {
-                print("[DoodStream] Warning: WebView extracted URL does not contain valid dood.video: \(url)")
-                finalVideoUrl = nil // Reject invalid URL
-              }
-            }
-          } catch {
-            print("[DoodStream] WebView extraction failed: \(error)")
-            finalVideoUrl = nil
-          }
-        }
-      } else {
-        print("Failed to fetch page HTML, trying WebView directly...")
-        do {
-          finalVideoUrl = try await WebViewExtractor.shared.extractVideoUrl(from: targetUrl, timeout: 90)
-          if let url = finalVideoUrl, !(url.contains("dood.video") && (url.contains(".mp4") || url.contains("token=") || url.contains("key="))) {
-            print("[DoodStream] Warning: WebView URL invalid, rejecting: \(url)")
-            finalVideoUrl = nil
-          }
-        } catch {
-          print("[DoodStream] WebView extraction failed: \(error)")
-          finalVideoUrl = nil
         }
       }
       
@@ -133,16 +106,10 @@ struct DoodStreamExtractor: VideoSiteExtractor {
     if finalVideoUrl == nil && host.contains("playmogo") {
       print("[DoodStream] All extraction failed for Playmogo, trying URL resolution on page HTML...")
       if let htmlContent = try? await fetchPage(url: targetUrl) {
-        // Look for any potential video URL pattern
-        let urlRegex = try? NSRegularExpression(pattern: "https://[^\"'\\s]+/d/[^\"'\\s]+", options: [])
-        if let matches = urlRegex?.matches(in: htmlContent, options: [], range: NSRange(htmlContent.startIndex..., in: htmlContent)),
-           let firstMatch = matches.first,
-           let range = Range(firstMatch.range, in: htmlContent) {
-          let candidateUrl = String(htmlContent[range])
+        if let candidateUrl = findDoodOrCloudCandidate(in: htmlContent) {
           print("[DoodStream] Found candidate URL: \(candidateUrl)")
-          // Try to resolve it
           if let resolvedUrl = await resolveUrl(candidateUrl) {
-            if resolvedUrl.contains("dood.video") {
+            if isValidFinalVideoUrl(resolvedUrl) {
               finalVideoUrl = resolvedUrl
               print("[DoodStream] Resolved to valid dood.video URL: \(resolvedUrl)")
             }
@@ -151,11 +118,12 @@ struct DoodStreamExtractor: VideoSiteExtractor {
       }
     }
 
-    // If we have a cloudatacdn.com URL, try to resolve it to the final dood.video URL
-    if let currentUrl = finalVideoUrl, currentUrl.contains("cloudatacdn.com") {
+    // If we have a cloudatacdn.com URL for normal DoodStream, try to resolve it.
+    // Playmogo must keep the CDN URL because the dood.video redirect resolves to loopback locally.
+    if let currentUrl = finalVideoUrl, currentUrl.contains("cloudatacdn.com"), !host.contains("playmogo") {
       print("[DoodStream] Detected intermediate CDN URL, attempting to resolve final URL...")
       if let resolvedUrl = await resolveUrl(currentUrl) {
-        if resolvedUrl.contains("dood.video") {
+        if isValidFinalVideoUrl(resolvedUrl) {
           finalVideoUrl = resolvedUrl
           print("[DoodStream] Resolved to final dood.video URL: \(resolvedUrl)")
         } else {
@@ -166,13 +134,22 @@ struct DoodStreamExtractor: VideoSiteExtractor {
       }
     }
 
-    guard var videoUrl = finalVideoUrl else {
+    guard let videoUrl = finalVideoUrl else {
       throw DoodStreamError.noVideoSource
     }
 
-    // Final validation: ensure URL contains dood.video
-    if !videoUrl.contains("dood.video") {
-      print("[DoodStream] ERROR: Final URL does not contain dood.video: \(videoUrl)")
+    let playmogoHeaders = host.contains("playmogo") ? [
+      "Referer": targetUrl.absoluteString,
+      "User-Agent": userAgent
+    ] : nil
+
+    if host.contains("playmogo"), !isFullCloudMediaUrl(videoUrl) {
+      print("[DoodStream] ERROR: Final Playmogo URL is not a playable CDN URL: \(videoUrl)")
+      throw DoodStreamError.noVideoSource
+    }
+
+    if !host.contains("playmogo"), !isValidFinalVideoUrl(videoUrl) {
+      print("[DoodStream] ERROR: Final URL does not contain a playable dood.video URL: \(videoUrl)")
       throw DoodStreamError.noVideoSource
     }
 
@@ -182,6 +159,7 @@ struct DoodStreamExtractor: VideoSiteExtractor {
         label: "Video",
         url: videoUrl,
         kind: .direct,
+        headers: playmogoHeaders,
         sourcePageUrl: targetUrl.absoluteString
       )],
       title: title,
@@ -234,7 +212,7 @@ struct DoodStreamExtractor: VideoSiteExtractor {
   // MARK: - Video URL extraction
 
    /// Try direct JS config patterns first (fastest path).
-   private static func findVideoUrl(in html: String) -> String? {
+  private static func findVideoUrl(in html: String) -> String? {
    // sources: [{file: "https://..."}]
    if let url = extractJsStringValue(pattern: #"sources\s*:\s*\[\{file\s*:\s*['\"]([^'\"]+)['\"]"#, in: html) {
    return url
@@ -258,6 +236,14 @@ struct DoodStreamExtractor: VideoSiteExtractor {
       !lowerUrlWithoutQuery.hasSuffix(".css") &&
       !lowerUrlWithoutQuery.hasSuffix(".png") &&
       !lowerUrlWithoutQuery.hasSuffix(".jpg") &&
+      !lowerUrlWithoutQuery.hasSuffix(".jpeg") &&
+      !lowerUrlWithoutQuery.hasSuffix(".gif") &&
+      !lowerUrlWithoutQuery.hasSuffix(".webp") &&
+      !lowerUrlWithoutQuery.hasSuffix(".svg") &&
+      !lowerUrlWithoutQuery.hasSuffix(".ico") &&
+      !rawLower.contains("no_video") &&
+      !rawLower.contains("placeholder") &&
+      !rawLower.contains("favicon") &&
       !rawLower.contains("jquery") &&
       !rawLower.starts(with: "/e/") {
      return rawUrl
@@ -279,6 +265,74 @@ struct DoodStreamExtractor: VideoSiteExtractor {
 
    return nil
    }
+
+  private static func findDoodOrCloudCandidate(in text: String) -> String? {
+    let pattern = #"(?:https?:)?//[^"'\s<>]+(?:dood\.video|cloudatacdn\.com)[^"'\s<>]*"#
+    guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return nil }
+    let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+    for match in matches {
+      if let range = Range(match.range, in: text) {
+        let candidate = normalizeCandidate(String(text[range]))
+        if isValidCandidate(candidate) {
+          return candidate
+        }
+      }
+    }
+    return nil
+  }
+
+  private static func normalizeCandidate(_ rawUrl: String) -> String {
+    let trimmed = rawUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.hasPrefix("//") {
+      return "https:" + trimmed
+    }
+    return trimmed
+  }
+
+  private static func isValidCandidate(_ url: String) -> Bool {
+    return isValidFinalVideoUrl(url) || isFullCloudMediaUrl(url)
+  }
+
+  private static func isValidFinalVideoUrl(_ url: String) -> Bool {
+    guard !isRejectedAsset(url),
+          let components = URLComponents(string: url),
+          let host = components.host?.lowercased(),
+          host.contains("dood.video") else {
+      return false
+    }
+
+    let path = components.percentEncodedPath
+    guard !path.isEmpty, path != "/" else { return false }
+    let queryItems = components.queryItems ?? []
+    return queryItems.contains(where: { $0.name == "token" }) &&
+      queryItems.contains(where: { $0.name == "expiry" })
+  }
+
+  private static func isFullCloudMediaUrl(_ url: String) -> Bool {
+    guard !isRejectedAsset(url),
+          let components = URLComponents(string: url),
+          let host = components.host?.lowercased(),
+          host.contains("cloudatacdn.com") else {
+      return false
+    }
+
+    let path = components.percentEncodedPath
+    guard path.contains("~"), path.count > 12 else { return false }
+    let queryItems = components.queryItems ?? []
+    return queryItems.contains(where: { $0.name == "token" }) &&
+      queryItems.contains(where: { $0.name == "expiry" })
+  }
+
+  private static func isRejectedAsset(_ url: String) -> Bool {
+    let lower = url.lowercased()
+    if lower.contains("no_video") || lower.contains("placeholder") || lower.contains("favicon") {
+      return true
+    }
+
+    let path = URL(string: url)?.path.lowercased() ?? lower.components(separatedBy: "?").first ?? lower
+    let rejectedExtensions = [".ico", ".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".css", ".js"]
+    return rejectedExtensions.contains(where: { path.hasSuffix($0) })
+  }
 
   /// Decode p.a.c.k.e.r style eval blocks that DoodStream sometimes uses.
   private static func findVideoUrlViaPacker(_ html: String) -> String? {
@@ -413,6 +467,8 @@ struct DoodStreamExtractor: VideoSiteExtractor {
 
   private static func resolveUrl(_ url: String) async -> String? {
     guard let urlObj = URL(string: url) else { return nil }
+    if isValidFinalVideoUrl(url) { return url }
+    guard isFullCloudMediaUrl(url) else { return nil }
 
     var request = URLRequest(url: urlObj)
     request.httpMethod = "HEAD"
@@ -420,28 +476,23 @@ struct DoodStreamExtractor: VideoSiteExtractor {
     request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15", forHTTPHeaderField: "User-Agent")
 
     do {
-      let (_, response) = try await URLSession.shared.data(for: request)
+      let (_, response) = try await dataWithoutFollowingRedirects(for: request)
       if let httpResponse = response as? HTTPURLResponse {
-        // Check if there was a redirect
         if let location = httpResponse.value(forHTTPHeaderField: "Location") {
           print("[DoodStream] Redirect location: \(location)")
-          // If the location is still a CDN, try to resolve it recursively
-          if location.contains("cloudatacdn.com") {
-            return await resolveUrl(location)
+          if isValidFinalVideoUrl(location) {
+            return location
           }
-          return location
         }
-        // If no redirect but status is OK, return the original URL
-        if httpResponse.statusCode == 200 {
-          return url
-        }
-        // If status is a redirect (3xx) but no Location header, try GET instead
-        if (300...399).contains(httpResponse.statusCode) {
-          print("[DoodStream] Redirect status \(httpResponse.statusCode) without Location header, trying GET...")
+        if !(300...399).contains(httpResponse.statusCode) {
+          print("[DoodStream] HEAD did not return redirect status \(httpResponse.statusCode), trying GET...")
           return await resolveUrlWithGet(url: url)
         }
       }
     } catch {
+      if let finalUrl = finalUrlFromError(error) {
+        return finalUrl
+      }
       print("[DoodStream] Error resolving URL with HEAD: \(error)")
       // Try GET as fallback
       return await resolveUrlWithGet(url: url)
@@ -451,6 +502,8 @@ struct DoodStreamExtractor: VideoSiteExtractor {
 
   private static func resolveUrlWithGet(url: String) async -> String? {
     guard let urlObj = URL(string: url) else { return nil }
+    if isValidFinalVideoUrl(url) { return url }
+    guard isFullCloudMediaUrl(url) else { return nil }
 
     var request = URLRequest(url: urlObj)
     request.httpMethod = "GET"
@@ -458,21 +511,54 @@ struct DoodStreamExtractor: VideoSiteExtractor {
     request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15", forHTTPHeaderField: "User-Agent")
 
     do {
-      let (_, response) = try await URLSession.shared.data(for: request)
+      let (_, response) = try await dataWithoutFollowingRedirects(for: request)
       if let httpResponse = response as? HTTPURLResponse {
         if let location = httpResponse.value(forHTTPHeaderField: "Location") {
           print("[DoodStream] GET redirect location: \(location)")
-          if location.contains("cloudatacdn.com") {
-            return await resolveUrlWithGet(url: location)
+          if isValidFinalVideoUrl(location) {
+            return location
           }
-          return location
-        }
-        if httpResponse.statusCode == 200 {
-          return url
         }
       }
     } catch {
+      if let finalUrl = finalUrlFromError(error) {
+        return finalUrl
+      }
       print("[DoodStream] Error resolving URL with GET: \(error)")
+    }
+    return nil
+  }
+
+  private static func dataWithoutFollowingRedirects(for request: URLRequest) async throws -> (Data, URLResponse) {
+    let delegate = NoRedirectDelegate()
+    let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+    defer { session.invalidateAndCancel() }
+    return try await session.data(for: request)
+  }
+
+  private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(
+      _ session: URLSession,
+      task: URLSessionTask,
+      willPerformHTTPRedirection response: HTTPURLResponse,
+      newRequest request: URLRequest,
+      completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+      completionHandler(nil)
+    }
+  }
+
+  private static func finalUrlFromError(_ error: Error) -> String? {
+    let nsError = error as NSError
+    let keys = [NSURLErrorFailingURLStringErrorKey, "NSErrorFailingURLStringKey"]
+    for key in keys {
+      if let url = nsError.userInfo[key] as? String, isValidFinalVideoUrl(url) {
+        return url
+      }
+    }
+    if let url = nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL,
+       isValidFinalVideoUrl(url.absoluteString) {
+      return url.absoluteString
     }
     return nil
   }

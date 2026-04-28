@@ -26,6 +26,29 @@ class DownloadManager: ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: "embeddedSubsMode") }
     }
 
+    // MARK: - URL Encoding Helper
+
+    /// Properly encodes a URL string to handle special characters like ~ in paths
+    private func sanitizeURLString(_ urlString: String) -> URL? {
+        // Try direct URL creation first (for already-encoded URLs)
+        if let url = URL(string: urlString) {
+            return url
+        }
+
+        // If that fails, try to use URLComponents to parse and rebuild
+        if let components = URLComponents(string: urlString) {
+            return components.url
+        }
+
+        // Last resort: manually encode the string
+        let allowedCharacters = CharacterSet(charactersIn: "!*'();:@&=+$,/?#[]~")
+        if let encoded = urlString.addingPercentEncoding(withAllowedCharacters: allowedCharacters) {
+            return URL(string: encoded)
+        }
+
+        return nil
+    }
+
     // MARK: - yt-dlp site download (for YouTube etc.)
 
     /// Download via yt-dlp directly. Works for ANY yt-dlp supported site.
@@ -87,16 +110,22 @@ class DownloadManager: ObservableObject {
 
     /// Download a direct video URL to the local Downloads/VidDL folder.
     func downloadDirect(url: String, title: String? = nil,
+                        headers: [String: String]? = nil,
                         onProgress: @escaping (String) -> Void) async throws -> URL {
-        let filename = sanitizeFilename(title ?? URL(string: url)?.pathComponents.last ?? "video")
-        let ext = URL(string: url)?.pathExtension ?? "mp4"
+        guard let validUrl = sanitizeURLString(url) else {
+            throw DownloadError.invalidURL(url)
+        }
+
+        let filename = sanitizeFilename(title ?? validUrl.pathComponents.last ?? "video")
+        let ext = validUrl.pathExtension.isEmpty ? "mp4" : validUrl.pathExtension
         let destFile = downloadDir.appendingPathComponent("\(filename).\(ext)")
 
         let delegate = DownloadProgressDelegate(onProgress: onProgress, destURL: destFile)
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-        var request = URLRequest(url: URL(string: url)!)
+        var request = URLRequest(url: validUrl)
         request.timeoutInterval = 120
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+        headers?.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         try await delegate.performDownload(session: session, request: request)
 
         return destFile
@@ -104,15 +133,21 @@ class DownloadManager: ObservableObject {
 
     /// Download a direct video URL with a progress delegate that reports numeric percent.
     func downloadDirectWithDelegate(url: String, title: String? = nil,
+                                     headers: [String: String]? = nil,
                                      delegate: QueueDownloadProgressDelegate) async throws -> URL {
-        let filename = sanitizeFilename(title ?? URL(string: url)?.pathComponents.last ?? "video")
-        let ext = URL(string: url)?.pathExtension ?? "mp4"
+        guard let validUrl = sanitizeURLString(url) else {
+            throw DownloadError.invalidURL(url)
+        }
+
+        let filename = sanitizeFilename(title ?? validUrl.pathComponents.last ?? "video")
+        let ext = validUrl.pathExtension.isEmpty ? "mp4" : validUrl.pathExtension
         let destFile = downloadDir.appendingPathComponent("\(filename).\(ext)")
         delegate.destURL = destFile
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
-        var request = URLRequest(url: URL(string: url)!)
+        var request = URLRequest(url: validUrl)
         request.timeoutInterval = 120
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+        headers?.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         try await delegate.performDownload(session: session, request: request)
 
         return destFile
@@ -892,6 +927,7 @@ enum DownloadError: LocalizedError {
     case downloadFailed(String)
     case timedOut
     case directoryNotFound(String)
+    case invalidURL(String)
 
     var errorDescription: String? {
         switch self {
@@ -903,6 +939,8 @@ enum DownloadError: LocalizedError {
             return "Download timed out (2 hours)"
         case .directoryNotFound(let dir):
             return "Directory not found: \(dir)"
+        case .invalidURL(let url):
+            return "Invalid URL: \(url)"
         }
     }
 }

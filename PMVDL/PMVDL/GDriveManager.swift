@@ -105,7 +105,7 @@ struct GDriveManager {
         onProgress(.completed(msg: "Uploaded to Google Drive: \(remoteDest)"))
     }
 
-    static func upload(url: String, remoteName: String = "gdrive", remotePath: String = "PMVDL/", onProgress: @escaping (String) -> Void) async throws {
+    static func upload(url: String, remoteName: String = "gdrive", remotePath: String = "PMVDL/", headers: [String: String]? = nil, onProgress: @escaping (String) -> Void) async throws {
         guard let rclone = findRclone() else { throw GDriveError.notInstalled }
         guard isConfigured(remoteName: remoteName) else { throw GDriveError.notConfigured }
 
@@ -119,6 +119,7 @@ struct GDriveManager {
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
         var request = URLRequest(url: URL(string: url)!)
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", forHTTPHeaderField: "User-Agent")
+        headers?.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         try await delegate.performDownload(session: session, request: request)
 
         ThumbnailCache.generateAndCache(fromLocalFile: tempFile.path, forRemoteUrl: url)
