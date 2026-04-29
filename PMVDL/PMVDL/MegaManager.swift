@@ -197,7 +197,10 @@ struct MegaManager {
         guard let megaExec = findMegaExec() else { throw MegaUpError.notInstalled }
         guard isLoggedIn else { throw MegaUpError.notLoggedIn }
 
-        let ext = URL(string: url)?.pathExtension ?? "mp4"
+        // pathExtension for CDN URLs like cloudatacdn.com/path~suffix?token=… is either empty
+        // or includes the tilde suffix (e.g. "mp4~abc"), both of which are wrong. Default to mp4.
+        let rawExt = URL(string: url)?.pathExtension ?? ""
+        let ext = (rawExt.isEmpty || rawExt.contains("~")) ? "mp4" : rawExt
         let shortUUID = UUID().uuidString.prefix(8).lowercased()
         let uniqueName = "pmvdl_\(shortUUID).\(ext)"
         let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent(uniqueName)
@@ -220,22 +223,25 @@ struct MegaManager {
         mkDir.standardOutput = Pipe(); mkDir.standardError = Pipe()
         try mkDir.run(); mkDir.waitUntilExit()
 
-        onProgress(.uploading(msg: "Uploading to Mega… queued", pct: 0))
+        // Use synchronous put (no -q) so MEGAcmd holds the file open for the entire upload.
+        // The -q (queued) flag caused MEGAcmd to create the remote node immediately, making
+        // the ls-based completion check return a false positive, which caused defer to delete
+        // the temp file while MEGAcmd was still reading it → corrupted upload / decryption error.
+        onProgress(.uploading(msg: "Uploading to Mega… 0%", pct: 0))
         let q = Process()
-        q.executableURL = megaExec; q.arguments = ["put", "-q", tempFile.path, remotePath]
+        q.executableURL = megaExec
+        q.arguments = ["put", tempFile.path, remotePath]   // synchronous: blocks until done
         q.standardOutput = Pipe(); q.standardError = Pipe()
         try q.run()
-        let qs = Date()
-        while Date().timeIntervalSince(qs) < 10 && q.isRunning { try await Task.sleep(for: .milliseconds(500)) }
-        if q.isRunning { q.terminate(); _ = q.waitUntilExit() }
-        try await Task.sleep(for: .seconds(2))
 
-        onProgress(.uploading(msg: "Uploading to Mega… 0%", pct: 0))
+        // Poll transfers for progress while the synchronous put is running
         let pollStart = Date()
-        var lastPct = -1, completed = false
-
-        while true {
-            guard Date() < pollStart.addingTimeInterval(7200) else { try? FileManager.default.removeItem(at: tempFile); throw MegaUpError.uploadFailed("Upload timed out") }
+        var lastPct = 0
+        while q.isRunning {
+            guard Date() < pollStart.addingTimeInterval(7200) else {
+                q.terminate(); _ = q.waitUntilExit()
+                throw MegaUpError.uploadFailed("Upload timed out")
+            }
             try await Task.sleep(for: .seconds(2))
             let t = Process()
             t.executableURL = megaExec; t.arguments = ["transfers", "--only-uploads", "--path-display-size=500"]
@@ -244,41 +250,34 @@ struct MegaManager {
             let readStart = Date()
             while Date().timeIntervalSince(readStart) < 5 && t.isRunning { try await Task.sleep(for: .milliseconds(200)) }
             if t.isRunning { t.terminate() }
-
-            var transferFound = false
-            let outData = try? out.fileHandleForReading.readToEnd()
-            if let outData = outData, let stdout = String(data: outData, encoding: .utf8) {
+            if let outData = try? out.fileHandleForReading.readToEnd(),
+               let stdout = String(data: outData, encoding: .utf8) {
                 for line in stdout.split(separator: "\n") {
                     let s = String(line).trimmingCharacters(in: .whitespaces)
                     guard s.contains(uniqueName) else { continue }
-                    transferFound = true
                     if let m = try? NSRegularExpression(pattern: "([\\d.]+)%\\s+of").firstMatch(in: s, range: NSRange(location: 0, length: s.utf16.count)),
                        let r = Range(m.range(at: 1), in: s), let pct = Double(s[r]) {
                         let ipct = Int(pct)
                         if ipct > lastPct { onProgress(.uploading(msg: "Uploading to Mega… \(ipct)%", pct: Double(ipct))); lastPct = ipct }
                     }
-                    if s.contains("COMPLETED") { completed = true }
-                    else if s.contains("FAILED") { try? FileManager.default.removeItem(at: tempFile); throw MegaUpError.uploadFailed("Mega upload failed") }
+                    if s.contains("FAILED") {
+                        q.terminate(); _ = q.waitUntilExit()
+                        throw MegaUpError.uploadFailed("Mega upload failed")
+                    }
                 }
             }
-            if completed { try? FileManager.default.removeItem(at: tempFile); onProgress(.completed(msg: "Uploaded to Mega: \(remotePath)")); return UploadResult(remotePath: remotePath + uniqueName) }
-            if !transferFound {
-                let elapsed = Date().timeIntervalSince(pollStart)
-                if elapsed > 10 {
-                    let check = Process()
-                    check.executableURL = megaExec; check.arguments = ["ls", remotePath + uniqueName]
-                    check.standardOutput = Pipe(); check.standardError = Pipe()
-                    try? check.run()
-                    let rs = Date()
-                    while Date().timeIntervalSince(rs) < 10 && check.isRunning { try await Task.sleep(for: .milliseconds(500)) }
-                    if check.isRunning { check.terminate() }; _ = check.waitUntilExit()
-                    if check.terminationStatus == 0 { try? FileManager.default.removeItem(at: tempFile); onProgress(.completed(msg: "Uploaded to Mega: \(remotePath)")); return UploadResult(remotePath: remotePath + uniqueName) }
-                }
-                if lastPct < 5 { lastPct = 0 }
-                let slowPct = min(Int(elapsed / 12), 95)
-                if slowPct > lastPct { lastPct = slowPct; onProgress(.uploading(msg: "Uploading to Mega… \(slowPct)%", pct: Double(slowPct))) }
-            }
+            // Provide estimated progress when transfer hasn't appeared in the queue yet
+            let elapsed = Date().timeIntervalSince(pollStart)
+            let slowPct = min(Int(elapsed / 12), 95)
+            if slowPct > lastPct { lastPct = slowPct; onProgress(.uploading(msg: "Uploading to Mega… \(slowPct)%", pct: Double(slowPct))) }
         }
+
+        guard q.terminationStatus == 0 else {
+            throw MegaUpError.uploadFailed("mega-exec put failed (exit \(q.terminationStatus))")
+        }
+        // defer deletes tempFile here, safely, after MEGAcmd has fully finished reading it
+        onProgress(.completed(msg: "Uploaded to Mega: \(remotePath)"))
+        return UploadResult(remotePath: remotePath + uniqueName)
     }
 
     static func fmt(_ bytes: Int64) -> String {
@@ -315,6 +314,22 @@ final class DownloadProgressPEDelegate: NSObject, URLSessionDownloadDelegate, @u
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        if let httpResponse = downloadTask.response as? HTTPURLResponse,
+           !(200..<300).contains(httpResponse.statusCode) {
+            continuation?.resume(throwing: DownloadError.downloadFailed("CDN returned HTTP \(httpResponse.statusCode) — token may have expired"))
+            continuation = nil
+            return
+        }
+        // Guard against HTML responses (e.g. CDN redirected to an error page without a network error)
+        if let data = try? Data(contentsOf: location, options: .mappedIfSafe), data.count > 4 {
+            let magic = data.prefix(5)
+            let isHTML = magic.starts(with: "<html".utf8) || magic.starts(with: "<!DOC".utf8) || magic.starts(with: "<!doc".utf8)
+            if isHTML {
+                continuation?.resume(throwing: DownloadError.downloadFailed("CDN returned an HTML page instead of video — the URL may have expired or Referer was rejected"))
+                continuation = nil
+                return
+            }
+        }
         do { try? FileManager.default.removeItem(at: destURL); try FileManager.default.moveItem(at: location, to: destURL); continuation?.resume() }
         catch { continuation?.resume(throwing: error) }; continuation = nil
     }

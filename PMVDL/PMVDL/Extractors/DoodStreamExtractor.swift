@@ -153,8 +153,12 @@ struct DoodStreamExtractor: VideoSiteExtractor {
       throw DoodStreamError.noVideoSource
     }
 
+    // For Playmogo the URL requires Referer headers; only expose it via the hls quality entry
+    // (which carries headers) so that batch-download paths that skip per-URL headers don't
+    // silently download garbage from the CDN redirect.
+    let mp4Field: String? = host.contains("playmogo") ? nil : videoUrl
     return VideoSource(
-      mp4: videoUrl,
+      mp4: mp4Field,
       hls: [VideoSource.Quality(
         label: "Video",
         url: videoUrl,

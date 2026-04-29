@@ -268,7 +268,11 @@ struct HomeView: View {
             }
         }
         let isHLS = url.contains(".m3u8")
-        let isYtDlpSite = source.mp4 == nil && !isHLS
+        // A quality entry with kind .direct has a pre-resolved URL — don't treat it as a yt-dlp
+        // site even if source.mp4 is nil (e.g. Playmogo, whose mp4 field is intentionally nil so
+        // that batch-download paths don't skip per-URL headers).
+        let qualityKind = source.hls.first(where: { $0.url == url })?.kind
+        let isYtDlpSite = source.mp4 == nil && !isHLS && qualityKind != .direct
 
         // Look up any custom headers that came with this quality entry (e.g. LuluStream referer)
         let hlsHeaders = source.hls.first(where: { $0.url == url })?.headers

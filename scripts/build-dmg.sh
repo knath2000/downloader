@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Build, sign, notarize, and package PMVDL as a distributable DMG.
+#
+# Prerequisites (one-time setup):
+#   1. Apple Developer Program membership (developer.apple.com)
+#   2. "Developer ID Application" certificate in your keychain
+#      (Xcode → Settings → Accounts → Manage Certificates)
+#   3. App-specific password from appleid.apple.com
+#   4. Store notarization credentials:
+#        xcrun notarytool store-credentials "pmvdl-notary" \
+#          --apple-id "knath2000@icloud.com" \
+#          --team-id "<YOUR_TEAM_ID>" \
+#          --password "<APP_SPECIFIC_PASSWORD>"
+#   5. Replace FILL_IN_TEAM_ID below (and in exportOptions.plist) with your
+#      10-character Apple Team ID (visible in developer.apple.com/account).
+#
+# Usage (from repo root):
+#   bash scripts/build-dmg.sh
+set -euo pipefail
+
+# ── Config ────────────────────────────────────────────────────────────────────
+SCHEME="PMVDL"
+PROJECT="PMVDL/PMVDL.xcodeproj"
+CONFIGURATION="Release"
+ARCHIVE_PATH="/tmp/PMVDL.xcarchive"
+EXPORT_PATH="/tmp/PMVDL-export"
+EXPORT_OPTIONS="exportOptions.plist"
+APP_NAME="PMVDL"
+VERSION="2.0.0"
+DMG_NAME="${APP_NAME}-${VERSION}"
+TEAM_ID="FILL_IN_TEAM_ID"          # ← Replace before running
+NOTARY_PROFILE="pmvdl-notary"      # keychain profile from prerequisites
+
+if [[ "$TEAM_ID" == "FILL_IN_TEAM_ID" ]]; then
+    echo "ERROR: Set TEAM_ID in this script before running." >&2
+    exit 1
+fi
+
+# ── 1. Archive ────────────────────────────────────────────────────────────────
+echo "==> Archiving (this takes a few minutes)..."
+xcodebuild archive \
+    -project "$PROJECT" \
+    -scheme "$SCHEME" \
+    -configuration "$CONFIGURATION" \
+    -archivePath "$ARCHIVE_PATH" \
+    CODE_SIGN_STYLE=Manual \
+    CODE_SIGN_IDENTITY="Developer ID Application" \
+    DEVELOPMENT_TEAM="$TEAM_ID" \
+    CODE_SIGN_ENTITLEMENTS="PMVDL/PMVDL.entitlements" \
+    | xcpretty 2>/dev/null || true   # xcpretty is optional; falls back to raw output
+
+# ── 2. Export .app ─────────────────────────────────────────────────────────────
+echo "==> Exporting signed .app..."
+xcodebuild -exportArchive \
+    -archivePath "$ARCHIVE_PATH" \
+    -exportPath "$EXPORT_PATH" \
+    -exportOptionsPlist "$EXPORT_OPTIONS"
+
+APP="$EXPORT_PATH/$APP_NAME.app"
+
+# ── 3. Notarize the .app ───────────────────────────────────────────────────────
+echo "==> Notarizing .app (submitting to Apple — may take a few minutes)..."
+ditto -c -k --keepParent "$APP" "/tmp/${APP_NAME}.zip"
+xcrun notarytool submit "/tmp/${APP_NAME}.zip" \
+    --keychain-profile "$NOTARY_PROFILE" \
+    --wait
+
+# ── 4. Staple notarization ticket to .app ─────────────────────────────────────
+echo "==> Stapling .app..."
+xcrun stapler staple "$APP"
+
+# ── 5. Create DMG ─────────────────────────────────────────────────────────────
+echo "==> Creating DMG..."
+DMG_STAGING="/tmp/dmg-staging"
+rm -rf "$DMG_STAGING"
+mkdir -p "$DMG_STAGING"
+cp -R "$APP" "$DMG_STAGING/"
+ln -s /Applications "$DMG_STAGING/Applications"
+
+OUTPUT_DMG="${DMG_NAME}.dmg"
+hdiutil create \
+    -volname "PMVDL" \
+    -srcfolder "$DMG_STAGING" \
+    -ov \
+    -format UDZO \
+    -o "$OUTPUT_DMG"
+
+# ── 6. Notarize the DMG ────────────────────────────────────────────────────────
+echo "==> Notarizing DMG..."
+xcrun notarytool submit "$OUTPUT_DMG" \
+    --keychain-profile "$NOTARY_PROFILE" \
+    --wait
+
+xcrun stapler staple "$OUTPUT_DMG"
+
+# ── 7. Verify ─────────────────────────────────────────────────────────────────
+echo "==> Verifying..."
+codesign --verify --deep --strict --verbose=2 "$APP"
+xcrun stapler validate "$OUTPUT_DMG"
+spctl --assess --type open --context context:primary-signature "$APP" && \
+    echo "Gatekeeper: ACCEPTED" || echo "Gatekeeper: REJECTED (check signing)"
+
+echo ""
+echo "==> Done: $(pwd)/${OUTPUT_DMG}"
+echo "    Upload this file to GitHub Releases or your download page."
