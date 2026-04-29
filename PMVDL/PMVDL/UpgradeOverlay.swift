@@ -16,7 +16,7 @@ struct UpgradeOverlay: View {
                     .foregroundStyle(.yellow)
 
                 Text("Upgrade to Pro").font(.title2.bold())
-                Text("Unlock unlimited batch downloads, scheduling,\nand multi-cloud upload.")
+                Text("You have 5 free downloads.\nUpgrade for unlimited downloads and Pro features.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -29,7 +29,7 @@ struct UpgradeOverlay: View {
                 }
                 .padding()
 
-                Button("Activate License") {
+                Button("Buy or Activate Pro") {
                     // Navigate to settings tab
                     AppStateManager.shared.select(.settings)
                     onDismiss()
@@ -37,7 +37,7 @@ struct UpgradeOverlay: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
 
-                Text("7-day free trial: 10 downloads included")
+                Text("PMVDL Pro - $0.99 one-time")
                     .font(.caption2).foregroundStyle(.tertiary)
 
                 Button("Not now", action: onDismiss)

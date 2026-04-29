@@ -19,6 +19,9 @@ __pycache__/
 *$py.class
 *.so
 
+# Node
+node_modules/
+
 # IDE
 .vscode/
 .idea/
@@ -29,6 +32,7 @@ __pycache__/
 *.log
 *.tmp
 *.temp
+.dev.vars
 mixdrop.html
 iframe.html
 mega_to_gdrive_colab.ipynb

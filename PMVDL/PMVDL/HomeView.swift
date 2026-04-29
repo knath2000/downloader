@@ -19,6 +19,7 @@ struct HomeView: View {
     var megaRemotePath: String
     var gdriveRemoteName: String
     var gdriveRemotePath: String
+    let onUpgradeRequired: () -> Void
 
     var urlLines: [String] {
         urlText
@@ -202,6 +203,10 @@ struct HomeView: View {
     private func batchDownloadAll() {
         let links = batchTargetLinks
         guard !links.isEmpty else { return }
+        guard LicenseManager.shared.canStartDownload(count: links.count) else {
+            onUpgradeRequired()
+            return
+        }
         tracker.isBatchDownloading = true
         loadProgress = "Downloading 0/\(links.count)…"
 
@@ -230,6 +235,7 @@ struct HomeView: View {
                 for await (url, ok, err) in group {
                     done += 1
                     if ok {
+                        LicenseManager.shared.recordSuccessfulDownload()
                         tracker.localDownloads[url] = .done("Uploaded to \(megaRemotePath)")
                         if results.first(where: { $0.source?.mp4 == url })?.source != nil {
                             NotificationManager.shared.notifyUploadComplete(filename: fileName(of: url), destination: megaRemotePath)
@@ -252,6 +258,15 @@ struct HomeView: View {
         }
         guard let result = result, var source = result.source else { return }
         let title = source.title ?? fileName(of: url)
+        if !LicenseManager.shared.canStartDownload() {
+            if !LicenseManager.shared.activationEmail.isEmpty {
+                _ = await LicenseManager.shared.refreshLicense()
+            }
+            guard LicenseManager.shared.canStartDownload() else {
+                onUpgradeRequired()
+                return
+            }
+        }
         let isHLS = url.contains(".m3u8")
         let isYtDlpSite = source.mp4 == nil && !isHLS
 
@@ -358,6 +373,7 @@ struct HomeView: View {
                             DownloadQueue.shared.queue[idx].finalPath = destFile.path
                             DownloadQueue.shared.save()
                         }
+                        LicenseManager.shared.recordSuccessfulDownload()
                         tracker.localDownloads[key] = .done("Saved to \(destFile.lastPathComponent)")
                         NSWorkspace.shared.activateFileViewerSelecting([destFile])
                         NotificationManager.shared.notifyUploadComplete(filename: destFile.lastPathComponent, destination: "Local")
@@ -400,6 +416,7 @@ struct HomeView: View {
                                 DownloadQueue.shared.queue[idx].finalPath = uploadResult.remotePath
                                 DownloadQueue.shared.save()
                             }
+                            LicenseManager.shared.recordSuccessfulDownload()
                             tracker.megaUploads[key] = .done("Uploaded to \(megaRemotePath)")
                             tracker.megaFilenames[key] = uploadResult.remotePath
                             NotificationManager.shared.notifyUploadComplete(filename: mp4File.lastPathComponent, destination: megaRemotePath)
@@ -427,6 +444,7 @@ struct HomeView: View {
                                 DownloadQueue.shared.queue[idx].finalPath = uploadResult.remotePath
                                 DownloadQueue.shared.save()
                             }
+                            LicenseManager.shared.recordSuccessfulDownload()
                             tracker.megaUploads[key] = .done("Uploaded to \(megaRemotePath)")
                             tracker.megaFilenames[key] = uploadResult.remotePath
                             NotificationManager.shared.notifyUploadComplete(filename: fileName(of: url), destination: megaRemotePath)
@@ -475,6 +493,7 @@ struct HomeView: View {
                                 DownloadQueue.shared.queue[idx].finalPath = destPath
                                 DownloadQueue.shared.save()
                             }
+                            LicenseManager.shared.recordSuccessfulDownload()
                             tracker.gdriveUploads[key] = .done("Uploaded to GDrive")
                             NotificationManager.shared.notifyUploadComplete(filename: mp4File.lastPathComponent, destination: gdriveRemotePath)
                         }
@@ -505,6 +524,7 @@ struct HomeView: View {
                                 DownloadQueue.shared.queue[idx].finalPath = destPath
                                 DownloadQueue.shared.save()
                             }
+                            LicenseManager.shared.recordSuccessfulDownload()
                             tracker.gdriveUploads[key] = .done("Uploaded to GDrive")
                             NotificationManager.shared.notifyUploadComplete(filename: fileName(of: url), destination: gdriveRemotePath)
                         }

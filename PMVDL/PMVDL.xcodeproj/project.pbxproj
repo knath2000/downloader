@@ -30,7 +30,6 @@
 	A10021 /* DropHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20021; };
 	A10022 /* AboutWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20022; };
 	A10023 /* UpdateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20023; };
-	A10024 /* PaddleManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20024; };
 	A10025 /* ProFeatureGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20025; };
 	A10026 /* UpgradeOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20026; };
 	A10027 /* IntentHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20027; };
@@ -56,6 +55,7 @@
 	A10058 /* MixDropExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20058; };
 	A10059 /* DoodStreamExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20059; };
 	A10060 /* WebViewExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20060 /* WebViewExtractor.swift */; };
+	A10061 /* LicenseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20061 /* LicenseManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -80,7 +80,6 @@
 	A20021 /* DropHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DropHandler.swift; sourceTree = "<group>"; };
 	A20022 /* AboutWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutWindow.swift; sourceTree = "<group>"; };
 	A20023 /* UpdateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateManager.swift; sourceTree = "<group>"; };
-	A20024 /* PaddleManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaddleManager.swift; sourceTree = "<group>"; };
 	A20025 /* ProFeatureGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProFeatureGate.swift; sourceTree = "<group>"; };
 	A20026 /* UpgradeOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradeOverlay.swift; sourceTree = "<group>"; };
 	A20027 /* IntentHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentHandler.swift; sourceTree = "<group>"; };
@@ -119,6 +118,7 @@
 	A20058 /* MixDropExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MixDropExtractor.swift; sourceTree = "<group>"; };
 	A20059 /* DoodStreamExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoodStreamExtractor.swift; sourceTree = "<group>"; };
 	A20060 /* WebViewExtractor.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WebViewExtractor.swift; sourceTree = "<group>"; };
+	A20061 /* LicenseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseManager.swift; sourceTree = "<group>"; };
 	A30001 /* PMVDL.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PMVDL.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -170,7 +170,7 @@
 			A20027 /* IntentHandler.ws */,
 			A20021 /* DropHandler.ws */,
 			A20023 /* UpdateManager.ws */,
-			A20024 /* PaddleManager.ws */,
+			A20061 /* LicenseManager.swift */,
 			A20025 /* ProFeatureGate.ws */,
 			A20026 /* UpgradeOverlay.ws */,
 			A20022 /* AboutWindow.ws */,
@@ -349,7 +349,6 @@
 			A10021 /* DropHandler.ws in Sources */,
 			A10022 /* AboutWindow.ws in Sources */,
 			A10023 /* UpdateManager.ws in Sources */,
-			A10024 /* PaddleManager.ws in Sources */,
 			A10025 /* ProFeatureGate.ws in Sources */,
 			A10026 /* UpgradeOverlay.ws in Sources */,
 			A10027 /* IntentHandler.ws in Sources */,
@@ -382,6 +381,7 @@
 			A10058 /* MixDropExtractor.swift in Sources */,
 			A10059 /* DoodStreamExtractor.swift in Sources */,
 			A10060 /* WebViewExtractor.swift in Sources */,
+			A10061 /* LicenseManager.swift in Sources */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};

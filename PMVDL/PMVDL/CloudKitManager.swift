@@ -49,7 +49,7 @@ class CloudKitManager: ObservableObject {
             settings["megaRemotePath"] = UserDefaults.standard.string(forKey: "megaRemotePath")
             settings["gdriveRemoteName"] = UserDefaults.standard.string(forKey: "gdriveRemoteName")
             settings["gdriveRemotePath"] = UserDefaults.standard.string(forKey: "gdriveRemotePath")
-            settings["paddle_activated"] = PaddleManager.shared.isActivated as CKRecordValue
+            settings["license_pro_active"] = LicenseManager.shared.isPro as CKRecordValue
             settings["modifiedAt"] = Date() as CKRecordValue
             try await database.save(settings)
 

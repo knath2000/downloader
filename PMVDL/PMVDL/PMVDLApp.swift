@@ -36,10 +36,10 @@ struct PMVDLApp: App {
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-    // Custom URL scheme handler: viddl://extract?url=...
+    // Custom URL scheme handler: pmvdl://extract?url=...
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
-            if url.scheme == "viddl", url.host == "extract" {
+            if url.scheme == "pmvdl", url.host == "extract" {
                 let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
                 if let queryItem = components?.queryItems?.first(where: { $0.name == "url" }),
                    let extractURL = queryItem.value {
@@ -48,6 +48,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         AppStateManager.shared.select(.home)
                         AppStateManager.shared.showMainWindow()
                     }
+                }
+            } else if url.scheme == "pmvdl", url.host == "license-success" {
+                let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+                let email = components?.queryItems?.first(where: { $0.name == "email" })?.value
+                Task { @MainActor in
+                    LicenseManager.shared.handleLicenseSuccess(email: email)
+                    AppStateManager.shared.select(.settings)
+                    AppStateManager.shared.showMainWindow()
                 }
             }
         }
@@ -68,7 +76,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func handleGetURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent _: NSAppleEventDescriptor) {
         guard let urlString = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
               let url = URL(string: urlString),
-              url.scheme == "viddl" else { return }
+              url.scheme == "pmvdl" else { return }
 
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         if let queryItem = components?.queryItems?.first(where: { $0.name == "url" }),
@@ -76,6 +84,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in
                 AppStateManager.shared.pendingExtractURL = extractURL
                 AppStateManager.shared.select(.home)
+                AppStateManager.shared.showMainWindow()
+            }
+        } else if url.host == "license-success" {
+            let email = components?.queryItems?.first(where: { $0.name == "email" })?.value
+            Task { @MainActor in
+                LicenseManager.shared.handleLicenseSuccess(email: email)
+                AppStateManager.shared.select(.settings)
                 AppStateManager.shared.showMainWindow()
             }
         }

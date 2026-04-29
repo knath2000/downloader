@@ -40,10 +40,15 @@ struct DownloadVideoIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
+        let allowed = await MainActor.run { LicenseManager.shared.canStartDownload() }
+        guard allowed else {
+            throw IntentError.proRequired
+        }
         guard let mp4 = try await PMVScraper.extract(from: url.absoluteString).mp4 else {
             throw IntentError.noMp4Found
         }
         _ = try await MegaManager.upload(url: mp4, remotePath: remotePath) { _ in }
+        await MainActor.run { LicenseManager.shared.recordSuccessfulDownload() }
         return .result(dialog: "Downloaded and uploaded to Mega at \(remotePath)")
     }
 }
@@ -85,5 +90,12 @@ enum CloudProvider: String, AppEnum, CaseIterable {
 
 enum IntentError: LocalizedError {
     case noMp4Found
-    var errorDescription: String? { "No MP4 video found on page." }
+    case proRequired
+
+    var errorDescription: String? {
+        switch self {
+        case .noMp4Found: return "No MP4 video found on page."
+        case .proRequired: return "PMVDL Pro is required after 5 free downloads."
+        }
+    }
 }

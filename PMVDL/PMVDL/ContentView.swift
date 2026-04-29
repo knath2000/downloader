@@ -4,7 +4,7 @@ struct ContentView: View {
     @StateObject private var appState = AppStateManager.shared
     @StateObject private var transferManager = TransferManager.shared
     @StateObject private var updateManager = UpdateManager.shared
-    @StateObject private var paddleManager = PaddleManager.shared
+    @StateObject private var licenseManager = LicenseManager.shared
     @AppStorage("megaRemotePath") var megaRemotePath = "/Cloud/PMVDL/"
     @AppStorage("gdriveRemoteName") var gdriveRemoteName = "gdrive"
     @AppStorage("gdriveRemotePath") var gdriveRemotePath = "PMVDL/"
@@ -41,7 +41,8 @@ struct ContentView: View {
                     HomeView(appState: appState,
                              megaRemotePath: megaRemotePath,
                              gdriveRemoteName: gdriveRemoteName,
-                             gdriveRemotePath: gdriveRemotePath)
+                             gdriveRemotePath: gdriveRemotePath,
+                             onUpgradeRequired: { showUpgradeOverlay = true })
                         .modifier(HomeDropDestination(
                             onUrlPaste: { _ in },
                             onFileDrop: { _ in }
@@ -163,12 +164,15 @@ struct SettingsView: View {
     @Binding var gdriveRemoteName: String
     @Binding var gdriveRemotePath: String
     @Binding var megaRemotePath: String
-    @StateObject private var paddle = PaddleManager.shared
+    @StateObject private var license = LicenseManager.shared
     @StateObject private var updater = UpdateManager.shared
     @State private var activateEmail = ""
-    @State private var activateKey = ""
     @State private var activationResult = ""
     @State private var isActivating = false
+
+    private var trimmedActivationEmail: String {
+        activateEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     var body: some View {
         ScrollView {
@@ -292,7 +296,7 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack {
                                     Image(systemName: "crown.fill").foregroundStyle(.yellow)
-                                    Text("PMVDL Pro — $5 one-time").font(.subheadline.bold())
+                                    Text("PMVDL Pro — $0.99 one-time").font(.subheadline.bold())
                                 }
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text("• Unlimited batch downloads")
@@ -304,40 +308,69 @@ struct SettingsView: View {
 
                                 TextField("Email", text: $activateEmail)
                                     .textFieldStyle(.roundedBorder).font(.caption)
-                                SecureField("License key", text: $activateKey)
-                                    .textFieldStyle(.roundedBorder).font(.caption)
+                                Text("Enter the email to use for your Pro license.")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
 
                                 if !activationResult.isEmpty {
                                     Text(activationResult)
                                         .font(.caption)
                                         .foregroundStyle(activationResult.hasPrefix("OK") ? .green : .red)
                                 }
-                                Text("Trial downloads remaining: \(paddle.trialDownloadsRemaining)")
+                                if !license.lastError.isEmpty {
+                                    Text(license.lastError)
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                }
+                                Text("Free downloads remaining: \(license.freeDownloadsRemaining)")
                                     .font(.caption2).foregroundStyle(.secondary)
 
-                                Button("Activate License") {
-                                    Task {
-                                        isActivating = true
-                                        let ok = await paddle.activate(email: activateEmail, licenseKey: activateKey)
-                                        activationResult = ok ? "OK — Pro activated!" : "Activation failed. Check your key."
-                                        isActivating = false
+                                HStack {
+                                    Button("Buy Pro") {
+                                        Task {
+                                            isActivating = true
+                                            let ok = await license.startCheckout(email: trimmedActivationEmail)
+                                            activationResult = ok ? "Checkout opened. After payment, return here or click Open VidDL on the success page." : "Checkout failed."
+                                            isActivating = false
+                                        }
                                     }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
+                                    .disabled(isActivating || trimmedActivationEmail.isEmpty)
+
+                                    Button("Activate Pro") {
+                                        Task {
+                                            isActivating = true
+                                            let ok = await license.activate(email: trimmedActivationEmail)
+                                            activationResult = ok ? "OK — Pro activated!" : "No active Pro license found."
+                                            isActivating = false
+                                        }
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                    .disabled(isActivating || trimmedActivationEmail.isEmpty)
                                 }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-                                .disabled(isActivating || activateEmail.isEmpty || activateKey.isEmpty)
                             }
                             .padding(4)
+                            .onAppear {
+                                if activateEmail.isEmpty {
+                                    activateEmail = license.activationEmail
+                                }
+                            }
+                            .onChange(of: activateEmail) { _, _ in
+                                activationResult = ""
+                                license.lastError = ""
+                            }
                         }
                     } else {
                         Section("Pro License") {
                             HStack {
                                 Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
-                                Text("Pro activated for \(paddle.activationEmail)")
+                                Text("Pro activated for \(license.activationEmail)")
                                     .font(.caption)
                                 Spacer()
                                 Button("Deactivate") {
-                                    paddle.deactivate()
+                                    license.deactivateLocalLicense()
                                     activationResult = "License deactivated."
                                 }
                                 .buttonStyle(.bordered).controlSize(.small)
