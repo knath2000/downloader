@@ -6,19 +6,21 @@ struct UpgradeOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.5)
+            Color.black.opacity(0.65)
                 .ignoresSafeArea()
 
             VStack(spacing: 16) {
                 Image(systemName: "crown.fill")
                     .resizable().scaledToFit()
                     .frame(width: 48, height: 48)
-                    .foregroundStyle(.yellow)
+                    .foregroundStyle(Theme.accent)
 
-                Text("Upgrade to Pro").font(.title2.bold())
+                Text("Upgrade to Pro")
+                    .font(.title2.bold())
+                    .foregroundStyle(Theme.textPrimary)
                 Text("You have 5 free downloads.\nUpgrade for unlimited downloads and Pro features.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Theme.textSecondary)
                     .multilineTextAlignment(.center)
 
                 VStack(alignment: .leading, spacing: 8) {
@@ -30,22 +32,28 @@ struct UpgradeOverlay: View {
                 .padding()
 
                 Button("Buy or Activate Pro") {
-                    // Navigate to settings tab
                     AppStateManager.shared.select(.settings)
                     onDismiss()
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
 
-                Text("PMVDL Pro - $0.99 one-time")
-                    .font(.caption2).foregroundStyle(.tertiary)
+                Text("VidDL Pro — $0.99 one-time")
+                    .font(.caption2).foregroundStyle(Theme.textSecondary.opacity(0.6))
 
                 Button("Not now", action: onDismiss)
-                    .buttonStyle(.plain).font(.caption)
+                    .buttonStyle(.plain)
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
             }
             .padding(30)
             .frame(maxWidth: 400)
-            .background(Color(nsColor: .windowBackgroundColor).cornerRadius(16))
+            .background(Theme.surface1)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Theme.accent.opacity(0.4), lineWidth: 1)
+            )
         }
     }
 }
@@ -54,8 +62,8 @@ struct FeatureRow: View {
     let icon: String; let text: String
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: icon).foregroundStyle(.green).frame(width: 18)
-            Text(text).font(.callout)
+            Image(systemName: icon).foregroundStyle(Theme.success).frame(width: 18)
+            Text(text).font(.callout).foregroundStyle(Theme.textPrimary)
             Spacer()
         }
     }

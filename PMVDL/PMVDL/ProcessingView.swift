@@ -12,12 +12,12 @@ struct ProcessingView: View {
         VStack(spacing: 0) {
             HStack {
                 Image(systemName: "wand.and.stars").foregroundStyle(.purple)
-                Text("Video Processing").font(.headline)
+                Text("Video Processing").font(.headline).foregroundStyle(Theme.textPrimary)
                 Spacer()
                 Label("ffmpeg: \(VideoProcessor.isAvailable ? "available" : "not installed")",
                       systemImage: VideoProcessor.isAvailable ? "checkmark.circle.fill" : "xmark.circle.fill")
                     .font(.caption)
-                    .foregroundStyle(VideoProcessor.isAvailable ? .green : .orange)
+                    .foregroundStyle(VideoProcessor.isAvailable ? Theme.success : Theme.warning)
             }
             .padding(.horizontal)
             .padding(.top, 8)
@@ -30,7 +30,7 @@ struct ProcessingView: View {
                         }
                     }
                     Text(selectedProfile.description)
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Theme.textSecondary)
                 }
 
                 Section("Input File") {
@@ -39,7 +39,7 @@ struct ProcessingView: View {
                             .font(.caption)
                     } else {
                         Text("No file selected")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Theme.textSecondary)
                     }
                     Button("Select File") {
                         let panel = NSOpenPanel()
@@ -56,7 +56,7 @@ struct ProcessingView: View {
                     Section("Status") {
                         ProgressView()
                         Text(progressMessage)
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.caption).foregroundStyle(Theme.textSecondary)
                     }
                 }
             }

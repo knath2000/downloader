@@ -13,16 +13,16 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             NavigationSplitView {
-                // SIDEBAR
+                // SIDEBAR — system .sidebar vibrancy is provided automatically by NavigationSplitView
                 List(NavDestination.allCases, id: \.self, selection: $appState.selectedDestination) { dest in
                     HStack {
                         Label(dest.rawValue, systemImage: dest.icon)
                             .tag(dest)
                         if [.downloads, .transfers].contains(dest), let count = navBadge(for: dest) {
                             Text("\(count)").font(.system(size: 9)).bold()
-                                .foregroundStyle(.red)
+                                .foregroundStyle(Theme.accent)
                                 .frame(width: 18, height: 18)
-                                .background(.red.opacity(0.15), in: .capsule)
+                                .background(Theme.accentDim, in: .capsule)
                         }
                     }
                 }
@@ -32,7 +32,7 @@ struct ContentView: View {
                         appState.select(.settings)
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(.yellow)
+                    .foregroundStyle(Theme.accent)
                     .padding(.horizontal, 8)
                 }
             } detail: {
@@ -116,8 +116,8 @@ struct TransfersView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Image(systemName: "arrow.up.circle.fill").foregroundStyle(.blue)
-                Text("Mega Transfers").font(.headline)
+                Image(systemName: "arrow.up.circle.fill").foregroundStyle(Theme.accent)
+                Text("Mega Transfers").font(.headline).foregroundStyle(Theme.textPrimary)
                 Spacer()
                 Button(transferManager.isActive ? "Stop Polling" : "Start Polling") {
                     if transferManager.isActive { transferManager.stop() }
@@ -133,9 +133,9 @@ struct TransfersView: View {
                     Image(systemName: "arrow.up.circle")
                         .resizable().scaledToFit()
                         .frame(width: 40, height: 40)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.accent.opacity(0.5))
                         .padding()
-                    Text("No uploads in progress").font(.caption).foregroundStyle(.secondary)
+                    Text("No uploads in progress").font(.caption).foregroundStyle(Theme.textSecondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -145,7 +145,7 @@ struct TransfersView: View {
                             TransferRow(item: t, onCancel: {
                                 Task { await transferManager.cancelTransfer(tag: t.tag) }
                             })
-                            Divider().padding(.leading, 8)
+                            .cardStyle()
                         }
                     }
                     .padding(.horizontal)
@@ -178,8 +178,8 @@ struct SettingsView: View {
         ScrollView {
             VStack(spacing: 0) {
                 HStack {
-                    Image(systemName: "gearshape.fill").foregroundStyle(.blue)
-                    Text("Settings").font(.headline)
+                    Image(systemName: "gearshape.fill").foregroundStyle(Theme.accent)
+                    Text("Settings").font(.headline).foregroundStyle(Theme.textPrimary)
                     Spacer()
                 }
                 .padding(.horizontal)
@@ -398,24 +398,25 @@ struct TransferRow: View {
         VStack(spacing: 4) {
             HStack {
                 if item.state == "ACTIVE" {
-                    Image(systemName: "arrow.up.circle.fill").foregroundStyle(.blue)
+                    Image(systemName: "arrow.up.circle.fill").foregroundStyle(Theme.accent)
                 } else if item.state == "QUEUED" {
-                    Image(systemName: "clock.fill").foregroundStyle(.orange)
+                    Image(systemName: "clock.fill").foregroundStyle(Theme.warning)
                 } else if item.state == "FAILED" {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.error)
                 } else {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.success)
                 }
                 Text(item.filename)
                     .font(.caption.bold())
+                    .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1).truncationMode(.middle)
                 Spacer()
                 Text(item.state == "QUEUED" ? "Queued" : String(format: "%.0f%%", item.progress))
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(Theme.textSecondary)
             }
             if item.state == "ACTIVE" || item.state == "QUEUED" {
                 ProgressView(value: item.progress, total: 100.0)
-                    .tint(item.state == "QUEUED" ? .orange : .blue)
+                    .tint(item.state == "QUEUED" ? Theme.warning : Theme.accent)
                     .progressViewStyle(.linear)
                 HStack {
                     Text(item.size).font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
@@ -426,9 +427,9 @@ struct TransferRow: View {
             } else {
                 HStack {
                     if item.state == "COMPLETED" {
-                        Text("Upload complete").font(.caption).foregroundStyle(.green)
+                        Text("Upload complete").font(.caption).foregroundStyle(Theme.success)
                     } else if item.state == "FAILED" {
-                        Text("Upload failed").font(.caption).foregroundStyle(.red)
+                        Text("Upload failed").font(.caption).foregroundStyle(Theme.error)
                     }
                     Spacer()
                 }

@@ -36,12 +36,16 @@ struct HomeView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Image(systemName: "photo.on.rectangle.angled").foregroundStyle(.blue)
-                Text("Video Downloader").font(.subheadline).bold()
+                Image(systemName: "photo.on.rectangle.angled").foregroundStyle(Theme.accent)
+                Text("Video Downloader").font(.subheadline).bold().foregroundStyle(Theme.textPrimary)
                 if ScraperEngine.isYTDLPAvailable {
-                    Text("Powered by yt-dlp").font(.caption2).foregroundStyle(.secondary)
+                    Text("Powered by yt-dlp")
+                        .font(.caption2)
+                        .foregroundStyle(Theme.accent.opacity(0.8))
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Theme.accentDim, in: Capsule())
                 } else {
-                    Text("Install yt-dlp for full features").font(.caption2).foregroundStyle(.orange)
+                    Text("Install yt-dlp for full features").font(.caption2).foregroundStyle(Theme.warning)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -49,7 +53,7 @@ struct HomeView: View {
             .padding(.top, 6)
 
             // URL input label
-            Text("URLs (one per line)").font(.caption).foregroundStyle(.secondary)
+            Text("URLs (one per line)").font(.caption).foregroundStyle(Theme.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal)
                 .padding(.top, 4)
@@ -59,7 +63,11 @@ struct HomeView: View {
             TextEditor(text: $urlText)
                 .frame(height: 60)
                 .font(.system(size: 11, design: .monospaced))
-                .border(Color.gray.opacity(0.4), width: 0.5)
+                .foregroundStyle(Theme.textPrimary)
+                .scrollContentBackground(.hidden)
+                .background(Theme.surface1)
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.border, lineWidth: 0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
                 .padding(.horizontal)
 
             // Action buttons row
@@ -83,7 +91,7 @@ struct HomeView: View {
                     if !loadProgress.isEmpty {
                         Text(loadProgress)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.textSecondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal)
                     }
@@ -116,7 +124,7 @@ struct HomeView: View {
                     if tracker.isBatchDownloading {
                         Text(loadProgress)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Theme.textSecondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal)
                     }
@@ -622,22 +630,23 @@ struct VideoResultRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: result.error == nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(result.error == nil ? .green : .red)
+                    .foregroundStyle(result.error == nil ? Theme.success : Theme.error)
                     .font(.title3)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(result.source?.title ?? result.url)
                         .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.textPrimary)
                         .lineLimit(2)
 
                     Text(result.source?.siteName ?? URL(string: result.url)?.host ?? result.url)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.textSecondary)
 
                     if let error = result.error {
                         Text(error)
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Theme.error)
                     }
                 }
 
@@ -652,6 +661,7 @@ struct VideoResultRow: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
+        .cardStyle()
     }
 
     private func copyToClipboard(_ text: String) {
@@ -720,15 +730,15 @@ struct VideoResultRow: View {
         case .uploading(let msg):
             Text("\(label): \(msg)")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.textSecondary)
         case .done(let msg):
             Text("\(label): \(msg)")
                 .font(.caption)
-                .foregroundStyle(.green)
+                .foregroundStyle(Theme.success)
         case .failed(let msg):
             Text("\(label): \(msg)")
                 .font(.caption)
-                .foregroundStyle(.red)
+                .foregroundStyle(Theme.error)
         }
     }
 }

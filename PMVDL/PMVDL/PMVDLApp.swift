@@ -9,6 +9,8 @@ struct PMVDLApp: App {
         WindowGroup {
             ContentView()
                 .frame(minWidth: 900, minHeight: 650)
+                .tint(Theme.accent)
+                .preferredColorScheme(.dark)
         }
         .windowStyle(.automatic)
         .commands {

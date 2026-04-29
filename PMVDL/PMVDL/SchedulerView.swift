@@ -8,8 +8,8 @@ struct SchedulerView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Image(systemName: "calendar.badge.clock").foregroundStyle(.blue)
-                Text("Scheduler").font(.headline)
+                Image(systemName: "calendar.badge.clock").foregroundStyle(Theme.accent)
+                Text("Scheduler").font(.headline).foregroundStyle(Theme.textPrimary)
                 Spacer()
                 Button("New Task") { showNewTask.toggle() }
                     .buttonStyle(.borderedProminent).controlSize(.small)
@@ -26,10 +26,10 @@ struct SchedulerView: View {
                     Image(systemName: "calendar.badge.clock")
                         .resizable().scaledToFit()
                         .frame(width: 40, height: 40)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.accent.opacity(0.4))
                         .padding()
-                    Text("No scheduled tasks").font(.caption).foregroundStyle(.secondary)
-                    Text("Add a one-time, recurring, or watch-mode task").font(.caption2).foregroundStyle(.tertiary)
+                    Text("No scheduled tasks").font(.caption).foregroundStyle(Theme.textSecondary)
+                    Text("Add a one-time, recurring, or watch-mode task").font(.caption2).foregroundStyle(Theme.textSecondary.opacity(0.6))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -39,7 +39,6 @@ struct SchedulerView: View {
                             TaskCard(task: task,
                                 onToggle: { engine.toggleTask(task) },
                                 onDelete: { engine.removeTask(task) })
-                            Divider().padding(.leading, 8)
                         }
                     }
                     .padding(.horizontal)
@@ -69,24 +68,25 @@ struct TaskCard: View {
 
                 VStack(alignment: .leading) {
                     Text(task.type.displayName).font(.caption.bold())
-                    Text(task.trigger.description).font(.caption2).foregroundStyle(.secondary)
+                    Text(task.trigger.description).font(.caption2).foregroundStyle(Theme.textSecondary)
                 }
                 Spacer()
 
                 if let lr = task.lastRun {
                     Text("Last: \(lr.formatted(date: .abbreviated, time: .shortened))")
-                        .font(.caption2).foregroundStyle(.tertiary)
+                        .font(.caption2).foregroundStyle(Theme.textSecondary.opacity(0.6))
                 }
                 Button("Delete", role: .destructive) { onDelete() }
                     .buttonStyle(.bordered).controlSize(.mini)
             }
 
             ForEach(Array(task.urls.enumerated()), id: \.offset) { _, url in
-                Text(url).font(.caption2).foregroundStyle(.secondary)
+                Text(url).font(.caption2).foregroundStyle(Theme.textSecondary)
                     .lineLimit(1).truncationMode(.middle)
             }
         }
-        .padding(.vertical, 4)
+        .padding(8)
+        .cardStyle()
     }
 }
 
@@ -128,7 +128,7 @@ struct NewTaskForm: View {
                 } else {
                     TextField("Cron expression", text: $cronExpression)
                         .textFieldStyle(.roundedBorder)
-                    Text("Format: minute hour day month weekday").font(.caption2).foregroundStyle(.secondary)
+                    Text("Format: minute hour day month weekday").font(.caption2).foregroundStyle(Theme.textSecondary)
                 }
 
                 Picker("Cloud Target", selection: $cloudTarget) {

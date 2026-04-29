@@ -7,8 +7,8 @@ struct DownloadQueueViewNew: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Image(systemName: "arrow.down.circle.fill").foregroundStyle(.blue)
-                Text("Downloads").font(.headline)
+                Image(systemName: "arrow.down.circle.fill").foregroundStyle(Theme.accent)
+                Text("Downloads").font(.headline).foregroundStyle(Theme.textPrimary)
                 Spacer()
 
                 Button("Pause All") { queue.pauseAll() }
@@ -29,9 +29,9 @@ struct DownloadQueueViewNew: View {
                     Image(systemName: "arrow.down.circle")
                         .resizable().scaledToFit()
                         .frame(width: 40, height: 40)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Theme.accent.opacity(0.4))
                         .padding()
-                    Text("No downloads").font(.caption).foregroundStyle(.secondary)
+                    Text("No downloads").font(.caption).foregroundStyle(Theme.textSecondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -45,7 +45,7 @@ struct DownloadQueueViewNew: View {
                                 onResume: { queue.resume(item) },
                                 onMoveUp: { queue.moveUp(item) },
                                 onMoveDown: { queue.moveDown(item) })
-                            Divider().padding(.leading, 8)
+                            .cardStyle()
                         }
                     }
                     .padding(.horizontal)
@@ -73,9 +73,10 @@ struct DownloadQueueRow: View {
                 VStack(alignment: .leading) {
                     Text(item.displayTitle ?? item.filename)
                         .font(.caption.bold())
+                        .foregroundStyle(Theme.textPrimary)
                         .lineLimit(1).truncationMode(.middle)
                     Text(item.quality)
-                        .font(.caption2).foregroundStyle(.secondary)
+                        .font(.caption2).foregroundStyle(Theme.textSecondary)
                 }
                 Spacer()
                 statusText
@@ -84,6 +85,7 @@ struct DownloadQueueRow: View {
             if isShowingProgress {
                 ProgressView(value: item.progress, total: 100.0)
                     .progressViewStyle(.linear)
+                    .tint(progressTint)
             }
 
             HStack {
@@ -105,22 +107,22 @@ struct DownloadQueueRow: View {
                     .buttonStyle(.bordered).controlSize(.mini)
             }
         }
-        .padding(.vertical, 4)
+        .padding(8)
     }
 
     var statusIcon: some View {
         Group {
             switch item.status {
             case .pending:
-                Image(systemName: "clock.fill").foregroundStyle(.orange)
+                Image(systemName: "clock.fill").foregroundStyle(Theme.warning)
             case .downloading, .uploading:
-                Image(systemName: "arrow.down.circle.fill").foregroundStyle(.blue)
+                Image(systemName: "arrow.down.circle.fill").foregroundStyle(Theme.accent)
             case .completed:
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.success)
             case .paused:
-                Image(systemName: "pause.circle.fill").foregroundStyle(.yellow)
+                Image(systemName: "pause.circle.fill").foregroundStyle(Theme.textSecondary)
             case .failed:
-                Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+                Image(systemName: "xmark.circle.fill").foregroundStyle(Theme.error)
             }
         }
     }
@@ -129,21 +131,30 @@ struct DownloadQueueRow: View {
         Group {
             switch item.status {
             case .pending:
-                Text("Queued").font(.caption).foregroundStyle(.secondary)
+                Text("Queued").font(.caption).foregroundStyle(Theme.textSecondary)
             case .downloading:
                 Text(String(format: "Downloading %.1f%%", item.progress))
-                    .font(.caption).foregroundStyle(.blue)
+                    .font(.caption).foregroundStyle(Theme.accent)
             case .uploading:
                 Text(String(format: "Uploading %.1f%%", item.progress))
-                    .font(.caption).foregroundStyle(.blue)
+                    .font(.caption).foregroundStyle(Theme.accent)
             case .completed:
-                Text("Done").font(.caption).foregroundStyle(.green)
+                Text("Done").font(.caption).foregroundStyle(Theme.success)
             case .paused:
-                Text("Paused").font(.caption).foregroundStyle(.yellow)
+                Text("Paused").font(.caption).foregroundStyle(Theme.textSecondary)
             case .failed(let reason):
                 Text(reason.isEmpty ? "Failed" : reason)
-                    .font(.caption).foregroundStyle(.red)
+                    .font(.caption).foregroundStyle(Theme.error)
             }
+        }
+    }
+
+    var progressTint: Color {
+        switch item.status {
+        case .downloading, .uploading: return Theme.accent
+        case .completed: return Theme.success
+        case .failed: return Theme.error
+        default: return Theme.accent
         }
     }
 
