@@ -67,7 +67,7 @@ struct LibraryView: View {
 
     private func cachedThumbnail(for item: LibraryItem) -> NSImage? {
         let url = item.mp4Url ?? item.url
-        let key = "pmvdl_thumb_\(url.hashValue).jpg"
+        let key = "viddl_thumb_\(url.hashValue).jpg"
         return ThumbnailCache.cachedThumbnail(forKey: key)
     }
 
@@ -75,7 +75,7 @@ struct LibraryView: View {
         for item in library.items {
             Task {
                 let url = item.mp4Url ?? item.url
-                let key = "pmvdl_thumb_\(url.hashValue).jpg"
+                let key = "viddl_thumb_\(url.hashValue).jpg"
                 let existing = await ThumbnailCache.shared.cachedImage(forKey: key)
                 guard existing == nil else { return }
                 _ = try? await ThumbnailCache.generateAndCache(fromRemoteURL: url)

@@ -5,9 +5,9 @@ struct ContentView: View {
     @StateObject private var transferManager = TransferManager.shared
     @StateObject private var updateManager = UpdateManager.shared
     @StateObject private var licenseManager = LicenseManager.shared
-    @AppStorage("megaRemotePath") var megaRemotePath = "/Cloud/PMVDL/"
+    @AppStorage("megaRemotePath") var megaRemotePath = "/Cloud/VidDL/"
     @AppStorage("gdriveRemoteName") var gdriveRemoteName = "gdrive"
-    @AppStorage("gdriveRemotePath") var gdriveRemotePath = "PMVDL/"
+    @AppStorage("gdriveRemotePath") var gdriveRemotePath = "VidDL/"
     @State private var showUpgradeOverlay = false
 
     var body: some View {
@@ -296,7 +296,7 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack {
                                     Image(systemName: "crown.fill").foregroundStyle(.yellow)
-                                    Text("PMVDL Pro — $0.99 one-time").font(.subheadline.bold())
+                                    Text("VidDL Pro — $0.99 one-time").font(.subheadline.bold())
                                 }
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text("• Unlimited batch downloads")
@@ -378,7 +378,7 @@ struct SettingsView: View {
                         }
                     }
                     Section("About") {
-                        Button("About PMVDL") { showAboutWindow() }
+                        Button("About VidDL") { showAboutWindow() }
                             .buttonStyle(.plain).font(.caption)
                     }
                 }

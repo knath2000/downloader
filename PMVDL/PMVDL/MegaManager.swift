@@ -14,7 +14,7 @@ enum MegaUpError: LocalizedError {
 struct MegaManager {
     private static var tempDir: URL { FileManager.default.temporaryDirectory }
 
-    static let defaultPath = "/Cloud/PMVDL/"
+    static let defaultPath = "/Cloud/VidDL/"
 
     static var isAvailable: Bool { findMegaExec() != nil }
 
@@ -35,7 +35,7 @@ struct MegaManager {
     static func cleanupTempFiles() {
         do {
             let contents = try FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path)
-            for name in contents where name.hasPrefix("pmvdl_") {
+            for name in contents where name.hasPrefix("viddl_") {
                 try? FileManager.default.removeItem(atPath: "\(FileManager.default.temporaryDirectory.path)/\(name)")
             }
         } catch {
@@ -202,7 +202,7 @@ struct MegaManager {
         let rawExt = URL(string: url)?.pathExtension ?? ""
         let ext = (rawExt.isEmpty || rawExt.contains("~")) ? "mp4" : rawExt
         let shortUUID = UUID().uuidString.prefix(8).lowercased()
-        let uniqueName = "pmvdl_\(shortUUID).\(ext)"
+        let uniqueName = "viddl_\(shortUUID).\(ext)"
         let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent(uniqueName)
         defer { try? FileManager.default.removeItem(at: tempFile) }
 

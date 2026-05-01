@@ -81,7 +81,7 @@ struct LuluStreamExtractor: VideoSiteExtractor {
               let range = Range(match.range(at: 1), in: path) else {
             let components = path.split(separator: "/")
             guard let last = components.last, !last.isEmpty else {
-                throw PMVDLError.invalidURL
+                throw VideoExtractorError.invalidURL
             }
             return String(last).split(separator: ".").first.map { String($0) } ?? String(last)
         }

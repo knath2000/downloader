@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build, sign, notarize, and package PMVDL as a distributable DMG.
+# Build, sign, notarize, and package VidDL as a distributable DMG.
 #
 # Prerequisites (one-time setup):
 #   1. Apple Developer Program membership (developer.apple.com)
@@ -22,10 +22,10 @@ set -euo pipefail
 SCHEME="PMVDL"
 PROJECT="PMVDL/PMVDL.xcodeproj"
 CONFIGURATION="Release"
-ARCHIVE_PATH="/tmp/PMVDL.xcarchive"
-EXPORT_PATH="/tmp/PMVDL-export"
+ARCHIVE_PATH="/tmp/VidDL.xcarchive"
+EXPORT_PATH="/tmp/VidDL-export"
 EXPORT_OPTIONS="exportOptions.plist"
-APP_NAME="PMVDL"
+APP_NAME="VidDL"
 VERSION="2.0.0"
 DMG_NAME="${APP_NAME}-${VERSION}"
 TEAM_ID="FILL_IN_TEAM_ID"          # ← Replace before running
@@ -46,7 +46,7 @@ xcodebuild archive \
     CODE_SIGN_STYLE=Manual \
     CODE_SIGN_IDENTITY="Developer ID Application" \
     DEVELOPMENT_TEAM="$TEAM_ID" \
-    CODE_SIGN_ENTITLEMENTS="PMVDL/PMVDL.entitlements" \
+    CODE_SIGN_ENTITLEMENTS="PMVDL/PMVDL/PMVDL.entitlements" \
     | xcpretty 2>/dev/null || true   # xcpretty is optional; falls back to raw output
 
 # ── 2. Export .app ─────────────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ ln -s /Applications "$DMG_STAGING/Applications"
 
 OUTPUT_DMG="${DMG_NAME}.dmg"
 hdiutil create \
-    -volname "PMVDL" \
+    -volname "VidDL" \
     -srcfolder "$DMG_STAGING" \
     -ov \
     -format UDZO \

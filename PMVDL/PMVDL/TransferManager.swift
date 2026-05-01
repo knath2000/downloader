@@ -96,7 +96,7 @@ class TransferManager: ObservableObject {
     /// Parse a line from `mega-exec transfers --only-uploads`.
     ///
     /// Typical format (split by spaces, not tabs):
-    /// `⇑ 2269 /var/folders/.../pmvdl_abc123.mp4 /Cloud/PMVDL/  38.20% of  981.87 MB  ACTIVE`
+    /// `⇑ 2269 /var/folders/.../viddl_abc123.mp4 /Cloud/VidDL/  38.20% of  981.87 MB  ACTIVE`
     ///
     /// Source path can contain spaces, so we scan for the `%` token
     /// rather than using fixed end-offsets.

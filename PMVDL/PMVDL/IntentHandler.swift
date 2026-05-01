@@ -4,10 +4,10 @@ import AppIntents
 // MARK: - Intent: Extract Video
 
 struct ExtractVideoIntent: AppIntent {
-    static var title: LocalizedStringResource { "Extract PMVHaven Video" }
-    static var description: IntentDescription { "Extract download links from a pmvhaven.com video page." }
+    static var title: LocalizedStringResource { "Extract Video" }
+    static var description: IntentDescription { "Extract download links from a video page." }
 
-    @Parameter(title: "PMVHaven URL")
+    @Parameter(title: "Video URL")
     var url: URL
 
     static var parameterSummary: any ParameterSummary {
@@ -15,7 +15,7 @@ struct ExtractVideoIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ReturnsValue<[String]> {
-        let source = try await PMVScraper.extract(from: url.absoluteString)
+        let source = try await VideoScraper.extract(from: url.absoluteString)
         var links: [String] = []
         if let mp4 = source.mp4 { links.append(mp4) }
         for q in source.hls { links.append("\(q.label): \(q.url)") }
@@ -26,13 +26,13 @@ struct ExtractVideoIntent: AppIntent {
 // MARK: - Intent: Download Video
 
 struct DownloadVideoIntent: AppIntent {
-    static var title: LocalizedStringResource { "Download PMVHaven Video" }
-    static var description: IntentDescription { "Extract and start downloading a pmvhaven video to Mega." }
+    static var title: LocalizedStringResource { "Download Video" }
+    static var description: IntentDescription { "Extract and start downloading a video to Mega." }
 
-    @Parameter(title: "PMVHaven URL")
+    @Parameter(title: "Video URL")
     var url: URL
 
-    @Parameter(title: "Remote Path", default: "/Cloud/PMVDL/")
+    @Parameter(title: "Remote Path", default: "/Cloud/VidDL/")
     var remotePath: String
 
     static var parameterSummary: any ParameterSummary {
@@ -44,7 +44,7 @@ struct DownloadVideoIntent: AppIntent {
         guard allowed else {
             throw IntentError.proRequired
         }
-        guard let mp4 = try await PMVScraper.extract(from: url.absoluteString).mp4 else {
+        guard let mp4 = try await VideoScraper.extract(from: url.absoluteString).mp4 else {
             throw IntentError.noMp4Found
         }
         _ = try await MegaManager.upload(url: mp4, remotePath: remotePath) { _ in }
@@ -95,7 +95,7 @@ enum IntentError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noMp4Found: return "No MP4 video found on page."
-        case .proRequired: return "PMVDL Pro is required after 5 free downloads."
+        case .proRequired: return "VidDL Pro is required after 5 free downloads."
         }
     }
 }

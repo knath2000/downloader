@@ -1,7 +1,7 @@
 import CloudKit
 import Foundation
 
-/// Manages CloudKit sync for PMVDL data across devices.
+/// Manages CloudKit sync for VidDL data across devices.
 @MainActor
 class CloudKitManager: ObservableObject {
     static let shared = CloudKitManager()
@@ -70,7 +70,7 @@ class CloudKitManager: ObservableObject {
             syncStatus = .success
         } catch {
             // Graceful fallback — CloudKit not critical
-            print("[PMVDL] CloudKit push failed: \(error.localizedDescription)")
+            print("[VidDL] CloudKit push failed: \(error.localizedDescription)")
             syncStatus = .error
         }
     }
@@ -122,7 +122,7 @@ class CloudKitManager: ObservableObject {
             lastSyncDate = Date()
             syncStatus = .success
         } catch {
-            print("[PMVDL] CloudKit fetch failed: \(error.localizedDescription)")
+            print("[VidDL] CloudKit fetch failed: \(error.localizedDescription)")
             syncStatus = .error
         }
     }

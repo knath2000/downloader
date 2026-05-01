@@ -481,8 +481,8 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
     private static func candidateCollectorScript(handlerName: String) -> String {
         """
         (function() {
-            if (window.__pmvdlCollectorInstalled) return;
-            window.__pmvdlCollectorInstalled = true;
+            if (window.__viddlCollectorInstalled) return;
+            window.__viddlCollectorInstalled = true;
 
             var handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(handlerName);
             if (!handler) return;
@@ -585,7 +585,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
             try {
                 var originalOpen = XMLHttpRequest.prototype.open;
                 XMLHttpRequest.prototype.open = function(method, url) {
-                    this.__pmvdlUrl = url;
+                    this.__viddlUrl = url;
                     report(url, "xhr");
                     return originalOpen.apply(this, arguments);
                 };
@@ -594,7 +594,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
                     try {
                         this.addEventListener("load", function() {
                             try {
-                                report(this.responseURL || this.__pmvdlUrl, "xhr:response");
+                                report(this.responseURL || this.__viddlUrl, "xhr:response");
                                 if (typeof this.responseText === "string") {
                                     scanText(this.responseText, "xhr:body");
                                     report(this.responseText, "xhr:body");

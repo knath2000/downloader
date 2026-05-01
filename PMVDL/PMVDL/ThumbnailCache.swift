@@ -10,13 +10,13 @@ actor ThumbnailCache {
 
     private init() {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        diskDirectory = base.appendingPathComponent("PMVDL/thumbnails")
+        diskDirectory = base.appendingPathComponent("VidDL/thumbnails")
         try? FileManager.default.createDirectory(at: diskDirectory, withIntermediateDirectories: true)
         memoryCache.countLimit = 100
     }
 
     func cachedImage(for url: String) -> NSImage? {
-        let key = "pmvdl_thumb_\(url.hashValue).jpg"
+        let key = "viddl_thumb_\(url.hashValue).jpg"
         if let img = memoryCache.object(forKey: key as NSString) { return img }
 
         let fileURL = diskDirectory.appendingPathComponent(key)
@@ -30,7 +30,7 @@ actor ThumbnailCache {
     }
 
     func store(_ image: NSImage, for url: String) {
-        let key = "pmvdl_thumb_\(url.hashValue).jpg"
+        let key = "viddl_thumb_\(url.hashValue).jpg"
         memoryCache.setObject(image, forKey: key as NSString)
 
         let fileURL = diskDirectory.appendingPathComponent(key)
@@ -61,7 +61,7 @@ extension ThumbnailCache {
     /// Uses a sync dispatch queue so the result can be accessed synchronously.
     static func cachedThumbnail(forKey key: String) -> NSImage? {
         let diskDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("PMVDL/thumbnails")
+            .appendingPathComponent("VidDL/thumbnails")
         let fileURL = diskDir.appendingPathComponent(key)
         if let data = try? Data(contentsOf: fileURL),
            let img = NSImage(data: data) {
@@ -74,7 +74,7 @@ extension ThumbnailCache {
     /// Called during mega/gdrive upload when the file is already on disk.
     static func generateAndCache(fromLocalFile localPath: String, forRemoteUrl url: String) {
         // Check cache first — synchronous disk read
-        let key = "pmvdl_thumb_\(url.hashValue).jpg"
+        let key = "viddl_thumb_\(url.hashValue).jpg"
         if cachedThumbnail(forKey: key) != nil { return }
 
         let fileURL = URL(fileURLWithPath: localPath)
@@ -97,7 +97,7 @@ extension ThumbnailCache {
            let rep = NSBitmapImageRep(data: tiff),
            let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) {
             let diskDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-                .appendingPathComponent("PMVDL/thumbnails")
+                .appendingPathComponent("VidDL/thumbnails")
             let fileURL = diskDir.appendingPathComponent(key)
             try? jpeg.write(to: fileURL)
         }
@@ -114,7 +114,7 @@ extension ThumbnailCache {
         let (data, _) = try await URLSession.shared.data(for: request)
         guard !data.isEmpty else { throw ThumbnailError.emptyResponse }
 
-        let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("pmvdl_thumb_\(url.hashValue).mp4")
+        let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("viddl_thumb_\(url.hashValue).mp4")
         try data.write(to: tempFile)
         defer { try? FileManager.default.removeItem(at: tempFile) }
 

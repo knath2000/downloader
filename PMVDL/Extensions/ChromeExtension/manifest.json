@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
-    "name": "PMVDL — Video Downloader",
-    "description": "One-click extract and download videos from pmvhaven.com and 1000+ supported sites",
+    "name": "VidDL — Video Downloader",
+    "description": "One-click extract and download videos from supported sites",
     "version": "1.0.0",
     "icons": {
         "16": "images/icon-16.png",
@@ -18,7 +18,7 @@
             "16": "images/toolbar-16.png",
             "32": "images/toolbar-32.png"
         },
-        "default_title": "Send to PMVDL"
+        "default_title": "Send to VidDL"
     },
     "content_scripts": [
         {

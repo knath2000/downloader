@@ -302,7 +302,7 @@ class DownloadManager: ObservableObject {
 
         // Create temp dir for all artifacts
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("pmvdl_enc_\(UUID().uuidString.prefix(8))")
+            .appendingPathComponent("viddl_enc_\(UUID().uuidString.prefix(8))")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
         let segLines = playlistText.components(separatedBy: .newlines)
@@ -458,7 +458,7 @@ class DownloadManager: ObservableObject {
 
         // Temp dir for segments
         let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("pmvdl_plain_\(UUID().uuidString.prefix(8))")
+            .appendingPathComponent("viddl_plain_\(UUID().uuidString.prefix(8))")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
         // Download segments
@@ -594,7 +594,7 @@ class DownloadManager: ObservableObject {
         // Write concat list
         let concatContent = segPaths.map { "file '\($0.path)'" }.joined(separator: "\n")
         let concatFile = FileManager.default.temporaryDirectory
-            .appendingPathComponent("pmvdl_concat_\(UUID().uuidString.prefix(8)).txt")
+            .appendingPathComponent("viddl_concat_\(UUID().uuidString.prefix(8)).txt")
         try concatContent.write(to: concatFile, atomically: true, encoding: .utf8)
 
         onProgress(.downloading(msg: "Concatenating…", pct: 95))
@@ -955,7 +955,7 @@ final class QueueDownloadProgressDelegate: NSObject, URLSessionDownloadDelegate,
 
     init(queueId: UUID, onProgress: @escaping (Double) -> Void) {
         self.queueId = queueId; self.onProgress = onProgress
-        self.destURL = URL(fileURLWithPath: "/tmp/pmvdldummy")
+        self.destURL = URL(fileURLWithPath: "/tmp/viddldummy")
     }
 
     func performDownload(session: URLSession, request: URLRequest) async throws {

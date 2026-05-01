@@ -10,7 +10,7 @@ class ActiveWorkTracker: ObservableObject {
     @Published var megaUploads: [String: UploadState] = [:]
     @Published var gdriveUploads: [String: UploadState] = [:]
     @Published var localDownloads: [String: UploadState] = [:]
-    /// Maps video source URL → remote Mega path (e.g. "/Cloud/PMVDL/pmvdl_abc12345.mp4")
+    /// Maps video source URL → remote Mega path (e.g. "/Cloud/VidDL/viddl_abc12345.mp4")
     /// for auto-deletion after successful GDrive upload.
     @Published var megaFilenames: [String: String] = [:]
     @Published var isBatchDownloading = false

@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct PMVDLApp: App {
+struct VidDLApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var appState = AppStateManager.shared
 

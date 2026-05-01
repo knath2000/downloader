@@ -17,7 +17,7 @@ export default {
       return handleWebhook(request, env);
     }
     if (request.method === "GET" && url.pathname === "/cancel") {
-      return html("Checkout canceled. You can return to PMVDL and try again.");
+      return html("Checkout canceled. You can return to VidDL and try again.");
     }
 
     return json({ error: "Not found" }, 404);
@@ -84,7 +84,7 @@ async function successPage(url, env) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PMVDL Pro Activated</title>
+  <title>VidDL Pro Activated</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #f6f7f9; color: #111827; }
     main { max-width: 520px; margin: 12vh auto; padding: 32px; background: white; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.08); }
@@ -97,7 +97,7 @@ async function successPage(url, env) {
 <body>
   <main>
     <h1>Payment complete</h1>
-    <p>Your PMVDL Pro purchase was received${escapedEmail ? ` for <span class="email">${escapedEmail}</span>` : ""}. Return to VidDL to refresh your license.</p>
+    <p>Your VidDL Pro purchase was received${escapedEmail ? ` for <span class="email">${escapedEmail}</span>` : ""}. Return to VidDL to refresh your license.</p>
     <p>If VidDL does not open automatically, click the button below.</p>
     <a class="button" href="${escapedAppUrl}">Open VidDL</a>
   </main>

@@ -38,12 +38,12 @@ class UpdateManager: ObservableObject {
 // <?xml version="1.0" encoding="utf-8"?>
 // <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
 //   <channel>
-//     <title>PMVDL Updates</title>
+//     <title>VidDL Updates</title>
 //     <item>
 //       <title>Version 2.0.0</title>
-//       <sparkle:releaseNotesLink>https://pmvdl.com/releasenotes/2.0.0.html</sparkle:releaseNotesLink>
+//       <sparkle:releaseNotesLink>https://viddl.com/releasenotes/2.0.0.html</sparkle:releaseNotesLink>
 //       <pubDate>Mon, 21 Apr 2026 00:00:00 +0000</pubDate>
-//       <enclosure url="https://github.com/pmvdl/pmvidl/releases/download/v2.0.0/PMVDL-2.0.0.zip"
+//       <enclosure url="https://github.com/knath2000/downloader/releases/download/v2.0.0/VidDL-2.0.0.zip"
 //                  sparkle:version="2" sparkle:shortVersionString="2.0.0"
 //                  type="application/octet-stream"
 //                  sparkle:edSignature="YOUR_ED25519_SIGNATURE_HERE"

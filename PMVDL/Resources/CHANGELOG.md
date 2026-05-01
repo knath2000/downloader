@@ -1,4 +1,4 @@
-# PMVDL Changelog
+# VidDL Changelog
 
 ## v2.0.0 (Apr 2026)
 - Dual window + menu bar mode (no longer menubar-only)
@@ -11,12 +11,12 @@
 - Share extension (system share sheet)
 - Siri Shortcuts (3 intents)
 - Sparkle auto-update integration
-- Pro licensing via Paddle ($5 one-time)
-- LuluStream support for `luluvid.com`, `luluvdo.com`, and `lulustream.com`
+- Pro licensing via Stripe ($0.99 one-time)
+- Stream host support improvements
 - AES-128 encrypted HLS handling now decrypts segments locally before muxing
 - HLS queue progress now stays accurate through segment download, decrypt, and remux
-- Vidara HLS manifests are surfaced down to 480p instead of being hidden by UI filtering
-- Playmogo extraction now captures the tokenized Cloud CDN media URL from WebView player activity and sends the required Playmogo referer/user-agent headers through local, Mega, and GDrive direct downloads
+- HLS manifests are surfaced down to 480p instead of being hidden by UI filtering
+- Stream host extraction now captures tokenized Cloud CDN media URLs from WebView player activity and sends required headers through local, Mega, and GDrive direct downloads
 
 ## v1.2.0 (Apr 2026)
 - Batch MP4 download to Mega
@@ -25,11 +25,11 @@
 
 ## v1.1.0 (Apr 2026)
 - HLS resolution sorting (2160p → 360p → master)
-- Clipboard auto-detection for pmvhaven URLs
+- Clipboard auto-detection for video URLs
 - Per-URL Mega and GDrive upload buttons
 
 ## v1.0.0 (Apr 2026)
 - Initial release — menubar app
-- PMVHaven video extraction via regex
+- Video page extraction via regex
 - Mega upload support via megacmd CLI
-- Standalone Python CLI companion (pmvdl.py)
+- Standalone Python CLI companion (viddl.py)

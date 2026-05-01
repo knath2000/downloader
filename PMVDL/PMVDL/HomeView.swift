@@ -285,7 +285,7 @@ struct HomeView: View {
         // Look up any custom headers that came with this quality entry (e.g. LuluStream referer)
         let hlsHeaders = source.hls.first(where: { $0.url == url })?.headers
 
-        // For .pageUrl entries (e.g. StreamTape/MixDrop/DoodStream from AllPornStream),
+        // For .pageUrl entries (e.g. StreamTape/MixDrop/DoodStream from ProviderLink),
         // try native extraction via ScraperEngine first before falling back to yt-dlp.
         let qualityEntry = source.hls.first(where: { $0.url == url })
         let nativeCandidates = uniqueCandidates([qualityEntry?.sourcePageUrl, url])
@@ -634,17 +634,17 @@ struct VideoResultRow: View {
                     .font(.title3)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(result.source?.title ?? result.url)
+                    Text(displayTitle)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(2)
 
-                    Text(result.source?.siteName ?? URL(string: result.url)?.host ?? result.url)
+                    Text(result.source?.displaySiteName ?? "Video Site")
                         .font(.caption)
                         .foregroundStyle(Theme.textSecondary)
 
                     if let error = result.error {
-                        Text(error)
+                        Text(displayError(error))
                             .font(.caption)
                             .foregroundStyle(Theme.error)
                     }
@@ -668,6 +668,19 @@ struct VideoResultRow: View {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+    }
+
+    private var displayTitle: String {
+        guard let source = result.source else { return "Video URL" }
+        let title = source.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return title.isEmpty ? "Untitled Video" : title
+    }
+
+    private func displayError(_ error: String) -> String {
+        if error.localizedCaseInsensitiveContains("invalid url") {
+            return error
+        }
+        return "Could not extract video sources from this page."
     }
 
     @ViewBuilder

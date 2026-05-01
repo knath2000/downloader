@@ -4,7 +4,7 @@ import Foundation
 struct YtDlpExtractor: VideoSiteExtractor {
     static func supports(_ url: URL) -> Bool {
         guard let host = url.host, !host.isEmpty else { return false }
-        return !PMVHavenExtractor.supports(url)
+        return !NativeVideoPageExtractor.supports(url)
             && !M3U8Extractor.supports(url)
     }
 
@@ -19,8 +19,8 @@ struct YtDlpExtractor: VideoSiteExtractor {
         // No timeout: let yt-dlp finish naturally; exit code 15 is handled gracefully.
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                let stdoutPath = NSTemporaryDirectory() + "pmvdl_yt_out_\(UUID().uuidString).json"
-                let stderrPath = NSTemporaryDirectory() + "pmvdl_yt_err_\(UUID().uuidString).txt"
+                let stdoutPath = NSTemporaryDirectory() + "viddl_yt_out_\(UUID().uuidString).json"
+                let stderrPath = NSTemporaryDirectory() + "viddl_yt_err_\(UUID().uuidString).txt"
 
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: "/bin/bash")

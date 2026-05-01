@@ -1,8 +1,8 @@
-// contentScript.js — injects a button on pmvhaven pages
+// contentScript.js — injects a button on supported pages
 (function() {
     if (!window.location.hostname.includes("pmvhaven.com")) return;
     const btn = document.createElement("button");
-    btn.textContent = "📥 Send to PMVDL";
+    btn.textContent = "📥 Send to VidDL";
     btn.style.cssText = [
         "position: fixed; bottom: 16px; right: 16px; z-index: 9999;",
         "background: #007AFF; color: white; border: none; border-radius: 8px;",

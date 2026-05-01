@@ -138,7 +138,7 @@ class CloudHub: ObservableObject {
 
     // MARK: - Upload
 
-    func uploadToAll(videoUrl: String, quality: String?, remotePath: String = "/Cloud/PMVDL/",
+    func uploadToAll(videoUrl: String, quality: String?, remotePath: String = "/Cloud/VidDL/",
                      onProgress: @escaping (CloudProviderID, String) -> Void) async -> [CloudUploadResult] {
         let targets = resolveTargets(quality: quality, filename: URL(string: videoUrl)?.lastPathComponent ?? "video")
         guard !targets.isEmpty else { return [] }
@@ -175,17 +175,17 @@ class CloudHub: ObservableObject {
                         do {
                             switch target {
                             case .gdrive:
-                                try await GDriveManager.upload(url: videoUrl, remoteName: "gdrive", remotePath: "PMVDL/") { msg in
+                                try await GDriveManager.upload(url: videoUrl, remoteName: "gdrive", remotePath: "VidDL/") { msg in
                                     onProgress(.gdrive, msg)
                                 }
                                 return (.success(.gdrive, message: "Uploaded to GDrive"), nil)
                             case .dropbox:
-                                try await GDriveManager.upload(url: videoUrl, remoteName: "dropbox", remotePath: "PMVDL/") { msg in
+                                try await GDriveManager.upload(url: videoUrl, remoteName: "dropbox", remotePath: "VidDL/") { msg in
                                     onProgress(.dropbox, msg)
                                 }
                                 return (.success(.dropbox, message: "Uploaded to Dropbox"), nil)
                             case .onedrive:
-                                try await GDriveManager.upload(url: videoUrl, remoteName: "onedrive", remotePath: "PMVDL/") { msg in
+                                try await GDriveManager.upload(url: videoUrl, remoteName: "onedrive", remotePath: "VidDL/") { msg in
                                     onProgress(.onedrive, msg)
                                 }
                                 return (.success(.onedrive, message: "Uploaded to OneDrive"), nil)
@@ -193,13 +193,13 @@ class CloudHub: ObservableObject {
                                 if let url = URL(string: videoUrl),
                                    let data = try? Data(contentsOf: url) {
                                     let destDir = FileManager.default.homeDirectoryForCurrentUser
-                                        .appendingPathComponent("Downloads/PMVDL")
+                                        .appendingPathComponent("Downloads/VidDL")
                                     try? FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
                                     let dest = destDir.appendingPathComponent(filename)
                                     try data.write(to: dest)
                                     return (.success(.local, message: "Saved to \(dest.path)"), nil)
                                 }
-                                throw NSError(domain: "PMVDL", code: -1,
+                                throw NSError(domain: "VidDL", code: -1,
                                              userInfo: [NSLocalizedDescriptionKey: "Failed to download file"])
                             case .mega:
                                 fatalError("Mega should have been filtered out")

@@ -1,6 +1,6 @@
-# PMVDL Stripe License Worker
+# VidDL Stripe License Worker
 
-Cloudflare Worker backend for PMVDL Pro.
+Cloudflare Worker backend for VidDL Pro.
 
 See `../../docs/STRIPE_PRO_LICENSE.md` for the current production IDs, checkout flow, deployment notes, and verification checklist.
 

@@ -1,7 +1,91 @@
-# PMVDL Playmogo Extraction Fix - Session Summary
+# VidDL Playmogo Extraction Fix - Session Summary
 **Date:** 2026-04-28
-**Project:** PMVDL (PMV Haven Downloader)  
+**Project:** VidDL
 **Issue:** Playmogo.com video extraction failing
+
+---
+
+# VidDL Generic Frontend and Source Rename Cleanup
+**Date:** 2026-04-29
+**Project:** VidDL
+**Goal:** Present the app as a generic video downloader while keeping existing extraction support and deployed compatibility surfaces intact.
+
+## Product Direction
+
+VidDL is the public brand. The frontend should describe the app as a generic standard video downloader. Source-specific and adult-site support remains available through existing extractors, but should not be advertised in UI text, extension descriptions, changelog/About copy, or user-facing error messages.
+
+## Frontend Cleanup
+
+- Added a display-only source label layer through `VideoSource.displaySiteName` and `SiteDisplayLabels`.
+- UI rows render generic labels such as `Video Site`, `Stream Host`, `Hosted Video`, `Direct Stream`, or `Generic Extractor`.
+- The real internal `siteName` is preserved for routing, storage, maintenance, and extractor logic.
+- `HomeView` result rows use the generic display label.
+- Extraction failure messages shown in the UI avoid surfacing provider-specific or adult-domain details.
+- Visible app text was moved to `VidDL` or generic video-downloader wording across app UI, app intents, extension copy, changelog/About-style resources, Pro/license text, and user-facing docs.
+
+## Source Rename Cleanup
+
+The source-only rename pass removed stale product/provider names from local source symbols while preserving functionality:
+
+- `PMVDLApp` -> `VidDLApp`
+- `PMVScraper` -> `VideoScraper`
+- `PMVDLError` -> `VideoExtractorError`
+- `PMVHavenExtractor` -> `NativeVideoPageExtractor`
+- `AllPornStreamExtractor` -> `ProviderLinkExtractor`
+- `PMVHaven` source label -> `NativeVideoPage`
+- `AllPornStream` source label -> `ProviderLink`
+
+Renamed files:
+
+- `PMVDL/PMVDL/PMVDLApp.swift` -> `PMVDL/PMVDL/VidDLApp.swift`
+- `PMVDL/PMVDL/PMVScraper.swift` -> `PMVDL/PMVDL/VideoScraper.swift`
+- `PMVDL/PMVDL/Extractors/PMVHavenExtractor.swift` -> `PMVDL/PMVDL/Extractors/NativeVideoPageExtractor.swift`
+- `PMVDL/PMVDL/Extractors/AllPornStreamExtractor.swift` -> `PMVDL/PMVDL/Extractors/ProviderLinkExtractor.swift`
+- `pmvdl.py` -> `viddl.py`
+
+The tracked generated file `__pycache__/pmvdl.cpython-313.pyc` was removed.
+
+Local-only temp/cache prefixes were changed from `pmvdl_` to `viddl_` where they were not tied to remote state. Web extraction JavaScript collector globals were likewise moved to `__viddl...` names.
+
+## Compatibility Boundaries
+
+These identifiers are intentionally unchanged and should not be renamed without a separate migration plan:
+
+- `pmvdl://` URL scheme
+- `com.pmvdl.app` bundle identity
+- CloudKit identifiers and containers such as `PMVDLSettings`, `PMVDLLibrary`, and `iCloud.com.pmvdl.app`
+- Stripe worker/env names such as `PMVDL_PRO_PRICE_ID` and `pmvdl-license`
+- Stored user remote-path settings may still point at `/Cloud/PMVDL/`; new defaults use `/Cloud/VidDL/`
+- Xcode project, target, and product identity under `PMVDL`
+- Supported-domain checks such as `pmvhaven.com`
+
+## Validation
+
+Commands and checks completed after cleanup:
+
+- `xcodebuild -project PMVDL/PMVDL.xcodeproj -scheme PMVDL -configuration Debug -derivedDataPath /tmp/viddl-derived-data build`
+- Minimal launch smoke of `/tmp/viddl-derived-data/Build/Products/Debug/VidDL.app`
+- `python3 viddl.py --help`
+- `git diff --check`
+- Targeted stale-symbol scan for old source names:
+  - `PMVDLApp`
+  - `PMVScraper`
+  - `PMVDLError`
+  - `PMVHavenExtractor`
+  - `AllPornStreamExtractor`
+  - `PMVHaven`
+  - `AllPornStream`
+  - `pmvdl_`
+  - old visible product/source phrases
+
+The targeted stale-symbol scan was clean. A broad `pmv`/`PMV`/`pmvdl` scan is expected to find only compatibility allowlist items and supported-domain strings.
+
+## Working Tree Notes
+
+Pre-existing unrelated dirty files observed during the cleanup were intentionally left untouched:
+
+- `bfg.jar`
+- `PMVDL/Resources/script.js`
 
 ## Problem Statement
 
@@ -344,7 +428,7 @@ With the Playmogo embed referer, the CDN returns the media directly (`200 OK` fo
 Build:
 
 ```sh
-xcodebuild -project PMVDL/PMVDL.xcodeproj -scheme PMVDL -configuration Debug -derivedDataPath /tmp/pmvdl-derived-data build
+xcodebuild -project PMVDL/PMVDL.xcodeproj -scheme PMVDL -configuration Debug -derivedDataPath /tmp/viddl-derived-data build
 ```
 
 Result:

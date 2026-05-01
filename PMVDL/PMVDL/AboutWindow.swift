@@ -62,8 +62,8 @@ struct AboutView: View {
 
             // Links
             VStack(spacing: 10) {
-                LinkRow(icon: "link", title: "GitHub", url: "https://github.com/viddl/pmvidl")
-                LinkRow(icon: "bug", title: "Report an Issue", url: "https://github.com/viddl/pmvidl/issues")
+                LinkRow(icon: "link", title: "GitHub", url: "https://github.com/knath2000/downloader")
+                LinkRow(icon: "bug", title: "Report an Issue", url: "https://github.com/knath2000/downloader/issues")
                 LinkRow(icon: "questionmark.circle", title: "Support", url: "mailto:support@viddl.com")
             }
             .padding(.horizontal)

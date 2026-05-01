@@ -1,7 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Share Extension — activated when sharing URLs or video files to PMVDL.
+/// Share Extension — activated when sharing URLs or video files to VidDL.
 struct ShareViewController: View {
     @Environment(\.dismiss) var dismiss
     @State private var shareUrl: String?
@@ -15,14 +15,14 @@ struct ShareViewController: View {
                 .frame(width: 32, height: 32)
                 .foregroundStyle(.blue)
 
-            Text("PMVDL").font(.headline)
+            Text("VidDL").font(.headline)
 
             if isProcessing {
                 ProgressView()
                     .padding()
                 Text(message).font(.caption).foregroundStyle(.secondary)
-            } else if let shareUrl {
-                Text("URL received: \(shareUrl)")
+            } else if shareUrl != nil {
+                Text("Video URL received")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)

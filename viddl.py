@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract direct download links from pmvhaven.com video pages."""
+"""Extract direct download links from supported video pages."""
 
 import argparse
 import os
@@ -87,7 +87,7 @@ def mega_is_logged_in():
     return r.returncode == 0
 
 
-def mega_upload(url, remote_path="/Cloud/PMVDL/"):
+def mega_upload(url, remote_path="/Cloud/VidDL/"):
     if not mega_is_available():
         print("ERROR: MEGA CLI not installed. Run: brew install --cask megacmd-app")
         sys.exit(1)
@@ -133,10 +133,10 @@ def verify_url(url):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Extract & download videos from pmvhaven.com")
-    parser.add_argument("url", help="pmvhaven.com video URL")
-    parser.add_argument("--mega", nargs="?", const="/Cloud/PMVDL/", metavar="PATH",
-                        help="Upload MP4 to MEGA (default remote path: /Cloud/PMVDL/)")
+    parser = argparse.ArgumentParser(description="Extract & download videos from supported pages")
+    parser.add_argument("url", help="video page URL")
+    parser.add_argument("--mega", nargs="?", const="/Cloud/VidDL/", metavar="PATH",
+                        help="Upload MP4 to MEGA (default remote path: /Cloud/VidDL/)")
     args = parser.parse_args()
 
     print(f"Fetching {args.url}")

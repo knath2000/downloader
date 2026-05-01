@@ -27,7 +27,7 @@ struct ClipboardManager {
     }
 
     @available(*, deprecated, message: "Use isLikelyVideoURL instead")
-    static func isPMVHavenURL(_ url: String) -> Bool {
+    static func isNativeVideoPageURL(_ url: String) -> Bool {
         if let parsed = URL(string: url) {
             return parsed.host()?.contains("pmvhaven.com") == true
         }

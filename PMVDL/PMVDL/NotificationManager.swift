@@ -18,7 +18,7 @@ struct NotificationManager {
     func requestAuthorization() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if let error = error {
-                print("[PMVDL] Notification auth request failed: \(error)")
+                print("[VidDL] Notification auth request failed: \(error)")
             }
         }
     }

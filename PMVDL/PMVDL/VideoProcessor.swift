@@ -57,7 +57,7 @@ struct VideoProcessor {
         }
 
         let shortUUID = UUID().uuidString.prefix(8).lowercased()
-        let outputName = "pmvdl_\(shortUUID)_processed.\(operation.outputExtension)"
+        let outputName = "viddl_\(shortUUID)_processed.\(operation.outputExtension)"
         let output = FileManager.default.temporaryDirectory.appendingPathComponent(outputName)
         try? FileManager.default.removeItem(at: output)
 

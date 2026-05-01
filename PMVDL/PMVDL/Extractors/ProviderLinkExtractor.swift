@@ -2,7 +2,7 @@ import Foundation
 
 /// Extracts provider links from allpornstream.com pages.
 /// The page stores provider metadata in a Next.js RSC payload under `video_urls`.
-struct AllPornStreamExtractor: VideoSiteExtractor {
+struct ProviderLinkExtractor: VideoSiteExtractor {
     private static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 
     static func supports(_ url: URL) -> Bool {
@@ -17,7 +17,7 @@ struct AllPornStreamExtractor: VideoSiteExtractor {
         let entries = parseVideoUrls(from: pageHtml)
 
         guard !entries.isEmpty else {
-            throw PMVDLError.noVideoSources
+            throw VideoExtractorError.noVideoSources
         }
 
         let qualities = deduplicate(entries).map { entry in
@@ -36,7 +36,7 @@ struct AllPornStreamExtractor: VideoSiteExtractor {
             hls: qualities,
             title: title,
             thumbnail: thumbnail,
-            siteName: "AllPornStream"
+            siteName: "ProviderLink"
         )
     }
 
@@ -546,8 +546,8 @@ struct AllPornStreamExtractor: VideoSiteExtractor {
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode),
               let html = String(data: data, encoding: .utf8) else {
-            throw PMVDLError.network(
-                NSError(domain: "PMVDL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to fetch allpornstream.com page"])
+            throw VideoExtractorError.network(
+                NSError(domain: "VidDL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to fetch video page"])
             )
         }
         return html

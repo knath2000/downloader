@@ -9,10 +9,10 @@ protocol VideoSiteExtractor {
 /// Central router that dispatches URLs to the correct extractor.
 struct ScraperEngine {
  static let extractors: [any VideoSiteExtractor.Type] = [
-  PMVHavenExtractor.self, // Optimized native extractor for pmvhaven.com
+  NativeVideoPageExtractor.self,
   VidaraExtractor.self, // Native extractor for vidara.so
   LuluStreamExtractor.self, // Native extractor for luluvid/luluvdo/lulustream
-  AllPornStreamExtractor.self, // Native extractor for allpornstream.com Next.js RSC payload
+  ProviderLinkExtractor.self,
   StreamTapeExtractor.self, // Native extractor for streamtape.com / streamtape.net
   MixDropExtractor.self, // Native extractor for mixdrop.co / mixdrop.sx / mixdrop.pw
   DoodStreamExtractor.self, // Native extractor for doodstream.com / dood.wf
@@ -28,11 +28,11 @@ struct ScraperEngine {
  }
 
  static func extract(from urlString: String) async throws -> VideoSource {
-  guard let url = URL(string: urlString) else { throw PMVDLError.invalidURL }
+  guard let url = URL(string: urlString) else { throw VideoExtractorError.invalidURL }
   if let extractor = findExtractor(for: url) {
    return try await extractor.extract(fromHTML: "", url: url)
   }
-  throw PMVDLError.noVideoSources
+  throw VideoExtractorError.noVideoSources
  }
 
  static var isYTDLPAvailable: Bool {

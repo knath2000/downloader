@@ -1,7 +1,7 @@
 import Foundation
 
-/// Extracts video sources from pmvhaven.com pages.
-struct PMVHavenExtractor: VideoSiteExtractor {
+/// Extracts video sources from supported native pages.
+struct NativeVideoPageExtractor: VideoSiteExtractor {
     private static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 
     static func supports(_ url: URL) -> Bool {
@@ -14,8 +14,8 @@ struct PMVHavenExtractor: VideoSiteExtractor {
 
         let (data, _) = try await URLSession.shared.data(for: request)
         guard let html = String(data: data, encoding: .utf8) else {
-            throw PMVDLError.network(
-                NSError(domain: "PMVDL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to decode page"])
+            throw VideoExtractorError.network(
+                NSError(domain: "VidDL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to decode page"])
             )
         }
 
@@ -56,9 +56,9 @@ struct PMVHavenExtractor: VideoSiteExtractor {
         }
 
         guard mp4Url != nil || !hls.isEmpty else {
-            throw PMVDLError.noVideoSources
+            throw VideoExtractorError.noVideoSources
         }
 
-        return VideoSource(mp4: mp4Url, hls: hls, siteName: "PMVHaven")
+        return VideoSource(mp4: mp4Url, hls: hls, siteName: "NativeVideoPage")
     }
 }

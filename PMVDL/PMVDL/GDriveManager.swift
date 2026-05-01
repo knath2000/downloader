@@ -37,7 +37,7 @@ struct GDriveManager {
         return nil
     }
 
-    static func uploadLocalFile(_ localFile: URL, remoteName: String = "gdrive", remotePath: String = "PMVDL/", onProgress: @escaping (ProgressEvent) -> Void) async throws {
+    static func uploadLocalFile(_ localFile: URL, remoteName: String = "gdrive", remotePath: String = "VidDL/", onProgress: @escaping (ProgressEvent) -> Void) async throws {
         guard let rclone = findRclone() else { throw GDriveError.notInstalled }
         guard isConfigured(remoteName: remoteName) else { throw GDriveError.notConfigured }
 
@@ -105,13 +105,13 @@ struct GDriveManager {
         onProgress(.completed(msg: "Uploaded to Google Drive: \(remoteDest)"))
     }
 
-    static func upload(url: String, remoteName: String = "gdrive", remotePath: String = "PMVDL/", headers: [String: String]? = nil, onProgress: @escaping (String) -> Void) async throws {
+    static func upload(url: String, remoteName: String = "gdrive", remotePath: String = "VidDL/", headers: [String: String]? = nil, onProgress: @escaping (String) -> Void) async throws {
         guard let rclone = findRclone() else { throw GDriveError.notInstalled }
         guard isConfigured(remoteName: remoteName) else { throw GDriveError.notConfigured }
 
         let ext = URL(string: url)?.pathExtension ?? "mp4"
         let shortUUID = UUID().uuidString.prefix(8).lowercased()
-        let uniqueName = "pmvdl_\(shortUUID).\(ext)"
+        let uniqueName = "viddl_\(shortUUID).\(ext)"
         let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent(uniqueName)
 
         // Download first using URLSession delegate

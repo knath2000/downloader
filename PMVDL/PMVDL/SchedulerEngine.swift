@@ -100,7 +100,7 @@ class SchedulerEngine: ObservableObject {
     private func executeWatchMode(url: String, task: ScheduledTask) async {
         // Scrape the watched URL, compare against library for new content
         do {
-            let source = try await PMVScraper.extract(from: url)
+            let source = try await VideoScraper.extract(from: url)
             if let mp4 = source.mp4 {
                 let isKnown = VideoLibrary.shared.items.contains { $0.mp4Url == mp4 }
                 if !isKnown {

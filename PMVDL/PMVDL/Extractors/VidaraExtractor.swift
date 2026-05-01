@@ -19,7 +19,7 @@ struct VidaraExtractor: VideoSiteExtractor {
         // Build VideoSource from API response
         let streamingUrl = videoInfo.streamingUrl
         guard let hlsUrl = streamingUrl, !hlsUrl.isEmpty else {
-            throw PMVDLError.noVideoSources
+            throw VideoExtractorError.noVideoSources
         }
 
         // Try to parse master playlist for variant labels
@@ -43,7 +43,7 @@ struct VidaraExtractor: VideoSiteExtractor {
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: path, range: NSRange(path.startIndex..., in: path)),
               let range = Range(match.range(at: 1), in: path) else {
-            throw PMVDLError.invalidURL
+            throw VideoExtractorError.invalidURL
         }
         return String(path[range])
     }
@@ -110,8 +110,8 @@ struct VidaraExtractor: VideoSiteExtractor {
 
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
-            throw PMVDLError.network(
-                NSError(domain: "PMVDL", code: -1, userInfo: [NSLocalizedDescriptionKey: "API request failed"])
+            throw VideoExtractorError.network(
+                NSError(domain: "VidDL", code: -1, userInfo: [NSLocalizedDescriptionKey: "API request failed"])
             )
         }
 

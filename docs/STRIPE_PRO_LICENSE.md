@@ -1,11 +1,11 @@
 # Stripe Pro License
 
-VidDL/PMVDL Pro licensing is backed by Stripe Checkout and a Cloudflare Worker.
+VidDL Pro licensing is backed by Stripe Checkout and a Cloudflare Worker.
 
 ## Current Production Setup
 
 - Worker URL: `https://pmvdl-license.knath2000.workers.dev`
-- Stripe product: `prod_UQHUCYQlL9krzf` (`PMVDL Pro`)
+- Stripe product: `prod_UQHUCYQlL9krzf` (`VidDL Pro`)
 - Active testing price: `price_1TRRmdBlEcaRurIYAXvQkYAL` (`$0.99 USD`, one-time)
 - Previous launch price: `price_1TRQveBlEcaRurIYvgK2Sd5P` (`$5.00 USD`, one-time)
 - KV namespace binding: `LICENSES`

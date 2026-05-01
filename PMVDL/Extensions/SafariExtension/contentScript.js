@@ -1,11 +1,11 @@
-// contentScript.js — injected on pmvhaven.com pages
-// Adds a small "Send to PMVDL" button overlay on the page
+// contentScript.js — injected on supported pages
+// Adds a small "Send to VidDL" button overlay on the page
 
 (function () {
     if (!window.location.hostname.includes("pmvhaven.com")) return;
 
     const btn = document.createElement("button");
-    btn.textContent = "📥 Send to PMVDL";
+    btn.textContent = "📥 Send to VidDL";
     btn.style.cssText = [
         "position: fixed; bottom: 16px; right: 16px; z-index: 9999;",
         "background: #007AFF; color: white; border: none; border-radius: 8px;",

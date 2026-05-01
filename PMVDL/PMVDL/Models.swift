@@ -32,9 +32,32 @@ struct VideoSource: Equatable {
     init(mp4: String?, hls: [Quality], title: String? = nil, thumbnail: String? = nil, duration: TimeInterval? = nil, uploader: String? = nil, siteName: String? = nil, isAudio: Bool = false) {
         self.mp4 = mp4; self.hls = hls; self.title = title; self.thumbnail = thumbnail; self.duration = duration; self.uploader = uploader; self.siteName = siteName; self.isAudio = isAudio
     }
+
+    var displaySiteName: String {
+        SiteDisplayLabels.displayName(for: siteName)
+    }
 }
 
-enum PMVDLError: LocalizedError {
+enum SiteDisplayLabels {
+    private static let actualToDisplay = [
+        "NativeVideoPage": "Video Site",
+        "ProviderLink": "Video Site",
+        "LuluStream": "Stream Host",
+        "StreamTape": "Stream Host",
+        "MixDrop": "Stream Host",
+        "DoodStream": "Stream Host",
+        "Playmogo": "Stream Host",
+        "Vidara": "Hosted Video",
+        "HLS Stream": "Direct Stream"
+    ]
+
+    static func displayName(for siteName: String?) -> String {
+        guard let siteName, !siteName.isEmpty else { return "Video Site" }
+        return actualToDisplay[siteName] ?? "Generic Extractor"
+    }
+}
+
+enum VideoExtractorError: LocalizedError {
     case invalidURL
     case noVideoSources
     case noAudioSources
@@ -92,7 +115,7 @@ struct LibraryItem: Identifiable, Codable, Hashable {
     let hlsUrls: [VideoSource.Quality]
     let extractedAt: Date
     var thumbnailURL: String?
-    var remotePaths: [String: String] // "mega": "/Cloud/...", "gdrive": "gdrive:PMVDL/..."
+    var remotePaths: [String: String] // "mega": "/Cloud/...", "gdrive": "gdrive:VidDL/..."
 
     init(id: UUID = UUID(), url: String, title: String, mp4Url: String?, hlsUrls: [VideoSource.Quality], thumbnailURL: String? = nil) {
         self.id = id
