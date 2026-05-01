@@ -8,6 +8,7 @@ PMVDL/build/
 PMVDL/DerivedData/
 PMVDL/PMVDL.xcodeproj/project.xcworkspace/
 PMVDL/PMVDL.xcodeproj/xcuserdata/
+*.pbxproj.backup
 *.pbxuser
 *.mode1v3
 *.mode2v3
@@ -29,10 +30,12 @@ node_modules/
 *.swo
 
 # Misc
+*.dmg
 *.log
 *.tmp
 *.temp
 .dev.vars
+bfg.jar
 mixdrop.html
 iframe.html
 mega_to_gdrive_colab.ipynb
@@ -46,3 +49,6 @@ pmvdl.py.backup
 
 # Local .kilo
 .kilo/
+
+# Local Claude worktrees
+.claude/
