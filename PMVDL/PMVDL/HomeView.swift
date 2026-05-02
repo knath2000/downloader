@@ -32,115 +32,248 @@ struct HomeView: View {
         results.compactMap { $0.source?.mp4 }.filter { tracker.localDownloads[$0] == nil }
     }
 
+    @FocusState private var urlFieldFocused: Bool
+    @State private var activeTab: Int = 0
+
+    // Category rail items — quick-paste shortcuts for common platforms
+    private let categoryItems: [CategoryIconRail.Item] = [
+        .init(id: "youtube",     icon: "play.rectangle.fill",       label: "YouTube",    color: Theme.taoRed),
+        .init(id: "tiktok",      icon: "music.note",                label: "TikTok",     color: Theme.hotPink),
+        .init(id: "twitter",     icon: "bird.fill",                 label: "Twitter/X",  color: Theme.skyBlue),
+        .init(id: "vimeo",       icon: "film.fill",                 label: "Vimeo",      color: Theme.skyBlue),
+        .init(id: "twitch",      icon: "gamecontroller.fill",       label: "Twitch",     color: Theme.lavender),
+        .init(id: "reddit",      icon: "bubble.left.and.bubble.right.fill", label: "Reddit", color: Theme.coral),
+        .init(id: "mega",        icon: "cloud.fill",                label: "Mega",       color: Theme.hotPink),
+        .init(id: "other",       icon: "link",                      label: "Any URL",    color: Theme.amber),
+    ]
+
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Image(systemName: "photo.on.rectangle.angled").foregroundStyle(Theme.accent)
-                Text("Video Downloader").font(.subheadline).bold().foregroundStyle(Theme.textPrimary)
-                if ScraperEngine.isYTDLPAvailable {
-                    Text("Powered by yt-dlp")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.accent.opacity(0.8))
-                        .padding(.horizontal, 6).padding(.vertical, 2)
-                        .background(Theme.accentDim, in: Capsule())
-                } else {
-                    Text("Install yt-dlp for full features").font(.caption2).foregroundStyle(Theme.warning)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal)
-            .padding(.top, 6)
+        ScrollView {
+            VStack(spacing: 0) {
 
-            // URL input label
-            Text("URLs (one per line)").font(.caption).foregroundStyle(Theme.textSecondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal)
-                .padding(.top, 4)
-                .padding(.bottom, 2)
-
-            // TextEditor
-            TextEditor(text: $urlText)
-                .frame(height: 60)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(Theme.textPrimary)
-                .scrollContentBackground(.hidden)
-                .background(Theme.surface1)
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.border, lineWidth: 0.5))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .padding(.horizontal)
-
-            // Action buttons row
-            HStack(spacing: 8) {
-                Button("Extract All", action: extractAll)
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .disabled(isLoading || urlLines.isEmpty)
-                Button("Paste", systemImage: "clipboard", action: pasteFromClipboard)
-                    .buttonStyle(.bordered)
-                Button("Clear", systemImage: "xmark", action: { urlText = "" })
-                    .buttonStyle(.bordered)
-            }
-            .padding(.horizontal)
-            .padding(.top, 6)
-
-            // Loading indicator
-            if isLoading {
-                VStack(spacing: 4) {
-                    ProgressView().frame(width: 80)
-                    if !loadProgress.isEmpty {
-                        Text(loadProgress)
-                            .font(.caption)
-                            .foregroundStyle(Theme.textSecondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal)
+                // ── HEADER ───────────────────────────────────────────────
+                HStack(alignment: .center, spacing: 10) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Theme.coral.opacity(0.2))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Theme.coral)
                     }
-                }.padding(.vertical, 6)
-            }
+                    .bounceOnAppear(delay: 0)
 
-            // Results list
-            if !results.isEmpty {
-                Divider().padding(.vertical, 2)
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(Array(results.enumerated()), id: \.offset) { _, result in
-                            VideoResultRow(
-                                result: result,
-                                localState: tracker.localDownloads[result.source?.mp4 ?? ""],
-                                megaState: tracker.megaUploads[result.source?.mp4 ?? ""],
-                                gdriveState: tracker.gdriveUploads[result.source?.mp4 ?? ""],
-                                onLocal: { url in Task { await startDownload(url: url, cloud: .local) } },
-                                onMega: { url in Task { await startDownload(url: url, cloud: .mega) } },
-                                onGDrive: { url in Task { await startDownload(url: url, cloud: .gdrive) } }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Video Downloader")
+                            .font(Theme.marketplaceTitle)
+                            .foregroundStyle(
+                                LinearGradient(colors: [Theme.gold, Theme.coral],
+                                               startPoint: .leading, endPoint: .trailing)
                             )
-                            Divider().padding(.leading, 20)
+                        HStack(spacing: 6) {
+                            if ScraperEngine.isYTDLPAvailable {
+                                PulsingDot(color: Theme.electricLime, size: 6)
+                                CartoonBadge(label: "yt-dlp ready", color: Theme.electricLime.opacity(0.9))
+                                    .bounceOnAppear(delay: 0.1)
+                            } else {
+                                CartoonBadge(label: "Install yt-dlp", color: Theme.taoRed, animated: true)
+                            }
                         }
                     }
-                }.frame(maxHeight: 220)
 
-                // Batch download button for local
-                if !batchTargetLinks.isEmpty {
-                    Divider().padding(.vertical, 2)
-                    if tracker.isBatchDownloading {
-                        Text(loadProgress)
-                            .font(.caption)
-                            .foregroundStyle(Theme.textSecondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal)
+                    Spacer()
+
+                    if ProFeatureGate.isPro {
+                        CartoonBadge(label: "PRO", color: Theme.gold)
+                            .bounceOnAppear(delay: 0.15)
                     }
-                    Button("Download All to Local (\(batchTargetLinks.count))",
-                           action: batchDownloadAll)
-                        .buttonStyle(.borderedProminent)
-                        .disabled(tracker.isBatchDownloading)
+                }
+                .padding(.horizontal)
+                .padding(.top, 12)
+                .padding(.bottom, 10)
+                .scrollEntrance(delay: 0)
+
+                // ── CATEGORY ICON RAIL ───────────────────────────────────
+                CategoryIconRail(items: categoryItems) { item in
+                    let placeholder = "https://\(item.id).com/"
+                    if !urlText.isEmpty { urlText += "\n" + placeholder }
+                    else { urlText = placeholder }
+                }
+                .scrollEntrance(delay: 0.05)
+
+                Divider()
+                    .background(Theme.border)
+                    .padding(.vertical, 8)
+
+                // ── URL INPUT SECTION ────────────────────────────────────
+                TaobaoSectionHeader(title: "Paste URLs", accentColor: Theme.coral)
+                    .scrollEntrance(delay: 0.08)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    TextEditor(text: $urlText)
+                        .frame(height: 64)
+                        .font(.system(size: 11, design: .monospaced).weight(.medium))
+                        .foregroundStyle(Theme.textPrimary)
+                        .scrollContentBackground(.hidden)
+                        .background(.clear)
+                        .focused($urlFieldFocused)
+                        .padding(10)
+                        .glassCard(tint: Theme.coral.opacity(urlFieldFocused ? 0.45 : 0.15),
+                                   cornerRadius: 12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Theme.coral.opacity(urlFieldFocused ? 0.65 : 0),
+                                        lineWidth: 1.5)
+                        )
+                        .animation(.easeInOut(duration: 0.2), value: urlFieldFocused)
                         .padding(.horizontal)
-                        .padding(.bottom, 4)
+
+                    // Action row
+                    HStack(spacing: 8) {
+                        MarketplaceButton(title: "Extract All", icon: "bolt.fill",
+                                         prominent: true, action: extractAll)
+                            .keyboardShortcut(.return, modifiers: .command)
+                            .disabled(isLoading || urlLines.isEmpty)
+                            .opacity(isLoading || urlLines.isEmpty ? 0.5 : 1)
+                            .pressEffect()
+
+                        Button(action: pasteFromClipboard) {
+                            Label("Paste", systemImage: "clipboard")
+                        }
+                        .buttonStyle(.bordered)
+                        .pressEffect(scale: 0.93)
+
+                        Button(action: { urlText = "" }) {
+                            Label("Clear", systemImage: "xmark")
+                        }
+                        .buttonStyle(.bordered)
+                        .pressEffect(scale: 0.93)
+                    }
+                    .padding(.horizontal)
+                }
+                .scrollEntrance(delay: 0.1)
+
+                // ── LOADING STATE ─────────────────────────────────────────
+                if isLoading {
+                    VStack(spacing: 8) {
+                        GradientProgressBar(progress: 0.6)
+                            .padding(.horizontal)
+
+                        HStack(spacing: 8) {
+                            PulsingDot(color: Theme.coral, size: 7)
+                            Text(loadProgress.isEmpty ? "Extracting…" : loadProgress)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(Theme.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal)
+
+                        // Shimmer skeleton placeholders
+                        VStack(spacing: 8) {
+                            ForEach(0..<3, id: \.self) { i in
+                                ShimmerCard(height: 68)
+                                    .padding(.horizontal)
+                                    .scrollEntrance(delay: Double(i) * 0.07)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    .transition(.opacity)
+                }
+
+                // ── RESULTS ───────────────────────────────────────────────
+                if !results.isEmpty {
+                    VStack(spacing: 0) {
+                        // Section header with flip counter
+                        HStack {
+                            TaobaoSectionHeader(
+                                title: "Results",
+                                accentColor: Theme.coral
+                            )
+                            Spacer()
+                            HStack(spacing: 4) {
+                                FlipCounter(count: results.count, label: "found",
+                                            color: Theme.coral)
+                            }
+                            .padding(.trailing)
+                        }
+                        .scrollEntrance(delay: 0)
+
+                        LazyVStack(spacing: 10) {
+                            ForEach(Array(results.enumerated()), id: \.offset) { idx, result in
+                                glassResultCard(for: result)
+                                    .scrollEntrance(delay: Double(idx) * 0.06)
+                                    .pressEffect(scale: 0.98)
+                            }
+                        }
+                        .padding(.horizontal)
+                        .padding(.bottom, 8)
+                    }
+
+                    // ── BATCH DOWNLOAD ────────────────────────────────────
+                    if !batchTargetLinks.isEmpty {
+                        VStack(spacing: 6) {
+                            Divider().padding(.horizontal)
+
+                            if tracker.isBatchDownloading {
+                                HStack(spacing: 8) {
+                                    PulsingDot(color: Theme.electricLime)
+                                    Text(loadProgress)
+                                        .font(.caption)
+                                        .foregroundStyle(Theme.textSecondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal)
+                            }
+
+                            HStack(spacing: 8) {
+                                FlipCounter(count: batchTargetLinks.count, label: "queued",
+                                            color: Theme.electricLime)
+                                    .padding(.leading)
+                                Spacer()
+                            }
+
+                            MarketplaceButton(
+                                title: "Download All to Local",
+                                icon: "arrow.down.circle.fill",
+                                action: batchDownloadAll
+                            )
+                            .disabled(tracker.isBatchDownloading)
+                            .opacity(tracker.isBatchDownloading ? 0.5 : 1)
+                            .pressEffect()
+                            .padding(.horizontal)
+                            .padding(.bottom, 8)
+                        }
+                        .scrollEntrance(delay: 0.1)
+                    }
+
+                } else if !isLoading {
+                    // ── EMPTY STATE ───────────────────────────────────────
+                    VStack(spacing: 14) {
+                        Text("🎬")
+                            .font(.system(size: 52))
+                            .bounceOnAppear(delay: 0.1)
+
+                        Text("Drop a URL and smash Extract")
+                            .font(Theme.sectionHeader)
+                            .foregroundStyle(Theme.textSecondary)
+                            .multilineTextAlignment(.center)
+
+                        HStack(spacing: 8) {
+                            CartoonBadge(label: "Cmd+Return", color: Theme.skyBlue)
+                                .bounceOnAppear(delay: 0.2)
+                            CartoonBadge(label: "1700+ sites", color: Theme.electricLime)
+                                .bounceOnAppear(delay: 0.3)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 32)
+                    .padding(.bottom, 20)
+                    .scrollEntrance(delay: 0.15)
                 }
             }
-
-            Spacer()
         }
         .onAppear {
-            // Check for pending URL from previous session
             if let pending = appState.pendingExtractURL {
                 urlText = pending
                 appState.pendingExtractURL = nil
@@ -154,6 +287,50 @@ struct HomeView: View {
                 urlText = url
                 appState.pendingExtractURL = nil
             }
+        }
+    }
+
+    // ===== GLASS RESULT CARD =====
+    @ViewBuilder
+    private func glassResultCard(for result: ExtractResult) -> some View {
+        let accentColor = siteAccentColor(for: result.url)
+        let mp4Key = result.source?.mp4 ?? ""
+        let hlsKey = result.source?.hls.first?.url ?? ""
+        let key = mp4Key.isEmpty ? hlsKey : mp4Key
+
+        HStack(spacing: 0) {
+            ColoredAccentStrip(color: accentColor)
+
+            VideoResultRow(
+                result: result,
+                localState: tracker.localDownloads[key],
+                megaState: tracker.megaUploads[key],
+                gdriveState: tracker.gdriveUploads[key],
+                onLocal: { url in Task { await startDownload(url: url, cloud: .local) } },
+                onMega: { url in Task { await startDownload(url: url, cloud: .mega) } },
+                onGDrive: { url in Task { await startDownload(url: url, cloud: .gdrive) } }
+            )
+        }
+        .glassCard(tint: accentColor.opacity(0.3), cornerRadius: 14)
+        .overlay(alignment: .topTrailing) {
+            badgeForResult(result, key: key)
+                .offset(x: 8, y: -8)
+                .zIndex(1)
+        }
+    }
+
+    @ViewBuilder
+    private func badgeForResult(_ result: ExtractResult, key: String) -> some View {
+        if let state = tracker.localDownloads[key] {
+            switch state {
+            case .uploading: CartoonBadge(label: "Downloading", color: Theme.coral, animated: true)
+            case .done:      CartoonBadge(label: "Done", color: Theme.success)
+            case .failed:    CartoonBadge(label: "Failed", color: Theme.taoRed)
+            }
+        } else if result.error != nil {
+            CartoonBadge(label: "Error", color: Theme.taoRed)
+        } else if result.source != nil {
+            CartoonBadge(label: "Ready", color: Theme.electricLime)
         }
     }
 
@@ -685,9 +862,8 @@ struct VideoResultRow: View {
 
             statusSummary
         }
-        .padding(.horizontal)
+        .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .cardStyle()
     }
 
     private func copyToClipboard(_ text: String) {

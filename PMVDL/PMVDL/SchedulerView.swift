@@ -86,7 +86,7 @@ struct TaskCard: View {
             }
         }
         .padding(8)
-        .cardStyle()
+        .glassCard(tint: Theme.lavender.opacity(0.25), cornerRadius: 12)
     }
 }
 

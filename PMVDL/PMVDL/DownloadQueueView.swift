@@ -49,7 +49,7 @@ struct DownloadQueueViewNew: View {
                                 onResume: { queue.resume(item) },
                                 onMoveUp: { queue.moveUp(item) },
                                 onMoveDown: { queue.moveDown(item) })
-                            .cardStyle()
+                            .glassCard(tint: Theme.electricLime.opacity(0.2), cornerRadius: 12)
                         }
                     }
                     .padding(.horizontal)
