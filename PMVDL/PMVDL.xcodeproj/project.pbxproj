@@ -57,6 +57,7 @@
 	A10060 /* WebViewExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20060 /* WebViewExtractor.swift */; };
 	A10061 /* LicenseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20061 /* LicenseManager.swift */; };
 	A10062 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20062; };
+		A10063 /* GlassComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20063; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -121,6 +122,7 @@
 	A20060 /* WebViewExtractor.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WebViewExtractor.swift; sourceTree = "<group>"; };
 	A20061 /* LicenseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseManager.swift; sourceTree = "<group>"; };
 	A20062 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		A20063 /* GlassComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassComponents.swift; sourceTree = "<group>"; };
 	A30001 /* VidDL.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VidDL.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -174,6 +176,7 @@
 			A20023 /* UpdateManager.swift */,
 			A20061 /* LicenseManager.swift */,
 			A20062 /* Theme.swift */,
+				A20063 /* GlassComponents.swift */,
 			A20025 /* ProFeatureGate.swift */,
 			A20026 /* UpgradeOverlay.swift */,
 			A20022 /* AboutWindow.swift */,
@@ -386,6 +389,7 @@
 			A10060 /* WebViewExtractor.swift in Sources */,
 			A10061 /* LicenseManager.swift in Sources */,
 			A10062 /* Theme.swift in Sources */,
+				A10063 /* GlassComponents.swift in Sources */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};

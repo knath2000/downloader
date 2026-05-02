@@ -9,7 +9,7 @@ struct VidDLApp: App {
         WindowGroup {
             ContentView()
                 .frame(minWidth: 900, minHeight: 650)
-                .tint(Theme.accent)
+                .tint(Theme.coral)
                 .preferredColorScheme(.dark)
         }
         .windowStyle(.automatic)

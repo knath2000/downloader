@@ -10,33 +10,58 @@ struct ContentView: View {
     @AppStorage("gdriveRemoteName") var gdriveRemoteName = "gdrive"
     @AppStorage("gdriveRemotePath") var gdriveRemotePath = "VidDL/"
     @State private var showUpgradeOverlay = false
+    @Namespace private var sidebarGlass
 
     var body: some View {
         ZStack {
-            NavigationSplitView {
-                // SIDEBAR — system .sidebar vibrancy is provided automatically by NavigationSplitView
-                List(NavDestination.allCases, id: \.self, selection: $appState.selectedDestination) { dest in
-                    HStack {
-                        Label(dest.rawValue, systemImage: dest.icon)
-                            .tag(dest)
-                        if [.downloads, .transfers].contains(dest), let count = navBadge(for: dest) {
-                            Text("\(count)").font(.system(size: 9)).bold()
-                                .foregroundStyle(Theme.accent)
-                                .frame(width: 18, height: 18)
-                                .background(Theme.accentDim, in: .capsule)
-                        }
+            // Animated mesh gradient background
+            MeshGradientBackground()
+                .zIndex(-1)
+
+            navigationBody
+                .zIndex(0)
+
+            if showUpgradeOverlay {
+                UpgradeOverlay { showUpgradeOverlay = false }
+                    .zIndex(1)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var navigationBody: some View {
+        if #available(macOS 26, *) {
+            splitView
+                .backgroundExtensionEffect()
+        } else {
+            splitView
+        }
+    }
+
+    private var splitView: some View {
+        NavigationSplitView {
+            // SIDEBAR — marketplace-style with colored icon bubbles
+            VStack(spacing: 2) {
+                ForEach(Array(NavDestination.allCases.enumerated()), id: \.element) { idx, dest in
+                    SidebarNavItem(
+                        dest: dest,
+                        isSelected: appState.selectedDestination == dest,
+                        badge: navBadge(for: dest),
+                        namespace: sidebarGlass
+                    ) {
+                        appState.select(dest)
                     }
+                    .scrollEntrance(delay: Double(idx) * 0.04)
                 }
-                .navigationSplitViewColumnWidth(min: 150, ideal: 170)
+                Spacer()
                 if !ProFeatureGate.isPro {
-                    Button(" Upgrade to Pro", systemImage: "crown.fill") {
-                        appState.select(.settings)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(Theme.accent)
-                    .padding(.horizontal, 8)
+                    upgradeButton
                 }
-            } detail: {
+            }
+            .padding(.horizontal, 6)
+            .padding(.top, 8)
+            .navigationSplitViewColumnWidth(min: 160, ideal: 180)
+        } detail: {
                 switch appState.selectedDestination {
                 case .home:
                     HomeView(appState: appState,
@@ -94,13 +119,7 @@ struct ContentView: View {
             .onAppear {
                 NotificationManager.shared.requestAuthorization()
             }
-
-            // Upgrade overlay
-            if showUpgradeOverlay {
-                UpgradeOverlay { showUpgradeOverlay = false }
-            }
         }
-    }
 
     private func navBadge(for dest: NavDestination) -> Int? {
         switch dest {
@@ -112,6 +131,95 @@ struct ContentView: View {
             return c == 0 ? nil : c
         default:
             return nil
+        }
+    }
+
+    private var upgradeButton: some View {
+        Button {
+            appState.select(.settings)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "crown.fill")
+                    .foregroundStyle(Theme.gold)
+                Text("Upgrade to Pro")
+                    .font(.caption.bold())
+                    .foregroundStyle(
+                        LinearGradient(colors: [Theme.gold, Theme.amber], startPoint: .leading, endPoint: .trailing)
+                    )
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
+        .glassCard(tint: Theme.gold, cornerRadius: 10)
+        .padding(.bottom, 8)
+    }
+}
+
+// MARK: - SidebarNavItem
+
+private struct SidebarNavItem: View {
+    let dest: NavDestination
+    let isSelected: Bool
+    let badge: Int?
+    let namespace: Namespace.ID
+    let action: () -> Void
+
+    private var destColor: Color { Theme.destinationColor(dest) }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                // Colored icon bubble
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(destColor.opacity(isSelected ? 0.35 : 0.18))
+                        .frame(width: 30, height: 30)
+                    Image(systemName: dest.icon)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(destColor)
+                }
+
+                Text(dest.rawValue)
+                    .font(.system(.body, design: .default).weight(isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
+
+                Spacer()
+
+                if let badge {
+                    Text("\(badge)")
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(destColor, in: Capsule())
+                        .contentTransition(.numericText())
+                        .animation(.spring(response: 0.3), value: badge)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(selectionBackground)
+        }
+        .buttonStyle(.plain)
+        .pressEffect(scale: 0.96)
+    }
+
+    @ViewBuilder
+    private var selectionBackground: some View {
+        if isSelected {
+            if #available(macOS 26, *) {
+                Capsule()
+                    .fill(.clear)
+                    .glassEffect(.regular.tint(destColor), in: Capsule())
+                    .glassEffectID(dest.rawValue, in: namespace)
+            } else {
+                Capsule()
+                    .fill(destColor.opacity(0.18))
+            }
+        } else {
+            Color.clear
         }
     }
 }
@@ -262,8 +370,12 @@ struct HistoryView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Image(systemName: "clock.arrow.circlepath").foregroundStyle(Theme.accent)
-                Text("History").font(.headline).foregroundStyle(Theme.textPrimary)
+                Image(systemName: "clock.arrow.circlepath").foregroundStyle(Theme.gold)
+                Text("History")
+                    .font(Theme.sectionHeader)
+                    .foregroundStyle(
+                        LinearGradient(colors: [Theme.gold, Theme.amber], startPoint: .leading, endPoint: .trailing)
+                    )
                 Spacer()
                 TextField("Search...", text: $searchText)
                     .textFieldStyle(.roundedBorder)
@@ -312,7 +424,7 @@ struct HistoryView: View {
                             HistorySectionHeader(title: "Completed Uploads", count: filteredCompletedUploads.count)
                             ForEach(filteredCompletedUploads) { item in
                                 CompletedUploadRow(item: item)
-                                    .cardStyle()
+                                    .glassCard(tint: Theme.gold.opacity(0.4), cornerRadius: 12)
                                     .contextMenu {
                                         Button("Copy Remote Path") { ClipboardManager.copy(item.remotePath) }
                                         Button("Copy Source Link") { ClipboardManager.copy(item.url) }
@@ -331,7 +443,7 @@ struct HistoryView: View {
                             HistorySectionHeader(title: "Recent Links", count: filteredItems.count)
                             ForEach(filteredItems) { item in
                                 HistoryRow(item: item)
-                                    .cardStyle()
+                                    .glassCard(tint: Theme.skyBlue.opacity(0.25), cornerRadius: 12)
                                     .contextMenu {
                                         Button("Extract Again") { extractAgain(item) }
                                         Button("Copy Link") { ClipboardManager.copy(item.url) }
@@ -588,7 +700,7 @@ struct MegaView: View {
                                 state: uploadStates[file.url] ?? .idle
                             )
                             .disabled(isUploading)
-                            .cardStyle()
+                            .glassCard(tint: Theme.hotPink.opacity(0.25), cornerRadius: 12)
                         }
                     }
                     .padding(.horizontal)
@@ -882,7 +994,7 @@ struct TransfersView: View {
                                     onCancel: { cancelVidDLUpload(item) },
                                     onRemove: { queue.remove(item) }
                                 )
-                                    .cardStyle()
+                                    .glassCard(tint: Theme.coral.opacity(0.3), cornerRadius: 12)
                             }
                         }
 
@@ -892,7 +1004,7 @@ struct TransfersView: View {
                                 TransferRow(item: t, onCancel: {
                                     Task { await transferManager.cancelTransfer(tag: t.tag) }
                                 })
-                                .cardStyle()
+                                .glassCard(tint: Theme.hotPink.opacity(0.3), cornerRadius: 12)
                             }
                         }
                     }
