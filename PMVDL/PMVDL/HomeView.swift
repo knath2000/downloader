@@ -200,6 +200,7 @@ struct HomeView: View {
                 if let src = r.source {
                     let title = src.title ?? URL(string: r.url)?.pathComponents.last?.replacingOccurrences(of: "-", with: " ").capitalized ?? r.url
                     VideoLibrary.shared.addIfNew(LibraryItem(url: r.url, title: title, mp4Url: src.mp4, hlsUrls: src.hls))
+                    HistoryManager.shared.record(url: r.url, source: src)
                 }
             }
             NotificationManager.shared.notifyScrapeComplete(count: ordered.filter { $0.source != nil }.count)
@@ -215,42 +216,45 @@ struct HomeView: View {
             onUpgradeRequired()
             return
         }
+        let jobs = links.map { url in
+            (url: url, title: title(for: url), displayName: displayName(for: url), uploadFileName: uploadFileName(for: url))
+        }
         tracker.isBatchDownloading = true
         loadProgress = "Downloading 0/\(links.count)…"
 
         Task {
             let semaphore = DispatchSemaphore(value: 3)
 
-            await withTaskGroup(of: (String, Bool, String?).self) { group in
-                for url in links {
+            await withTaskGroup(of: (String, String, Bool, String?).self) { group in
+                for job in jobs {
                     group.addTask {
                         semaphore.wait(); defer { semaphore.signal() }
                         do {
-                            let result = try await MegaManager.upload(url: url, remotePath: megaRemotePath) { msg in
+                            let result = try await MegaManager.upload(url: job.url, remotePath: megaRemotePath, title: job.title) { event in
                                 Task { @MainActor in
-                                    tracker.localDownloads[url] = .uploading("\(self.fileName(of: url)) — \(msg)")
+                                    tracker.localDownloads[job.url] = .uploading("\(job.displayName) — \(event.message)")
                                 }
                             }
-                            Task { @MainActor in tracker.megaFilenames[url] = result.remotePath }
-                            return (url, true, nil)
+                            Task { @MainActor in tracker.megaFilenames[job.url] = result.remotePath }
+                            return (job.url, job.uploadFileName, true, nil)
                         } catch {
-                            return (url, false, error.localizedDescription)
+                            return (job.url, job.uploadFileName, false, error.localizedDescription)
                         }
                     }
                 }
 
                 var done = 0
-                for await (url, ok, err) in group {
+                for await (url, uploadFileName, ok, err) in group {
                     done += 1
                     if ok {
                         LicenseManager.shared.recordSuccessfulDownload()
                         tracker.localDownloads[url] = .done("Uploaded to \(megaRemotePath)")
                         if results.first(where: { $0.source?.mp4 == url })?.source != nil {
-                            NotificationManager.shared.notifyUploadComplete(filename: fileName(of: url), destination: megaRemotePath)
+                            NotificationManager.shared.notifyUploadComplete(filename: uploadFileName, destination: megaRemotePath)
                         }
                     } else {
                         tracker.localDownloads[url] = .failed(err ?? "Unknown")
-                        NotificationManager.shared.notifyUploadFailed(filename: fileName(of: url), reason: err ?? "Unknown")
+                        NotificationManager.shared.notifyUploadFailed(filename: uploadFileName, reason: err ?? "Unknown")
                     }
                     await MainActor.run { loadProgress = "Downloading… \(done)/\(links.count)" }
                 }
@@ -354,7 +358,7 @@ struct HomeView: View {
                             m3u8Url: finalUrl, title: title, headers: finalHlsHeaders,
                             sourcePageUrl: hlsSource?.sourcePageUrl,
                             onProgress: { event in
-                                updateQueue(id: queueId, status: event.phase == .completing ? .completed : .downloading, progress: event.percent)
+                                updateQueue(id: queueId, status: .downloading, progress: event.phase == .completing ? 99 : event.percent)
                                 Task { @MainActor in tracker.localDownloads[key] = .uploading(event.message) }
                             }
                         )
@@ -375,6 +379,11 @@ struct HomeView: View {
                         destFile = try await DownloadManager.shared.downloadDirectWithDelegate(
                             url: finalUrl, title: title, headers: finalHlsHeaders, delegate: delegate
                         )
+                    }
+                    if !isAudio {
+                        updateQueue(id: queueId, status: .downloading, progress: 99)
+                        Task { @MainActor in tracker.localDownloads[key] = .uploading("Verifying video…") }
+                        try await VideoProcessor.verifyForUpload(destFile)
                     }
                     // Update library with local path
                     let libraryItem = libraryItem(for: result)
@@ -413,25 +422,22 @@ struct HomeView: View {
                             m3u8Url: finalUrl, title: title, headers: finalHlsHeaders,
                             sourcePageUrl: hlsSource?.sourcePageUrl,
                             onProgress: { event in
-                                updateQueue(id: queueId, status: event.phase == .completing ? .completed : .downloading, progress: event.percent)
+                                updateQueue(id: queueId, status: .downloading, progress: event.phase == .completing ? 99 : event.percent)
                                 Task { @MainActor in tracker.megaUploads[key] = .uploading(event.message) }
                             })
-                        tracker.megaUploads[key] = .uploading("Uploading to Mega…")
-                        let uploadResult = try await MegaManager.uploadLocalFile(mp4File, remotePath: megaRemotePath) { event in
-                            updateQueue(id: queueId, status: event.phase == .completing ? .completed : .uploading, progress: event.percent)
+                        let uploadResult = try await MegaManager.uploadLocalFile(mp4File, remotePath: megaRemotePath, uploadID: queueId) { event in
+                            updateQueue(id: queueId, status: queueStatus(for: event), progress: event.percent)
                             Task { @MainActor in tracker.megaUploads[key] = .uploading(event.message) }
                         }
                         Task { @MainActor in
+                            let uploadedName = uploadResult.remotePath.split(separator: "/").last.map(String.init) ?? mp4File.lastPathComponent
                             try? FileManager.default.removeItem(at: mp4File)
-                            DownloadQueue.shared.updateProgress(id: queueId, status: .completed, progress: 100)
-                            if var idx = DownloadQueue.shared.queue.firstIndex(where: { $0.id == queueId }) {
-                                DownloadQueue.shared.queue[idx].finalPath = uploadResult.remotePath
-                                DownloadQueue.shared.save()
-                            }
+                            HistoryManager.shared.recordCompletedUpload(url: url, source: source, destination: "Mega", remotePath: uploadResult.remotePath)
+                            DownloadQueue.shared.remove(id: queueId)
                             LicenseManager.shared.recordSuccessfulDownload()
                             tracker.megaUploads[key] = .done("Uploaded to \(megaRemotePath)")
                             tracker.megaFilenames[key] = uploadResult.remotePath
-                            NotificationManager.shared.notifyUploadComplete(filename: mp4File.lastPathComponent, destination: megaRemotePath)
+                            NotificationManager.shared.notifyUploadComplete(filename: uploadedName, destination: megaRemotePath)
                         }
                     } catch {
                         Task { @MainActor in
@@ -442,30 +448,27 @@ struct HomeView: View {
                     }
                 }
             } else {
-                tracker.megaUploads[key] = .uploading("Downloading… 0%")
+                tracker.megaUploads[key] = .uploading("Downloading... 0%")
                 Task {
                     do {
                         updateQueue(id: queueId, status: .downloading, progress: 0)
-                        let uploadResult = try await MegaManager.upload(url: finalUrl, remotePath: megaRemotePath, headers: finalHlsHeaders) { event in
-                            updateQueue(id: queueId, status: event.phase == .completing ? .completed : event.phase == .uploading ? .uploading : .downloading, progress: event.percent)
+                        let uploadResult = try await MegaManager.upload(url: finalUrl, remotePath: megaRemotePath, title: title, headers: finalHlsHeaders, uploadID: queueId) { event in
+                            updateQueue(id: queueId, status: queueStatus(for: event), progress: event.percent)
                             Task { @MainActor in tracker.megaUploads[key] = .uploading(event.message) }
                         }
                         Task { @MainActor in
-                            DownloadQueue.shared.updateProgress(id: queueId, status: .completed, progress: 100)
-                            if var idx = DownloadQueue.shared.queue.firstIndex(where: { $0.id == queueId }) {
-                                DownloadQueue.shared.queue[idx].finalPath = uploadResult.remotePath
-                                DownloadQueue.shared.save()
-                            }
+                            HistoryManager.shared.recordCompletedUpload(url: url, source: source, destination: "Mega", remotePath: uploadResult.remotePath)
+                            DownloadQueue.shared.remove(id: queueId)
                             LicenseManager.shared.recordSuccessfulDownload()
                             tracker.megaUploads[key] = .done("Uploaded to \(megaRemotePath)")
                             tracker.megaFilenames[key] = uploadResult.remotePath
-                            NotificationManager.shared.notifyUploadComplete(filename: fileName(of: url), destination: megaRemotePath)
+                            NotificationManager.shared.notifyUploadComplete(filename: uploadFileName(for: url), destination: megaRemotePath)
                         }
                     } catch {
                         Task { @MainActor in
                             DownloadQueue.shared.updateProgress(id: queueId, status: .failed(error.localizedDescription), progress: 0)
                             tracker.megaUploads[key] = .failed(error.localizedDescription)
-                            NotificationManager.shared.notifyUploadFailed(filename: fileName(of: url), reason: error.localizedDescription)
+                            NotificationManager.shared.notifyUploadFailed(filename: uploadFileName(for: url), reason: error.localizedDescription)
                         }
                     }
                 }
@@ -522,7 +525,7 @@ struct HomeView: View {
                 Task {
                     do {
                         DownloadQueue.shared.updateProgress(id: queueId, status: .downloading, progress: 0)
-                        try await GDriveManager.upload(url: finalUrl, remoteName: gdriveRemoteName, remotePath: gdriveRemotePath, headers: finalHlsHeaders) { msg in
+                        let uploadedPath = try await GDriveManager.upload(url: finalUrl, remoteName: gdriveRemoteName, remotePath: gdriveRemotePath, title: title, headers: finalHlsHeaders) { msg in
                             Task { @MainActor in tracker.gdriveUploads[key] = .uploading(msg) }
                         }
                         if let megaPath = megaRemote {
@@ -531,20 +534,20 @@ struct HomeView: View {
                         }
                         Task { @MainActor in
                             DownloadQueue.shared.updateProgress(id: queueId, status: .completed, progress: 100)
-                            let destPath = "\(gdriveRemoteName):\(gdriveRemotePath)\(fileName(of: url))"
+                            let destPath = uploadedPath
                             if var idx = DownloadQueue.shared.queue.firstIndex(where: { $0.id == queueId }) {
                                 DownloadQueue.shared.queue[idx].finalPath = destPath
                                 DownloadQueue.shared.save()
                             }
                             LicenseManager.shared.recordSuccessfulDownload()
                             tracker.gdriveUploads[key] = .done("Uploaded to GDrive")
-                            NotificationManager.shared.notifyUploadComplete(filename: fileName(of: url), destination: gdriveRemotePath)
+                            NotificationManager.shared.notifyUploadComplete(filename: uploadFileName(for: url), destination: gdriveRemotePath)
                         }
                     } catch {
                         Task { @MainActor in
                             DownloadQueue.shared.updateProgress(id: queueId, status: .failed(error.localizedDescription), progress: 0)
                             tracker.gdriveUploads[key] = .failed(error.localizedDescription)
-                            NotificationManager.shared.notifyUploadFailed(filename: fileName(of: url), reason: error.localizedDescription)
+                            NotificationManager.shared.notifyUploadFailed(filename: uploadFileName(for: url), reason: error.localizedDescription)
                         }
                     }
                 }
@@ -567,6 +570,20 @@ struct HomeView: View {
 
     private func fileName(of url: String) -> String {
         (url.split(separator: "/").last.map { String($0) }) ?? url
+    }
+
+    private func title(for url: String) -> String? {
+        results.first {
+            $0.source?.mp4 == url || $0.source?.hls.contains(where: { $0.url == url }) == true
+        }?.source?.title
+    }
+
+    private func displayName(for url: String) -> String {
+        title(for: url) ?? fileName(of: url)
+    }
+
+    private func uploadFileName(for url: String) -> String {
+        VideoFileNaming.mp4FileName(title: title(for: url), fallback: fileName(of: url))
     }
 
     private func uniqueCandidates(_ candidates: [String?]) -> [String] {
@@ -601,6 +618,15 @@ struct HomeView: View {
     private func updateQueue(id: UUID, status: QueueStatus, progress: Double) {
         Task { @MainActor in
             DownloadQueue.shared.updateProgress(id: id, status: status, progress: progress)
+        }
+    }
+
+    private func queueStatus(for event: ProgressEvent) -> QueueStatus {
+        switch event.phase {
+        case .downloading: return .downloading
+        case .verifying: return .verifying
+        case .uploading: return .uploading
+        case .completing: return .completed
         }
     }
 

@@ -2,6 +2,27 @@ import Foundation
 import AppKit
 import CommonCrypto
 
+private final class DownloadOutputBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var output = ""
+
+    func append(_ value: String) {
+        lock.lock()
+        output.append(value)
+        if output.count > 20_000 {
+            output.removeFirst(output.count - 20_000)
+        }
+        lock.unlock()
+    }
+
+    func string() -> String {
+        lock.lock()
+        let snapshot = output
+        lock.unlock()
+        return snapshot
+    }
+}
+
 /// Unified local download pipeline: direct URLs, HLS streams, yt-dlp sites (YouTube), audio-only, subtitles.
 @MainActor
 class DownloadManager: ObservableObject {
@@ -116,9 +137,8 @@ class DownloadManager: ObservableObject {
             throw DownloadError.invalidURL(url)
         }
 
-        let filename = sanitizeFilename(title ?? validUrl.pathComponents.last ?? "video")
-        let ext = validUrl.pathExtension.isEmpty ? "mp4" : validUrl.pathExtension
-        let destFile = downloadDir.appendingPathComponent("\(filename).\(ext)")
+        let filename = VideoFileNaming.mp4FileName(title: title, fallback: validUrl.pathComponents.last ?? "video")
+        let destFile = downloadDir.appendingPathComponent(filename)
 
         let delegate = DownloadProgressDelegate(onProgress: onProgress, destURL: destFile)
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
@@ -139,9 +159,8 @@ class DownloadManager: ObservableObject {
             throw DownloadError.invalidURL(url)
         }
 
-        let filename = sanitizeFilename(title ?? validUrl.pathComponents.last ?? "video")
-        let ext = validUrl.pathExtension.isEmpty ? "mp4" : validUrl.pathExtension
-        let destFile = downloadDir.appendingPathComponent("\(filename).\(ext)")
+        let filename = VideoFileNaming.mp4FileName(title: title, fallback: validUrl.pathComponents.last ?? "video")
+        let destFile = downloadDir.appendingPathComponent(filename)
         delegate.destURL = destFile
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
         var request = URLRequest(url: validUrl)
@@ -186,8 +205,8 @@ class DownloadManager: ObservableObject {
         // Pre-fetch duration from the concrete media playlist (non-fatal if it fails)
         let totalDuration = try? await fetchHlsDuration(from: resolvedUrl, headers: headers)
 
-        let filename = sanitizeFilename(title ?? "hls_video")
-        let destFile = downloadDir.appendingPathComponent("\(filename).mp4")
+        let filename = VideoFileNaming.mp4FileName(title: title, fallback: "hls_video")
+        let destFile = downloadDir.appendingPathComponent(filename)
         try? FileManager.default.removeItem(at: destFile)
 
         // Build ffmpeg arguments with optional headers
@@ -201,12 +220,13 @@ class DownloadManager: ObservableObject {
         let process = Process()
         process.executableURL = ffmpeg
         process.arguments = args
-        process.standardOutput = Pipe()
+        process.standardOutput = FileHandle.nullDevice
         let errPipe = Pipe()
         process.standardError = errPipe
+        let errBuffer = DownloadOutputBuffer()
 
         onProgress(.downloading(msg: "Downloading HLS… starting…", pct: 0))
-        parseProgress(from: errPipe, totalDuration: totalDuration, onProgress: onProgress)
+        parseProgress(from: errPipe, totalDuration: totalDuration, stderrBuffer: errBuffer, onProgress: onProgress)
 
         try process.run()
         let start = Date()
@@ -217,10 +237,14 @@ class DownloadManager: ObservableObject {
             }
             try await Task.sleep(for: .seconds(1))
         }
+        errPipe.fileHandleForReading.readabilityHandler = nil
+        if let remaining = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8), !remaining.isEmpty {
+            errBuffer.append(remaining)
+        }
 
         guard process.terminationStatus == 0,
               FileManager.default.fileExists(atPath: destFile.path) else {
-            throw DownloadError.downloadFailed("ffmpeg exit \(process.terminationStatus)")
+            throw DownloadError.downloadFailed("ffmpeg exit \(process.terminationStatus): \(summarizeToolError(errBuffer.string()))")
         }
 
         onProgress(.completed(msg: "Download complete"))
@@ -278,7 +302,7 @@ class DownloadManager: ObservableObject {
             return try await downloadEncryptedHLS(
                 playlistText: playlistTextUnwrapped,
                 baseURL: baseURL,
-                destFile: downloadDir.appendingPathComponent(sanitizeFilename(title ?? "lulustream_video") + ".mp4"),
+                destFile: downloadDir.appendingPathComponent(VideoFileNaming.mp4FileName(title: title, fallback: "lulustream_video")),
                 headers: headers,
                 onProgress: onProgress
             )
@@ -287,7 +311,7 @@ class DownloadManager: ObservableObject {
             return try await downloadAndConcatHLS(
                 playlistText: playlistTextUnwrapped,
                 baseURL: baseURL,
-                destFile: downloadDir.appendingPathComponent(sanitizeFilename(title ?? "lulustream_video") + ".mp4"),
+                destFile: downloadDir.appendingPathComponent(VideoFileNaming.mp4FileName(title: title, fallback: "lulustream_video")),
                 headers: headers,
                 onProgress: onProgress
             )
@@ -720,12 +744,13 @@ class DownloadManager: ObservableObject {
 
     /// Parse ffmpeg stderr for progress. Reads capture groups (not the full match) to
     /// avoid trailing whitespace, and uses out_time_ms fallback when duration is unknown.
-    private func parseProgress(from pipe: Pipe, totalDuration: TimeInterval?, onProgress: @escaping (ProgressEvent) -> Void) {
+    private func parseProgress(from pipe: Pipe, totalDuration: TimeInterval?, stderrBuffer: DownloadOutputBuffer? = nil, onProgress: @escaping (ProgressEvent) -> Void) {
         pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             guard !data.isEmpty, let str = String(data: data, encoding: .utf8) else {
                 handle.readabilityHandler = nil; return
             }
+            stderrBuffer?.append(str)
             if let match = try? NSRegularExpression(
                 pattern: "time=(\\d+):(\\d+):(\\d+\\.\\d+)"
             ).firstMatch(in: str, range: NSRange(str.startIndex..., in: str)) {
@@ -754,6 +779,17 @@ class DownloadManager: ObservableObject {
                 onProgress(.downloading(msg: "Downloading HLS… \(timeStr) \(pct == 0 ? "0" : String(format: "%.1f", pct))%", pct: pct))
             }
         }
+    }
+
+    private func summarizeToolError(_ output: String) -> String {
+        let usefulLines = output
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .filter { !$0.hasPrefix("frame=") && !$0.hasPrefix("size=") }
+            .prefix(4)
+        let summary = usefulLines.joined(separator: " ")
+        return summary.isEmpty ? "No ffmpeg error output captured." : String(summary.prefix(500))
     }
 
     /// Fetch the total duration from a concrete HLS media playlist by summing EXTINF entries.
@@ -898,13 +934,7 @@ class DownloadManager: ObservableObject {
     }
 
     private func sanitizeFilename(_ title: String) -> String {
-        let set = CharacterSet.alphanumerics.union(.whitespaces)
-            .union(CharacterSet(charactersIn: "-_.'()"))
-        var cleaned = title.components(separatedBy: set.inverted).joined()
-        if cleaned.isEmpty {
-            cleaned = "video_\(UUID().uuidString.prefix(8).lowercased())"
-        }
-        return String(cleaned.prefix(50).trimmingCharacters(in: .whitespaces))
+        VideoFileNaming.sanitizedBaseName(title: title, fallback: "video")
     }
 
     private func findYTDLPath() -> String? {
@@ -952,6 +982,7 @@ final class QueueDownloadProgressDelegate: NSObject, URLSessionDownloadDelegate,
     let queueId: UUID
     let onProgress: (Double) -> Void
     var destURL: URL
+    private var lastReportedPct = -1
 
     init(queueId: UUID, onProgress: @escaping (Double) -> Void) {
         self.queueId = queueId; self.onProgress = onProgress
@@ -968,8 +999,10 @@ final class QueueDownloadProgressDelegate: NSObject, URLSessionDownloadDelegate,
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
                     didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         guard totalBytesExpectedToWrite > 0 else { return }
-        let pct = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite) * 100.0
-        onProgress(pct)
+        let pct = min(Int(Double(totalBytesWritten) / Double(totalBytesExpectedToWrite) * 100.0), 99)
+        guard pct != lastReportedPct else { return }
+        lastReportedPct = pct
+        onProgress(Double(pct))
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {

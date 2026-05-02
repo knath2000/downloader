@@ -28,6 +28,7 @@ class TransferManager: ObservableObject {
     }
 
     func cancelTransfer(tag: String) async {
+        guard !tag.isEmpty else { return }
         guard let megaExec = megaExec else { return }
         let p = Process()
         p.executableURL = megaExec
@@ -36,6 +37,7 @@ class TransferManager: ObservableObject {
         p.standardError = Pipe()
         try? p.run()
         p.waitUntilExit()
+        await fetchTransfers()
     }
 
     private func poll() async {

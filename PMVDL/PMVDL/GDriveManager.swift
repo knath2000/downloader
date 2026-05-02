@@ -41,8 +41,15 @@ struct GDriveManager {
         guard let rclone = findRclone() else { throw GDriveError.notInstalled }
         guard isConfigured(remoteName: remoteName) else { throw GDriveError.notConfigured }
 
-        let uniqueName = localFile.lastPathComponent
-        let remoteDest = "\(remoteName):\(remotePath)\(uniqueName)"
+        let uploadRemotePath = remotePath.hasSuffix("/") ? remotePath : remotePath + "/"
+        let uniqueName = VideoFileNaming.mp4FileName(
+            title: localFile.deletingPathExtension().lastPathComponent,
+            fallback: localFile.lastPathComponent
+        )
+        let remoteDest = "\(remoteName):\(uploadRemotePath)\(uniqueName)"
+
+        onProgress(.uploading(msg: "Verifying video…", pct: 0))
+        try await VideoProcessor.verifyForUpload(localFile)
 
         ThumbnailCache.generateAndCache(fromLocalFile: localFile.path, forRemoteUrl: localFile.absoluteString)
 
@@ -105,14 +112,18 @@ struct GDriveManager {
         onProgress(.completed(msg: "Uploaded to Google Drive: \(remoteDest)"))
     }
 
-    static func upload(url: String, remoteName: String = "gdrive", remotePath: String = "VidDL/", headers: [String: String]? = nil, onProgress: @escaping (String) -> Void) async throws {
+    @discardableResult
+    static func upload(url: String, remoteName: String = "gdrive", remotePath: String = "VidDL/", title: String? = nil, headers: [String: String]? = nil, onProgress: @escaping (String) -> Void) async throws -> String {
         guard let rclone = findRclone() else { throw GDriveError.notInstalled }
         guard isConfigured(remoteName: remoteName) else { throw GDriveError.notConfigured }
 
-        let ext = URL(string: url)?.pathExtension ?? "mp4"
-        let shortUUID = UUID().uuidString.prefix(8).lowercased()
-        let uniqueName = "viddl_\(shortUUID).\(ext)"
-        let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent(uniqueName)
+        let uploadRemotePath = remotePath.hasSuffix("/") ? remotePath : remotePath + "/"
+        let uniqueName = VideoFileNaming.mp4FileName(title: title, fallback: URL(string: url)?.lastPathComponent ?? "video")
+        let stagingDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("viddl_gdrive_upload_\(UUID().uuidString.prefix(8))")
+        try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true)
+        let tempFile = stagingDir.appendingPathComponent(uniqueName)
+        defer { try? FileManager.default.removeItem(at: stagingDir) }
 
         // Download first using URLSession delegate
         let delegate = GDUploadProgressDelegate(onProgress: onProgress, destURL: tempFile)
@@ -122,12 +133,15 @@ struct GDriveManager {
         headers?.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         try await delegate.performDownload(session: session, request: request)
 
+        onProgress("Verifying downloaded video…")
+        try await VideoProcessor.verifyForUpload(tempFile)
+
         ThumbnailCache.generateAndCache(fromLocalFile: tempFile.path, forRemoteUrl: url)
 
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: tempFile.path)[.size] as? Int64) ?? 0
         onProgress("Downloaded \(MegaManager.fmt(fileSize)) — uploading to Google Drive…")
 
-        let remoteDest = "\(remoteName):\(remotePath)\(uniqueName)"
+        let remoteDest = "\(remoteName):\(uploadRemotePath)\(uniqueName)"
         onProgress("Uploading to Google Drive… 0%")
 
         let p = Process()
@@ -169,7 +183,6 @@ struct GDriveManager {
         while p.isRunning {
             if Date().timeIntervalSince(uploadStart) > 7200 {
                 p.terminate()
-                try? FileManager.default.removeItem(at: tempFile)
                 throw GDriveError.uploadFailed("Upload timed out")
             }
             try await Task.sleep(for: .milliseconds(500))
@@ -179,12 +192,11 @@ struct GDriveManager {
         errHandle.readabilityHandler = nil
 
         if p.terminationStatus != 0 {
-            try? FileManager.default.removeItem(at: tempFile)
             throw GDriveError.uploadFailed("Upload failed (exit \(p.terminationStatus))")
         }
 
-        try? FileManager.default.removeItem(at: tempFile)
         onProgress("Uploaded to Google Drive: \(remoteDest)")
+        return remoteDest
     }
 
     private static func extractPercent(_ text: String) -> Int? {

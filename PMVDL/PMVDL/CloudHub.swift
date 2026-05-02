@@ -138,14 +138,14 @@ class CloudHub: ObservableObject {
 
     // MARK: - Upload
 
-    func uploadToAll(videoUrl: String, quality: String?, remotePath: String = "/Cloud/VidDL/",
+    func uploadToAll(videoUrl: String, quality: String?, remotePath: String = "/Cloud/VidDL/", title: String? = nil,
                      onProgress: @escaping (CloudProviderID, String) -> Void) async -> [CloudUploadResult] {
         let targets = resolveTargets(quality: quality, filename: URL(string: videoUrl)?.lastPathComponent ?? "video")
         guard !targets.isEmpty else { return [] }
 
         isUploading = true
         var results: [CloudUploadResult] = []
-        let filename = URL(string: videoUrl)?.lastPathComponent ?? "video"
+        let filename = VideoFileNaming.mp4FileName(title: title, fallback: URL(string: videoUrl)?.lastPathComponent ?? "video")
 
         // First upload to Mega to establish the file, then to other targets
         // For auto-delete: track Mega upload result, then delete after GDrive succeeds
@@ -154,7 +154,7 @@ class CloudHub: ObservableObject {
         // Upload to Mega first if it's a target
         if targets.contains(.mega) {
             do {
-                let result = try await MegaManager.upload(url: videoUrl, remotePath: remotePath) { event in
+                let result = try await MegaManager.upload(url: videoUrl, remotePath: remotePath, title: title) { event in
                     onProgress(.mega, "\(event.message) \(Int(event.percent))%")
                 }
                 megaRemotePath = result.remotePath
@@ -175,17 +175,17 @@ class CloudHub: ObservableObject {
                         do {
                             switch target {
                             case .gdrive:
-                                try await GDriveManager.upload(url: videoUrl, remoteName: "gdrive", remotePath: "VidDL/") { msg in
+                                try await GDriveManager.upload(url: videoUrl, remoteName: "gdrive", remotePath: "VidDL/", title: title) { msg in
                                     onProgress(.gdrive, msg)
                                 }
                                 return (.success(.gdrive, message: "Uploaded to GDrive"), nil)
                             case .dropbox:
-                                try await GDriveManager.upload(url: videoUrl, remoteName: "dropbox", remotePath: "VidDL/") { msg in
+                                try await GDriveManager.upload(url: videoUrl, remoteName: "dropbox", remotePath: "VidDL/", title: title) { msg in
                                     onProgress(.dropbox, msg)
                                 }
                                 return (.success(.dropbox, message: "Uploaded to Dropbox"), nil)
                             case .onedrive:
-                                try await GDriveManager.upload(url: videoUrl, remoteName: "onedrive", remotePath: "VidDL/") { msg in
+                                try await GDriveManager.upload(url: videoUrl, remoteName: "onedrive", remotePath: "VidDL/", title: title) { msg in
                                     onProgress(.onedrive, msg)
                                 }
                                 return (.success(.onedrive, message: "Uploaded to OneDrive"), nil)
@@ -197,6 +197,10 @@ class CloudHub: ObservableObject {
                                     try? FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
                                     let dest = destDir.appendingPathComponent(filename)
                                     try data.write(to: dest)
+                                    if quality?.localizedCaseInsensitiveContains("audio") != true {
+                                        onProgress(.local, "Verifying video…")
+                                        try await VideoProcessor.verifyForUpload(dest)
+                                    }
                                     return (.success(.local, message: "Saved to \(dest.path)"), nil)
                                 }
                                 throw NSError(domain: "VidDL", code: -1,

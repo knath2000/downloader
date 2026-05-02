@@ -3,6 +3,9 @@ import SwiftUI
 @MainActor
 struct DownloadQueueViewNew: View {
     @StateObject private var queue = DownloadQueue.shared
+    private var downloadItems: [DownloadQueueItem] {
+        queue.queue.filter(\.isVisibleInDownloads)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -11,20 +14,22 @@ struct DownloadQueueViewNew: View {
                 Text("Downloads").font(.headline).foregroundStyle(Theme.textPrimary)
                 Spacer()
 
-                Button("Pause All") { queue.pauseAll() }
+                Button("Pause All") { downloadItems.forEach { queue.pause($0) } }
                     .buttonStyle(.bordered).controlSize(.small)
-                    .disabled(queue.queue.allSatisfy { $0.status.isTerminal || $0.status == .paused })
-                Button("Resume All") { queue.resumeAll() }
+                    .disabled(downloadItems.allSatisfy { $0.status.isTerminal || $0.status == .paused })
+                Button("Resume All") { downloadItems.filter(isResumable).forEach { queue.resume($0) } }
                     .buttonStyle(.bordered).controlSize(.small)
-                    .disabled(!queue.queue.contains(where: { $0.status == .paused || $0.status == .failed("") }))
-                Button("Clear Done") { queue.clearCompleted() }
+                    .disabled(!downloadItems.contains(where: isResumable))
+                Button("Clear Done") {
+                    downloadItems.filter(\.status.isTerminal).forEach { queue.remove($0) }
+                }
                     .buttonStyle(.bordered).controlSize(.small)
-                    .disabled(!queue.queue.contains(where: { $0.status.isTerminal }))
+                    .disabled(!downloadItems.contains(where: { $0.status.isTerminal }))
             }
             .padding(.horizontal)
             .padding(.top, 8)
 
-            if queue.queue.isEmpty {
+            if downloadItems.isEmpty {
                 VStack {
                     Image(systemName: "arrow.down.circle")
                         .resizable().scaledToFit()
@@ -37,8 +42,7 @@ struct DownloadQueueViewNew: View {
             } else {
                 ScrollView {
                     VStack(spacing: 8) {
-                        ForEach(queue.queue.indices, id: \.self) { idx in
-                            let item = queue.queue[idx]
+                        ForEach(downloadItems) { item in
                             DownloadQueueRow(item: item,
                                 onRemove: { queue.remove(item) },
                                 onPause: { queue.pause(item) },
@@ -55,6 +59,12 @@ struct DownloadQueueViewNew: View {
 
             Spacer()
         }
+    }
+
+    private func isResumable(_ item: DownloadQueueItem) -> Bool {
+        if item.status == .paused { return true }
+        if case .failed = item.status { return true }
+        return false
     }
 }
 
@@ -115,7 +125,7 @@ struct DownloadQueueRow: View {
             switch item.status {
             case .pending:
                 Image(systemName: "clock.fill").foregroundStyle(Theme.warning)
-            case .downloading, .uploading:
+            case .downloading, .verifying, .uploading:
                 Image(systemName: "arrow.down.circle.fill").foregroundStyle(Theme.accent)
             case .completed:
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.success)
@@ -135,6 +145,9 @@ struct DownloadQueueRow: View {
             case .downloading:
                 Text(String(format: "Downloading %.1f%%", item.progress))
                     .font(.caption).foregroundStyle(Theme.accent)
+            case .verifying:
+                Text("Verifying video...")
+                    .font(.caption).foregroundStyle(Theme.accent)
             case .uploading:
                 Text(String(format: "Uploading %.1f%%", item.progress))
                     .font(.caption).foregroundStyle(Theme.accent)
@@ -151,7 +164,7 @@ struct DownloadQueueRow: View {
 
     var progressTint: Color {
         switch item.status {
-        case .downloading, .uploading: return Theme.accent
+        case .downloading, .verifying, .uploading: return Theme.accent
         case .completed: return Theme.success
         case .failed: return Theme.error
         default: return Theme.accent
@@ -160,7 +173,7 @@ struct DownloadQueueRow: View {
 
     var isShowingProgress: Bool {
         switch item.status {
-        case .downloading, .uploading: return true
+        case .downloading, .verifying, .uploading: return true
         default: return false
         }
     }

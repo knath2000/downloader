@@ -2,6 +2,9 @@ import Foundation
 
 /// Wraps yt-dlp CLI to extract videos from any supported site (1700+).
 struct YtDlpExtractor: VideoSiteExtractor {
+    private static let browserUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    private static let directMediaExtensions: Set<String> = ["mp4", "mov", "m4v", "webm", "mkv"]
+
     static func supports(_ url: URL) -> Bool {
         guard let host = url.host, !host.isEmpty else { return false }
         return !NativeVideoPageExtractor.supports(url)
@@ -76,8 +79,9 @@ struct YtDlpExtractor: VideoSiteExtractor {
     private static func parseVideoSource(from json: [String: Any], url: URL) -> VideoSource {
         // YouTube typically has no direct mp4 URL — bestUrl will be nil.
         // DownloadManager handles this by falling back to `downloadViaYTDLPSite`.
-        let bestUrl = (json["url"] as? String)?.nilIfEmpty
+        let rawBestUrl = (json["url"] as? String)?.nilIfEmpty
             ?? (json["best"] as? String)?.nilIfEmpty
+        let bestUrl = rawBestUrl.flatMap { isHLSURL($0) ? nil : $0 }
         let title = json["title"] as? String ?? "Unknown"
         let thumbnail = json["thumbnail"] as? String
         let duration = json["duration"] as? TimeInterval
@@ -90,32 +94,38 @@ struct YtDlpExtractor: VideoSiteExtractor {
         if let formats = json["formats"] as? [[String: Any]] {
             var seenIds = Set<String>()
             for fmt in formats {
-                let fmtUrl = fmt["url"] as? String
-                let fmtId = fmt["format_id"] as? String ?? fmtUrl ?? ""
+                guard let fmtUrl = (fmt["url"] as? String)?.nilIfEmpty else { continue }
+                let kind: VideoSource.Kind
+                if isHLSFormat(fmt, urlString: fmtUrl) {
+                    kind = .hlsManifest
+                } else if isDirectMediaFormat(fmt, urlString: fmtUrl) {
+                    kind = .direct
+                } else {
+                    continue
+                }
+
+                let fmtId = fmt["format_id"] as? String ?? fmtUrl
                 if seenIds.contains(fmtId) { continue }
                 seenIds.insert(fmtId)
 
-                let vcodec = fmt["vcodec"] as? String ?? "none"
                 let ext = fmt["ext"] as? String ?? ""
-                if vcodec == "none" && ext != "m3u8" && ext != "mpd" { continue }
+                guard hasVideo(fmt) else { continue }
 
                 let height = fmt["height"] as? Int ?? 0
-                let label: String
-                if height > 0 {
-                    label = "\(height)p"
-                } else {
-                    label = ext.uppercased()
-                }
-                qualities.append(VideoSource.Quality(label: label, url: fmtUrl ?? url.absoluteString))
+                let label = qualityLabel(height: height, ext: ext, kind: kind)
+                let headers = headers(for: fmt, json: json, pageURL: url)
+                qualities.append(VideoSource.Quality(label: label, url: fmtUrl, kind: kind, headers: headers, sourcePageUrl: url.absoluteString))
             }
-            let resOrder: [String: Int] = ["HLS": 0, "DASH": 1, "WEBM": 2, "M4A": 3, "WEBA": 4, "MP3": 5]
             qualities.sort { a, b in
-                let aRes = Int(a.label.dropLast()) ?? 0
-                let bRes = Int(b.label.dropLast()) ?? 0
+                let aRes = resolution(from: a.label)
+                let bRes = resolution(from: b.label)
                 if aRes > 0 && bRes > 0 { return aRes > bRes }
                 if aRes > 0 { return true }
                 if bRes > 0 { return false }
-                return (resOrder[a.label] ?? 99) < (resOrder[b.label] ?? 99)
+                let aKind = kindRank(a.kind)
+                let bKind = kindRank(b.kind)
+                if aKind != bKind { return aKind < bKind }
+                return a.label < b.label
             }
         }
 
@@ -129,6 +139,85 @@ struct YtDlpExtractor: VideoSiteExtractor {
             siteName: siteName,
             isAudio: isAudio
         )
+    }
+
+    private static func isHLSURL(_ urlString: String) -> Bool {
+        urlString.localizedCaseInsensitiveContains(".m3u8")
+    }
+
+    private static func isHLSFormat(_ fmt: [String: Any], urlString: String) -> Bool {
+        let ext = (fmt["ext"] as? String ?? "").lowercased()
+        let proto = (fmt["protocol"] as? String ?? "").lowercased()
+        return ext == "m3u8" || proto.contains("m3u8") || isHLSURL(urlString)
+    }
+
+    private static func isDirectMediaFormat(_ fmt: [String: Any], urlString: String) -> Bool {
+        let ext = (fmt["ext"] as? String ?? URL(string: urlString)?.pathExtension ?? "").lowercased()
+        let proto = (fmt["protocol"] as? String ?? "").lowercased()
+        return directMediaExtensions.contains(ext) && (proto.isEmpty || proto == "http" || proto == "https")
+    }
+
+    private static func hasVideo(_ fmt: [String: Any]) -> Bool {
+        if let vcodec = (fmt["vcodec"] as? String)?.lowercased(), vcodec != "none" {
+            return true
+        }
+        return (fmt["height"] as? Int ?? 0) > 0
+    }
+
+    private static func qualityLabel(height: Int, ext: String, kind: VideoSource.Kind) -> String {
+        let base = height > 0 ? "\(height)p" : ext.uppercased()
+        switch kind {
+        case .direct:
+            let suffix = ext.isEmpty ? "Video" : ext.uppercased()
+            return "\(base) \(suffix)"
+        case .hlsManifest:
+            return "\(base) HLS"
+        case .pageUrl:
+            return base
+        }
+    }
+
+    private static func headers(for fmt: [String: Any], json: [String: Any], pageURL: URL) -> [String: String] {
+        var headers = stringHeaders(json["http_headers"])
+        for (key, value) in stringHeaders(fmt["http_headers"]) {
+            headers[key] = value
+        }
+        ensureHeader("Referer", value: pageURL.absoluteString, in: &headers)
+        ensureHeader("User-Agent", value: browserUserAgent, in: &headers)
+        return headers
+    }
+
+    private static func stringHeaders(_ value: Any?) -> [String: String] {
+        guard let raw = value as? [String: Any] else { return [:] }
+        var headers: [String: String] = [:]
+        for (key, value) in raw {
+            if let string = value as? String, !string.isEmpty {
+                headers[key] = string
+            }
+        }
+        return headers
+    }
+
+    private static func ensureHeader(_ name: String, value: String, in headers: inout [String: String]) {
+        if !headers.keys.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
+            headers[name] = value
+        }
+    }
+
+    private static func resolution(from label: String) -> Int {
+        guard let match = try? NSRegularExpression(pattern: #"^(\d+)p"#).firstMatch(in: label, range: NSRange(label.startIndex..., in: label)),
+              let range = Range(match.range(at: 1), in: label) else {
+            return 0
+        }
+        return Int(label[range]) ?? 0
+    }
+
+    private static func kindRank(_ kind: VideoSource.Kind) -> Int {
+        switch kind {
+        case .direct: return 0
+        case .hlsManifest: return 1
+        case .pageUrl: return 2
+        }
     }
 
     private static func isAudioOnly(json: [String: Any]) -> Bool {

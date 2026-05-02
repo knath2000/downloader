@@ -15,6 +15,8 @@ class DownloadQueue: ObservableObject {
         // Resume pending/failed items as pending
         for i in queue.indices {
             if case .downloading = queue[i].status { queue[i].status = .pending }
+            if case .verifying = queue[i].status { queue[i].status = .pending }
+            if case .uploading = queue[i].status { queue[i].uploadStarted = true }
             if case .paused = queue[i].status { /* keep paused */ }
         }
         save()
@@ -47,10 +49,20 @@ class DownloadQueue: ObservableObject {
         save()
     }
 
+    func remove(id: UUID) {
+        queue.removeAll { $0.id == id }
+        cancelTask(for: id)
+        save()
+    }
+
     func pause(_ item: DownloadQueueItem) {
         guard let idx = queue.firstIndex(where: { $0.id == item.id }) else { return }
         if case .failed = queue[idx].status { queue[idx].status = .paused }
-        else if case .downloading = queue[idx].status, case .uploading = queue[idx].status {
+        else if case .downloading = queue[idx].status {
+            queue[idx].status = .paused
+        } else if case .verifying = queue[idx].status {
+            queue[idx].status = .paused
+        } else if case .uploading = queue[idx].status {
             queue[idx].status = .paused
         }
         cancelTask(for: item.id)
@@ -102,9 +114,16 @@ class DownloadQueue: ObservableObject {
 
     func updateProgress(id: UUID, status: QueueStatus, progress: Double) {
         guard let idx = queue.firstIndex(where: { $0.id == id }) else { return }
+        let previousStatus = queue[idx].status
+        let previousUploadStarted = queue[idx].uploadStarted
+        if status == .uploading {
+            queue[idx].uploadStarted = true
+        }
         queue[idx].status = status
         queue[idx].progress = progress
-        save()
+        if previousStatus != status || previousUploadStarted != queue[idx].uploadStarted || status.isTerminal {
+            save()
+        }
     }
 
     private func cancelTask(for id: UUID) {
@@ -115,7 +134,7 @@ class DownloadQueue: ObservableObject {
     private var activeCount: Int {
         queue.filter { item in
             switch item.status {
-            case .downloading, .uploading: return true
+            case .downloading, .verifying, .uploading: return true
             default: return false
             }
         }.count

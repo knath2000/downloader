@@ -78,7 +78,7 @@ enum UploadState { case uploading(String); case done(String); case failed(String
 /// Typed progress event so callers receive a numeric percent without parsing strings.
 struct ProgressEvent {
     enum Phase: String, Codable {
-        case downloading, uploading, completing
+        case downloading, verifying, uploading, completing
     }
     let phase: Phase
     let percent: Double       // 0...100
@@ -90,8 +90,58 @@ struct ProgressEvent {
     static func uploading(msg: String, pct: Double) -> Self {
         .init(phase: .uploading, percent: min(pct, 99), message: msg)
     }
+    static func verifying(msg: String, pct: Double = 99) -> Self {
+        .init(phase: .verifying, percent: min(pct, 99), message: msg)
+    }
     static func completed(msg: String) -> Self {
         .init(phase: .completing, percent: 100, message: msg)
+    }
+}
+
+enum VideoFileNaming {
+    private static let mediaExtensions: Set<String> = ["mp4", "mov", "m4v", "mkv", "webm", "avi", "m3u8"]
+
+    static func mp4FileName(title: String?, fallback: String = "video") -> String {
+        "\(sanitizedBaseName(title: title, fallback: fallback)).mp4"
+    }
+
+    static func sanitizedBaseName(title: String?, fallback: String = "video") -> String {
+        let raw = candidate(from: title) ?? candidate(from: fallback) ?? "video"
+        let allowed = CharacterSet.alphanumerics.union(.whitespaces)
+            .union(CharacterSet(charactersIn: "-_.'()"))
+        var cleaned = raw.components(separatedBy: allowed.inverted).joined()
+        cleaned = cleaned.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.isEmpty || isGenericTempName(cleaned) {
+            cleaned = "video"
+        }
+        return String(cleaned.prefix(80)).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func candidate(from value: String?) -> String? {
+        guard var candidate = value?.trimmingCharacters(in: .whitespacesAndNewlines), !candidate.isEmpty else {
+            return nil
+        }
+        candidate = candidate.removingPercentEncoding ?? candidate
+        candidate = candidate.replacingOccurrences(of: "+", with: " ")
+        if candidate.contains("/") || candidate.contains("\\") {
+            candidate = URL(string: candidate)?.lastPathComponent ?? (candidate as NSString).lastPathComponent
+        }
+        candidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !candidate.isEmpty, !isGenericTempName(candidate) else { return nil }
+
+        while true {
+            let ext = (candidate as NSString).pathExtension.lowercased()
+            guard mediaExtensions.contains(ext) || ext.contains("~") else { break }
+            candidate = (candidate as NSString).deletingPathExtension
+        }
+        candidate = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        return candidate.isEmpty ? nil : candidate
+    }
+
+    private static func isGenericTempName(_ value: String) -> Bool {
+        let lower = value.lowercased()
+        return lower.hasPrefix("viddl_") || lower.hasPrefix("pmvdl_")
     }
 }
 
@@ -130,7 +180,7 @@ struct LibraryItem: Identifiable, Codable, Hashable {
 }
 
 enum QueueStatus: Codable, Equatable {
-    case pending, downloading, uploading, completed, paused, failed(String)
+    case pending, downloading, verifying, uploading, completed, paused, failed(String)
 
     var isTerminal: Bool {
         switch self { case .completed, .failed: return true; default: return false }
@@ -149,6 +199,7 @@ struct DownloadQueueItem: Identifiable, Codable {
     var megatag: String? // mega-exec transfer tag for cancellation
     var displayTitle: String? // human-readable title (e.g. Vidara video name)
     var finalPath: String? // local file path or remote destination when done
+    var uploadStarted: Bool?
 
     init(id: UUID = UUID(), url: String, quality: String, targetCloud: CloudTarget = .mega, displayTitle: String? = nil) {
         self.id = id
@@ -160,6 +211,58 @@ struct DownloadQueueItem: Identifiable, Codable {
         self.targetCloud = targetCloud
         self.createdAt = Date()
         self.displayTitle = displayTitle
+        self.uploadStarted = nil
+    }
+
+    var hasEnteredUpload: Bool {
+        uploadStarted == true || status == .uploading
+    }
+
+    var isVisibleInDownloads: Bool {
+        !(targetCloud == .mega && hasEnteredUpload)
+    }
+
+    var isVisibleInTransfers: Bool {
+        guard targetCloud == .mega else { return false }
+        if status == .uploading { return true }
+        if case .failed = status, uploadStarted == true { return true }
+        return false
+    }
+}
+
+struct HistoryItem: Identifiable, Codable, Hashable {
+    let id: UUID
+    let url: String
+    let title: String
+    let provider: String
+    let recordedAt: Date
+
+    init(id: UUID = UUID(), url: String, title: String, provider: String, recordedAt: Date = Date()) {
+        self.id = id
+        self.url = url
+        self.title = title
+        self.provider = provider
+        self.recordedAt = recordedAt
+    }
+}
+
+struct CompletedUploadItem: Identifiable, Codable, Hashable {
+    let id: UUID
+    let url: String
+    let title: String
+    let provider: String
+    let destination: String
+    let remotePath: String
+    let completedAt: Date
+
+    init(id: UUID = UUID(), url: String, title: String, provider: String, destination: String, remotePath: String, completedAt: Date = Date()) {
+        self.id = id
+        self.url = url
+        self.title = title
+        self.provider = provider
+        self.destination = destination
+        self.remotePath = remotePath
+        self.completedAt = completedAt
     }
 }
 
@@ -185,8 +288,10 @@ enum CloudTarget: String, Codable, CaseIterable {
 
 enum NavDestination: String, Codable, CaseIterable {
     case home = "Home"
+    case history = "History"
     case library = "Library"
     case downloads = "Downloads"
+    case mega = "Mega"
     case scheduler = "Scheduler"
     case transfers = "Transfers"
     case processing = "Processing"
@@ -195,8 +300,10 @@ enum NavDestination: String, Codable, CaseIterable {
     var icon: String {
         switch self {
         case .home: return "house.fill"
+        case .history: return "clock.arrow.circlepath"
         case .library: return "books.vertical.fill"
         case .downloads: return "arrow.down.circle.fill"
+        case .mega: return "cloud.fill"
         case .scheduler: return "calendar.badge.clock"
         case .transfers: return "arrow.up.circle.fill"
         case .processing: return "wand.and.stars"

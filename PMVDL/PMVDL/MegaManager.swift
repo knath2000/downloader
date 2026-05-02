@@ -13,8 +13,36 @@ enum MegaUpError: LocalizedError {
 
 struct MegaManager {
     private static var tempDir: URL { FileManager.default.temporaryDirectory }
+    @MainActor private static var activeUploads: [UUID: MegaUploadHandle] = [:]
+    @MainActor private static var canceledUploads: Set<UUID> = []
 
     static let defaultPath = "/Cloud/VidDL/"
+
+    private struct MegaUploadHandle {
+        let process: Process
+        let filename: String
+    }
+
+    private final class ProcessOutputBuffer: @unchecked Sendable {
+        private let lock = NSLock()
+        private var data = Data()
+
+        func append(_ newData: Data) {
+            lock.lock()
+            data.append(newData)
+            if data.count > 1_048_576 {
+                data.removeFirst(data.count - 1_048_576)
+            }
+            lock.unlock()
+        }
+
+        func string() -> String {
+            lock.lock()
+            let snapshot = data
+            lock.unlock()
+            return String(data: snapshot, encoding: .utf8) ?? ""
+        }
+    }
 
     static var isAvailable: Bool { findMegaExec() != nil }
 
@@ -46,10 +74,23 @@ struct MegaManager {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
         p.arguments = ["mega-exec"]
-        p.standardOutput = Pipe()
-        p.standardError = Pipe()
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
         try? p.run()
         p.waitUntilExit()
+    }
+
+    @MainActor
+    static func cancelUpload(id: UUID, filenames: [String] = []) async {
+        canceledUploads.insert(id)
+        var names = filenames
+        if let handle = activeUploads[id] {
+            names.append(handle.filename)
+            if handle.process.isRunning {
+                handle.process.terminate()
+            }
+        }
+        await cancelTransfers(matching: names)
     }
 
     private static func findMegaExec() -> URL? {
@@ -60,20 +101,127 @@ struct MegaManager {
         return nil
     }
 
+    private static func runMegaOutputCommand(_ megaExec: URL, arguments: [String], timeout: TimeInterval) async -> String? {
+        let process = Process()
+        process.executableURL = megaExec
+        process.arguments = arguments
+
+        let out = Pipe()
+        let buffer = ProcessOutputBuffer()
+        out.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if !data.isEmpty {
+                buffer.append(data)
+            }
+        }
+
+        process.standardOutput = out
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+        } catch {
+            out.fileHandleForReading.readabilityHandler = nil
+            return nil
+        }
+
+        let start = Date()
+        while process.isRunning && Date().timeIntervalSince(start) < timeout {
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        if process.isRunning {
+            process.terminate()
+            let terminateStart = Date()
+            while process.isRunning && Date().timeIntervalSince(terminateStart) < 1 {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+
+        let finished = !process.isRunning
+        out.fileHandleForReading.readabilityHandler = nil
+        if finished {
+            let remaining = out.fileHandleForReading.readDataToEndOfFile()
+            if !remaining.isEmpty {
+                buffer.append(remaining)
+            }
+        }
+        return buffer.string()
+    }
+
+    @MainActor
+    private static func registerUpload(id: UUID?, process: Process, filename: String) {
+        guard let id else { return }
+        activeUploads[id] = MegaUploadHandle(process: process, filename: filename)
+    }
+
+    @MainActor
+    private static func unregisterUpload(id: UUID?) {
+        guard let id else { return }
+        activeUploads[id] = nil
+        canceledUploads.remove(id)
+    }
+
+    @MainActor
+    private static func isCanceled(_ id: UUID?) -> Bool {
+        guard let id else { return false }
+        return canceledUploads.contains(id)
+    }
+
+    @MainActor
+    private static func resetCancelState(_ id: UUID?) {
+        guard let id else { return }
+        canceledUploads.remove(id)
+    }
+
+    @MainActor
+    private static func cancelTransfers(matching filenames: [String]) async {
+        guard let megaExec = findMegaExec() else { return }
+        let names = filenames
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty && $0 != "unknown" }
+        guard !names.isEmpty else { return }
+
+        guard let output = await runMegaOutputCommand(
+            megaExec,
+            arguments: ["transfers", "--only-uploads", "--path-display-size=500"],
+            timeout: 5
+        ) else { return }
+
+        var tags: [String] = []
+        for line in output.split(separator: "\n") {
+            let lower = String(line).lowercased()
+            guard names.contains(where: { lower.contains($0) }) else { continue }
+            let parts = lower.split(separator: " ").filter { !$0.isEmpty }.map(String.init)
+            if parts.count > 1 {
+                tags.append(parts[1])
+            }
+        }
+
+        for tag in Set(tags) {
+            let cancel = Process()
+            cancel.executableURL = megaExec
+            cancel.arguments = ["cancel", tag]
+            cancel.standardOutput = FileHandle.nullDevice
+            cancel.standardError = FileHandle.nullDevice
+            try? cancel.run()
+            cancel.waitUntilExit()
+        }
+    }
+
     static func delete(remotePath: String) async throws {
         guard let megaExec = findMegaExec() else { throw MegaUpError.notInstalled }
         guard isLoggedIn else { throw MegaUpError.notLoggedIn }
         let p = Process()
         p.executableURL = megaExec
         p.arguments = ["rm", remotePath]
-        p.standardOutput = Pipe()
-        p.standardError = Pipe()
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
         try p.run()
         let start = Date()
         while p.isRunning && Date().timeIntervalSince(start) < 30 {
             try await Task.sleep(for: .milliseconds(500))
         }
-        if p.isRunning { p.terminate(); _ = p.waitUntilExit() }
+        if p.isRunning { p.terminate(); p.waitUntilExit() }
         if p.terminationStatus != 0 {
             throw MegaUpError.uploadFailed("Failed to delete \(remotePath) (exit \(p.terminationStatus))")
         }
@@ -82,27 +230,13 @@ struct MegaManager {
     static func listRemoteFiles(remotePath: String = defaultPath) async throws -> [String] {
         guard let megaExec = findMegaExec() else { throw MegaUpError.notInstalled }
         guard isLoggedIn else { throw MegaUpError.notLoggedIn }
-        let p = Process()
-        p.executableURL = megaExec
-        p.arguments = ["ls", "--csv", remotePath]
-        let out = Pipe()
-        p.standardOutput = out
-        p.standardError = Pipe()
-        try p.run()
-        let start = Date()
-        while p.isRunning && Date().timeIntervalSince(start) < 30 {
-            try await Task.sleep(for: .milliseconds(500))
-        }
-        if p.isRunning { p.terminate(); _ = p.waitUntilExit() }
+        let stdout = await runMegaOutputCommand(megaExec, arguments: ["ls", "--csv", remotePath], timeout: 30) ?? ""
         var filenames: [String] = []
-        if let data = try? out.fileHandleForReading.readToEnd(),
-           let stdout = String(data: data, encoding: .utf8) {
-            let lines = stdout.split(omittingEmptySubsequences: true) { $0.isNewline }
-            for line in lines {
-                let s = String(line).trimmingCharacters(in: .whitespaces)
-                guard !s.isEmpty else { continue }
-                filenames.append(s)
-            }
+        let lines = stdout.split(omittingEmptySubsequences: true) { $0.isNewline }
+        for line in lines {
+            let s = String(line).trimmingCharacters(in: .whitespaces)
+            guard !s.isEmpty else { continue }
+            filenames.append(s)
         }
         return filenames
     }
@@ -115,48 +249,79 @@ struct MegaManager {
     // MARK: - Upload from local file
 
     @MainActor
-    static func uploadLocalFile(_ localFile: URL, remotePath: String = defaultPath, onProgress: @escaping (ProgressEvent) -> Void) async throws -> UploadResult {
+    static func uploadLocalFile(_ localFile: URL, remotePath: String = defaultPath, remoteFileName: String? = nil, uploadID: UUID? = nil, onProgress: @escaping (ProgressEvent) -> Void) async throws -> UploadResult {
         guard let megaExec = findMegaExec() else { throw MegaUpError.notInstalled }
         guard isLoggedIn else { throw MegaUpError.notLoggedIn }
+        resetCancelState(uploadID)
 
-        let uniqueName = localFile.lastPathComponent
+        let uploadRemotePath = remotePath.hasSuffix("/") ? remotePath : remotePath + "/"
+        let uniqueName = VideoFileNaming.mp4FileName(
+            title: remoteFileName ?? localFile.deletingPathExtension().lastPathComponent,
+            fallback: localFile.lastPathComponent
+        )
+        let uploadFile: URL
+        var tempUploadDir: URL?
+        if localFile.lastPathComponent == uniqueName {
+            uploadFile = localFile
+        } else {
+            let stagingDir = tempDir.appendingPathComponent("viddl_upload_\(UUID().uuidString.prefix(8))")
+            try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true)
+            let tempFile = stagingDir.appendingPathComponent(uniqueName)
+            do {
+                try FileManager.default.linkItem(at: localFile, to: tempFile)
+            } catch {
+                try FileManager.default.copyItem(at: localFile, to: tempFile)
+            }
+            tempUploadDir = stagingDir
+            uploadFile = tempFile
+        }
+        defer {
+            if let tempUploadDir {
+                try? FileManager.default.removeItem(at: tempUploadDir)
+            }
+        }
+
+        onProgress(.verifying(msg: "Verifying video..."))
+        if isCanceled(uploadID) { throw MegaUpError.uploadFailed("Upload canceled") }
+        try await VideoProcessor.verifyForUpload(localFile)
+        if isCanceled(uploadID) { throw MegaUpError.uploadFailed("Upload canceled") }
+
         ThumbnailCache.generateAndCache(fromLocalFile: localFile.path, forRemoteUrl: localFile.absoluteString)
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: localFile.path)[.size] as? Int64) ?? 0
         onProgress(.uploading(msg: "Ready \(fmt(fileSize)) — uploading to Mega…", pct: 0))
 
         let mkDir = Process()
-        mkDir.executableURL = megaExec; mkDir.arguments = ["mkdir", "-p", remotePath]
-        mkDir.standardOutput = Pipe(); mkDir.standardError = Pipe()
+        mkDir.executableURL = megaExec; mkDir.arguments = ["mkdir", "-p", uploadRemotePath]
+        mkDir.standardOutput = FileHandle.nullDevice; mkDir.standardError = FileHandle.nullDevice
         try mkDir.run(); mkDir.waitUntilExit()
 
-        onProgress(.uploading(msg: "Uploading to Mega… queued", pct: 0))
-        let q = Process()
-        q.executableURL = megaExec; q.arguments = ["put", "-q", localFile.path, remotePath]
-        q.standardOutput = Pipe(); q.standardError = Pipe()
-        try q.run()
-        let qs = Date()
-        while Date().timeIntervalSince(qs) < 10 && q.isRunning { try await Task.sleep(for: .milliseconds(500)) }
-        if q.isRunning { q.terminate(); _ = q.waitUntilExit() }
-        try await Task.sleep(for: .seconds(2))
-
         onProgress(.uploading(msg: "Uploading to Mega… 0%", pct: 0))
+        let q = Process()
+        q.executableURL = megaExec; q.arguments = ["put", uploadFile.path, uploadRemotePath]
+        q.standardOutput = FileHandle.nullDevice; q.standardError = FileHandle.nullDevice
+        try q.run()
+        registerUpload(id: uploadID, process: q, filename: uniqueName)
+        defer { unregisterUpload(id: uploadID) }
+
         let pollStart = Date()
-        var lastPct = -1, completed = false
+        var lastPct = 0
 
-        while true {
-            guard Date() < pollStart.addingTimeInterval(7200) else { throw MegaUpError.uploadFailed("Upload timed out") }
+        while q.isRunning {
+            if isCanceled(uploadID) {
+                q.terminate(); q.waitUntilExit()
+                throw MegaUpError.uploadFailed("Upload canceled")
+            }
+            guard Date() < pollStart.addingTimeInterval(7200) else {
+                q.terminate(); q.waitUntilExit()
+                throw MegaUpError.uploadFailed("Upload timed out")
+            }
             try await Task.sleep(for: .seconds(2))
-            let t = Process()
-            t.executableURL = megaExec; t.arguments = ["transfers", "--only-uploads", "--path-display-size=500"]
-            let out = Pipe(); t.standardOutput = out; t.standardError = Pipe()
-            try? t.run()
-            let readStart = Date()
-            while Date().timeIntervalSince(readStart) < 5 && t.isRunning { try await Task.sleep(for: .milliseconds(200)) }
-            if t.isRunning { t.terminate() }
-
             var transferFound = false
-            let outData = try? out.fileHandleForReading.readToEnd()
-            if let outData = outData, let stdout = String(data: outData, encoding: .utf8) {
+            if let stdout = await runMegaOutputCommand(
+                megaExec,
+                arguments: ["transfers", "--only-uploads", "--path-display-size=500"],
+                timeout: 5
+            ) {
                 for line in stdout.split(separator: "\n") {
                     let s = String(line).trimmingCharacters(in: .whitespaces)
                     guard s.contains(uniqueName) else { continue }
@@ -166,45 +331,41 @@ struct MegaManager {
                         let ipct = Int(pct)
                         if ipct > lastPct { onProgress(.uploading(msg: "Uploading to Mega… \(ipct)%", pct: Double(ipct))); lastPct = ipct }
                     }
-                    if s.contains("COMPLETED") { completed = true }
-                    else if s.contains("FAILED") { throw MegaUpError.uploadFailed("Mega upload failed") }
+                    if s.contains("FAILED") {
+                        q.terminate(); q.waitUntilExit()
+                        throw MegaUpError.uploadFailed("Mega upload failed")
+                    }
                 }
             }
-            if completed { onProgress(.completed(msg: "Uploaded to Mega: \(remotePath)")); return UploadResult(remotePath: remotePath + uniqueName) }
             if !transferFound {
                 let elapsed = Date().timeIntervalSince(pollStart)
-                if elapsed > 10 {
-                    let check = Process()
-                    check.executableURL = megaExec; check.arguments = ["ls", remotePath + uniqueName]
-                    check.standardOutput = Pipe(); check.standardError = Pipe()
-                    try? check.run()
-                    let rs = Date()
-                    while Date().timeIntervalSince(rs) < 10 && check.isRunning { try await Task.sleep(for: .milliseconds(500)) }
-                    if check.isRunning { check.terminate() }; _ = check.waitUntilExit()
-                    if check.terminationStatus == 0 { onProgress(.completed(msg: "Uploaded to Mega: \(remotePath)")); return UploadResult(remotePath: remotePath + uniqueName) }
-                }
-                if lastPct < 5 { lastPct = 0 }
                 let slowPct = min(Int(elapsed / 12), 95)
                 if slowPct > lastPct { lastPct = slowPct; onProgress(.uploading(msg: "Uploading to Mega… \(slowPct)%", pct: Double(slowPct))) }
             }
         }
+
+        if isCanceled(uploadID) { throw MegaUpError.uploadFailed("Upload canceled") }
+        guard q.terminationStatus == 0 else {
+            throw MegaUpError.uploadFailed("mega-exec put failed (exit \(q.terminationStatus))")
+        }
+        onProgress(.completed(msg: "Uploaded to Mega: \(uploadRemotePath)"))
+        return UploadResult(remotePath: uploadRemotePath + uniqueName)
     }
 
     // MARK: - Upload from URL (download first)
 
     @MainActor
-    static func upload(url: String, remotePath: String = defaultPath, headers: [String: String]? = nil, onProgress: @escaping (ProgressEvent) -> Void) async throws -> UploadResult {
+    static func upload(url: String, remotePath: String = defaultPath, title: String? = nil, headers: [String: String]? = nil, uploadID: UUID? = nil, onProgress: @escaping (ProgressEvent) -> Void) async throws -> UploadResult {
         guard let megaExec = findMegaExec() else { throw MegaUpError.notInstalled }
         guard isLoggedIn else { throw MegaUpError.notLoggedIn }
+        resetCancelState(uploadID)
 
-        // pathExtension for CDN URLs like cloudatacdn.com/path~suffix?token=… is either empty
-        // or includes the tilde suffix (e.g. "mp4~abc"), both of which are wrong. Default to mp4.
-        let rawExt = URL(string: url)?.pathExtension ?? ""
-        let ext = (rawExt.isEmpty || rawExt.contains("~")) ? "mp4" : rawExt
-        let shortUUID = UUID().uuidString.prefix(8).lowercased()
-        let uniqueName = "viddl_\(shortUUID).\(ext)"
-        let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent(uniqueName)
-        defer { try? FileManager.default.removeItem(at: tempFile) }
+        let uploadRemotePath = remotePath.hasSuffix("/") ? remotePath : remotePath + "/"
+        let uniqueName = VideoFileNaming.mp4FileName(title: title, fallback: URL(string: url)?.lastPathComponent ?? "video")
+        let stagingDir = tempDir.appendingPathComponent("viddl_upload_\(UUID().uuidString.prefix(8))")
+        try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true)
+        let tempFile = stagingDir.appendingPathComponent(uniqueName)
+        defer { try? FileManager.default.removeItem(at: stagingDir) }
 
         // Use URLSession with typed progress
         let delegate = DownloadProgressPEDelegate(onProgress: { pct, msg in onProgress(.downloading(msg: msg, pct: pct)) }, destURL: tempFile)
@@ -213,14 +374,19 @@ struct MegaManager {
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", forHTTPHeaderField: "User-Agent")
         headers?.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         try await delegate.performDownload(session: session, request: request)
+        if isCanceled(uploadID) { throw MegaUpError.uploadFailed("Upload canceled") }
+
+        onProgress(.verifying(msg: "Verifying downloaded video..."))
+        try await VideoProcessor.verifyForUpload(tempFile)
+        if isCanceled(uploadID) { throw MegaUpError.uploadFailed("Upload canceled") }
 
         ThumbnailCache.generateAndCache(fromLocalFile: tempFile.path, forRemoteUrl: url)
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: tempFile.path)[.size] as? Int64) ?? 0
         onProgress(.uploading(msg: "Downloaded \(fmt(fileSize)) — uploading to Mega…", pct: 0))
 
         let mkDir = Process()
-        mkDir.executableURL = megaExec; mkDir.arguments = ["mkdir", "-p", remotePath]
-        mkDir.standardOutput = Pipe(); mkDir.standardError = Pipe()
+        mkDir.executableURL = megaExec; mkDir.arguments = ["mkdir", "-p", uploadRemotePath]
+        mkDir.standardOutput = FileHandle.nullDevice; mkDir.standardError = FileHandle.nullDevice
         try mkDir.run(); mkDir.waitUntilExit()
 
         // Use synchronous put (no -q) so MEGAcmd holds the file open for the entire upload.
@@ -230,28 +396,30 @@ struct MegaManager {
         onProgress(.uploading(msg: "Uploading to Mega… 0%", pct: 0))
         let q = Process()
         q.executableURL = megaExec
-        q.arguments = ["put", tempFile.path, remotePath]   // synchronous: blocks until done
-        q.standardOutput = Pipe(); q.standardError = Pipe()
+        q.arguments = ["put", tempFile.path, uploadRemotePath]
+        q.standardOutput = FileHandle.nullDevice; q.standardError = FileHandle.nullDevice
         try q.run()
+        registerUpload(id: uploadID, process: q, filename: uniqueName)
+        defer { unregisterUpload(id: uploadID) }
 
         // Poll transfers for progress while the synchronous put is running
         let pollStart = Date()
         var lastPct = 0
         while q.isRunning {
+            if isCanceled(uploadID) {
+                q.terminate(); q.waitUntilExit()
+                throw MegaUpError.uploadFailed("Upload canceled")
+            }
             guard Date() < pollStart.addingTimeInterval(7200) else {
-                q.terminate(); _ = q.waitUntilExit()
+                q.terminate(); q.waitUntilExit()
                 throw MegaUpError.uploadFailed("Upload timed out")
             }
             try await Task.sleep(for: .seconds(2))
-            let t = Process()
-            t.executableURL = megaExec; t.arguments = ["transfers", "--only-uploads", "--path-display-size=500"]
-            let out = Pipe(); t.standardOutput = out; t.standardError = Pipe()
-            try? t.run()
-            let readStart = Date()
-            while Date().timeIntervalSince(readStart) < 5 && t.isRunning { try await Task.sleep(for: .milliseconds(200)) }
-            if t.isRunning { t.terminate() }
-            if let outData = try? out.fileHandleForReading.readToEnd(),
-               let stdout = String(data: outData, encoding: .utf8) {
+            if let stdout = await runMegaOutputCommand(
+                megaExec,
+                arguments: ["transfers", "--only-uploads", "--path-display-size=500"],
+                timeout: 5
+            ) {
                 for line in stdout.split(separator: "\n") {
                     let s = String(line).trimmingCharacters(in: .whitespaces)
                     guard s.contains(uniqueName) else { continue }
@@ -261,7 +429,7 @@ struct MegaManager {
                         if ipct > lastPct { onProgress(.uploading(msg: "Uploading to Mega… \(ipct)%", pct: Double(ipct))); lastPct = ipct }
                     }
                     if s.contains("FAILED") {
-                        q.terminate(); _ = q.waitUntilExit()
+                        q.terminate(); q.waitUntilExit()
                         throw MegaUpError.uploadFailed("Mega upload failed")
                     }
                 }
@@ -272,12 +440,13 @@ struct MegaManager {
             if slowPct > lastPct { lastPct = slowPct; onProgress(.uploading(msg: "Uploading to Mega… \(slowPct)%", pct: Double(slowPct))) }
         }
 
+        if isCanceled(uploadID) { throw MegaUpError.uploadFailed("Upload canceled") }
         guard q.terminationStatus == 0 else {
             throw MegaUpError.uploadFailed("mega-exec put failed (exit \(q.terminationStatus))")
         }
         // defer deletes tempFile here, safely, after MEGAcmd has fully finished reading it
-        onProgress(.completed(msg: "Uploaded to Mega: \(remotePath)"))
-        return UploadResult(remotePath: remotePath + uniqueName)
+        onProgress(.completed(msg: "Uploaded to Mega: \(uploadRemotePath)"))
+        return UploadResult(remotePath: uploadRemotePath + uniqueName)
     }
 
     static func fmt(_ bytes: Int64) -> String {
