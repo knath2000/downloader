@@ -10,6 +10,12 @@ export default {
     if (request.method === "GET" && url.pathname === "/license") {
       return getLicense(url, env);
     }
+    if (request.method === "POST" && url.pathname === "/trial/sync") {
+      return syncTrial(request, env);
+    }
+    if (request.method === "POST" && url.pathname === "/trial/use") {
+      return useTrial(request, env);
+    }
     if (request.method === "GET" && url.pathname === "/success") {
       return successPage(url, env);
     }
@@ -27,6 +33,7 @@ export default {
 async function createCheckout(request, env) {
   const body = await request.json().catch(() => ({}));
   const email = normalizeEmail(body.email);
+  const hwid = normalizeHwid(body.hwid);
   if (!email) {
     return json({ error: "email_required" }, 400);
   }
@@ -41,6 +48,10 @@ async function createCheckout(request, env) {
   form.set("cancel_url", env.CANCEL_URL);
   form.set("metadata[email]", email);
   form.set("payment_intent_data[metadata][email]", email);
+  if (hwid) {
+    form.set("metadata[hwid]", hwid);
+    form.set("payment_intent_data[metadata][hwid]", hwid);
+  }
 
   const response = await fetch(`${STRIPE_API_BASE}/checkout/sessions`, {
     method: "POST",
@@ -61,15 +72,84 @@ async function createCheckout(request, env) {
 
 async function getLicense(url, env) {
   const email = normalizeEmail(url.searchParams.get("email"));
+  const hwid = normalizeHwid(url.searchParams.get("hwid"));
   if (!email) {
     return json({ active: false, email: null, status: "email_required" }, 400);
   }
 
   const record = await env.LICENSES.get(email, "json");
+  if (record?.redeemedByHwid && hwid && record.redeemedByHwid !== hwid) {
+    console.log("license_hwid_mismatch", JSON.stringify({ email, expected: record.redeemedByHwid, got: hwid }));
+  }
   return json({
     active: record?.status === "active",
     email,
     status: record?.status ?? "not_found"
+  });
+}
+
+async function syncTrial(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const verified = await verifyTrialRequest(body, env);
+  if (!verified.ok) {
+    return json({ error: verified.error }, verified.status);
+  }
+
+  const now = new Date().toISOString();
+  const record = await getTrialRecord(env, verified.hwid, now);
+  record.lastSeen = now;
+  await putTrialRecord(env, verified.hwid, record);
+
+  const active = await trialHasActiveLicense(env, record);
+  return json({
+    count: record.count ?? 0,
+    isPro: active,
+    redeemedEmail: active ? record.redeemedByEmail : null
+  });
+}
+
+async function useTrial(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const verified = await verifyTrialRequest(body, env);
+  if (!verified.ok) {
+    return json({ error: verified.error }, verified.status);
+  }
+
+  const now = new Date().toISOString();
+  const record = await getTrialRecord(env, verified.hwid, now);
+  record.lastSeen = now;
+
+  const active = await trialHasActiveLicense(env, record);
+  if (active) {
+    await putTrialRecord(env, verified.hwid, record);
+    return json({
+      allowed: true,
+      count: record.count ?? 0,
+      remaining: 5,
+      isPro: true
+    });
+  }
+
+  const count = Number(record.count ?? 0);
+  if (count >= 5) {
+    await putTrialRecord(env, verified.hwid, record);
+    return json({
+      allowed: false,
+      count,
+      remaining: 0,
+      isPro: false
+    });
+  }
+
+  record.count = count + 1;
+  // Cloudflare KV is eventually consistent. A concurrent scripted attacker may squeeze
+  // one extra trial use during propagation; that is acceptable for the casual reinstall threat model.
+  await putTrialRecord(env, verified.hwid, record);
+  return json({
+    allowed: true,
+    count: record.count,
+    remaining: Math.max(0, 5 - record.count),
+    isPro: false
   });
 }
 
@@ -134,6 +214,7 @@ async function activateFromCheckoutSession(session, env) {
   }
 
   const email = normalizeEmail(session.customer_details?.email || session.customer_email || session.metadata?.email);
+  const hwid = normalizeHwid(session.metadata?.hwid);
   if (!email) {
     return;
   }
@@ -144,12 +225,20 @@ async function activateFromCheckoutSession(session, env) {
     stripeCustomerId: session.customer ?? null,
     stripeCheckoutSessionId: session.id,
     stripePaymentIntentId: session.payment_intent ?? null,
+    redeemedByHwid: hwid || null,
     updatedAt: new Date().toISOString()
   };
 
   await env.LICENSES.put(email, JSON.stringify(record));
   if (session.payment_intent) {
     await env.LICENSES.put(`payment:${session.payment_intent}`, email);
+  }
+  if (hwid) {
+    const now = new Date().toISOString();
+    const trial = await getTrialRecord(env, hwid, now);
+    trial.redeemedByEmail = email;
+    trial.lastSeen = now;
+    await putTrialRecord(env, hwid, trial);
   }
 }
 
@@ -199,6 +288,70 @@ async function verifyStripeSignature(payload, header, secret) {
 
 function normalizeEmail(email) {
   return String(email ?? "").trim().toLowerCase();
+}
+
+function normalizeHwid(hwid) {
+  const value = String(hwid ?? "").trim();
+  if (!value || value === "unknown" || value.length > 128) {
+    return "";
+  }
+  return value;
+}
+
+async function verifyTrialRequest(body, env) {
+  const hwid = normalizeHwid(body.hwid);
+  const sig = String(body.sig ?? "").trim().toLowerCase();
+  const ts = Number(body.ts);
+  if (!env.TRIAL_HMAC_SECRET) {
+    return { ok: false, error: "trial_secret_not_configured", status: 500 };
+  }
+  if (!hwid || !sig || !Number.isFinite(ts)) {
+    return { ok: false, error: "invalid_trial_request", status: 400 };
+  }
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - ts) > 120) {
+    return { ok: false, error: "trial_request_expired", status: 401 };
+  }
+  const expected = await hmacHex(`${hwid}.${Math.trunc(ts)}`, env.TRIAL_HMAC_SECRET);
+  if (!timingSafeEqual(expected, sig)) {
+    return { ok: false, error: "invalid_trial_signature", status: 401 };
+  }
+  return { ok: true, hwid };
+}
+
+async function getTrialRecord(env, hwid, now) {
+  const existing = await env.LICENSES.get(`trial:${hwid}`, "json");
+  return existing ?? {
+    count: 0,
+    firstSeen: now,
+    lastSeen: now,
+    redeemedByEmail: null
+  };
+}
+
+async function putTrialRecord(env, hwid, record) {
+  await env.LICENSES.put(`trial:${hwid}`, JSON.stringify(record));
+}
+
+async function trialHasActiveLicense(env, trialRecord) {
+  const email = normalizeEmail(trialRecord.redeemedByEmail);
+  if (!email) {
+    return false;
+  }
+  const license = await env.LICENSES.get(email, "json");
+  return license?.status === "active";
+}
+
+async function hmacHex(payload, secret) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  return hex(signature);
 }
 
 function json(body, status = 200) {

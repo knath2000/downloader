@@ -56,6 +56,8 @@
 	A10059 /* DoodStreamExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20059; };
 	A10060 /* WebViewExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20060 /* WebViewExtractor.swift */; };
 	A10061 /* LicenseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20061 /* LicenseManager.swift */; };
+	A10064 /* HardwareID.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20064 /* HardwareID.swift */; };
+	A10065 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20065 /* KeychainStore.swift */; };
 	A10062 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20062; };
 		A10063 /* GlassComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20063; };
 /* End PBXBuildFile section */
@@ -121,6 +123,8 @@
 	A20059 /* DoodStreamExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoodStreamExtractor.swift; sourceTree = "<group>"; };
 	A20060 /* WebViewExtractor.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WebViewExtractor.swift; sourceTree = "<group>"; };
 	A20061 /* LicenseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseManager.swift; sourceTree = "<group>"; };
+	A20064 /* HardwareID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareID.swift; sourceTree = "<group>"; };
+	A20065 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 	A20062 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		A20063 /* GlassComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassComponents.swift; sourceTree = "<group>"; };
 	A30001 /* VidDL.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VidDL.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -175,6 +179,8 @@
 			A20021 /* DropHandler.swift */,
 			A20023 /* UpdateManager.swift */,
 			A20061 /* LicenseManager.swift */,
+			A20064 /* HardwareID.swift */,
+			A20065 /* KeychainStore.swift */,
 			A20062 /* Theme.swift */,
 				A20063 /* GlassComponents.swift */,
 			A20025 /* ProFeatureGate.swift */,
@@ -388,6 +394,8 @@
 			A10059 /* DoodStreamExtractor.swift in Sources */,
 			A10060 /* WebViewExtractor.swift in Sources */,
 			A10061 /* LicenseManager.swift in Sources */,
+			A10064 /* HardwareID.swift in Sources */,
+			A10065 /* KeychainStore.swift in Sources */,
 			A10062 /* Theme.swift in Sources */,
 				A10063 /* GlassComponents.swift in Sources */,
 		);

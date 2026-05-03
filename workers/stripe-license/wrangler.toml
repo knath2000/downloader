@@ -1,6 +1,8 @@
 name = "pmvdl-license"
 main = "src/index.js"
 compatibility_date = "2026-04-29"
+# Required secret, set outside git:
+# wrangler secret put TRIAL_HMAC_SECRET
 
 [[kv_namespaces]]
 binding = "LICENSES"

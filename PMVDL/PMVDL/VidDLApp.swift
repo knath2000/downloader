@@ -67,6 +67,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.setActivationPolicy(.regular)
         MegaManager.cleanupTempFiles()
         NotificationManager.shared.requestAuthorization()
+        Task { await LicenseManager.shared.bootstrap() }
 
         // Register app for NSAppleEventsDescriptor-based URL scheme
         NSAppleEventManager.shared().setEventHandler(self,

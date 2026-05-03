@@ -7,17 +7,11 @@ struct VideoProcessor {
     static var isAvailable: Bool { findFFmpeg() != nil }
 
     static func findFFmpeg() -> URL? {
-        for path in ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"] {
-            if FileManager.default.fileExists(atPath: path) { return URL(fileURLWithPath: path) }
-        }
-        return nil
+        ToolLocator.find("ffmpeg")
     }
 
     static func findFFprobe() -> URL? {
-        for path in ["/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe", "/usr/bin/ffprobe"] {
-            if FileManager.default.fileExists(atPath: path) { return URL(fileURLWithPath: path) }
-        }
-        return nil
+        ToolLocator.find("ffprobe")
     }
 
     static func verifyForUpload(_ file: URL) async throws {

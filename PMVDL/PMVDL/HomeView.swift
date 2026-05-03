@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 extension String {
     /// Extract a percentage value from a string ending with "XX%".
@@ -53,14 +54,11 @@ struct HomeView: View {
 
                 // ── HEADER ───────────────────────────────────────────────
                 HStack(alignment: .center, spacing: 10) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Theme.coral.opacity(0.2))
-                            .frame(width: 36, height: 36)
-                        Image(systemName: "photo.on.rectangle.angled")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(Theme.coral)
-                    }
+                    Image("brandLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 36, height: 36)
+                        .shadow(color: Theme.hotPink.opacity(0.25), radius: 6, y: 3)
                     .bounceOnAppear(delay: 0)
 
                     VStack(alignment: .leading, spacing: 2) {
@@ -92,6 +90,11 @@ struct HomeView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 10)
                 .scrollEntrance(delay: 0)
+
+                DependencySetupPanel(gdriveRemoteName: gdriveRemoteName)
+                    .padding(.horizontal)
+                    .padding(.bottom, 10)
+                    .scrollEntrance(delay: 0.03)
 
                 // ── CATEGORY ICON RAIL ───────────────────────────────────
                 CategoryIconRail(items: categoryItems) { item in
@@ -389,17 +392,17 @@ struct HomeView: View {
     private func batchDownloadAll() {
         let links = batchTargetLinks
         guard !links.isEmpty else { return }
-        guard LicenseManager.shared.canStartDownload(count: links.count) else {
-            onUpgradeRequired()
-            return
-        }
-        let jobs = links.map { url in
-            (url: url, title: title(for: url), displayName: displayName(for: url), uploadFileName: uploadFileName(for: url))
-        }
-        tracker.isBatchDownloading = true
-        loadProgress = "Downloading 0/\(links.count)…"
 
         Task {
+            guard await LicenseManager.shared.preflight(count: links.count) else {
+                onUpgradeRequired()
+                return
+            }
+            let jobs = links.map { url in
+                (url: url, title: title(for: url), displayName: displayName(for: url), uploadFileName: uploadFileName(for: url))
+            }
+            tracker.isBatchDownloading = true
+            loadProgress = "Downloading 0/\(links.count)…"
             let semaphore = DispatchSemaphore(value: 3)
 
             await withTaskGroup(of: (String, String, Bool, String?).self) { group in
@@ -424,7 +427,7 @@ struct HomeView: View {
                 for await (url, uploadFileName, ok, err) in group {
                     done += 1
                     if ok {
-                        LicenseManager.shared.recordSuccessfulDownload()
+                        await LicenseManager.shared.recordSuccessfulDownload()
                         tracker.localDownloads[url] = .done("Uploaded to \(megaRemotePath)")
                         if results.first(where: { $0.source?.mp4 == url })?.source != nil {
                             NotificationManager.shared.notifyUploadComplete(filename: uploadFileName, destination: megaRemotePath)
@@ -447,14 +450,9 @@ struct HomeView: View {
         }
         guard let result = result, var source = result.source else { return }
         let title = source.title ?? fileName(of: url)
-        if !LicenseManager.shared.canStartDownload() {
-            if !LicenseManager.shared.activationEmail.isEmpty {
-                _ = await LicenseManager.shared.refreshLicense()
-            }
-            guard LicenseManager.shared.canStartDownload() else {
-                onUpgradeRequired()
-                return
-            }
+        guard await LicenseManager.shared.preflight() else {
+            onUpgradeRequired()
+            return
         }
         let isHLS = url.contains(".m3u8")
         // A quality entry with kind .direct has a pre-resolved URL — don't treat it as a yt-dlp
@@ -571,7 +569,7 @@ struct HomeView: View {
                             DownloadQueue.shared.queue[idx].finalPath = destFile.path
                             DownloadQueue.shared.save()
                         }
-                        LicenseManager.shared.recordSuccessfulDownload()
+                        await LicenseManager.shared.recordSuccessfulDownload()
                         tracker.localDownloads[key] = .done("Saved to \(destFile.lastPathComponent)")
                         NSWorkspace.shared.activateFileViewerSelecting([destFile])
                         NotificationManager.shared.notifyUploadComplete(filename: destFile.lastPathComponent, destination: "Local")
@@ -611,7 +609,7 @@ struct HomeView: View {
                             try? FileManager.default.removeItem(at: mp4File)
                             HistoryManager.shared.recordCompletedUpload(url: url, source: source, destination: "Mega", remotePath: uploadResult.remotePath)
                             DownloadQueue.shared.remove(id: queueId)
-                            LicenseManager.shared.recordSuccessfulDownload()
+                            await LicenseManager.shared.recordSuccessfulDownload()
                             tracker.megaUploads[key] = .done("Uploaded to \(megaRemotePath)")
                             tracker.megaFilenames[key] = uploadResult.remotePath
                             NotificationManager.shared.notifyUploadComplete(filename: uploadedName, destination: megaRemotePath)
@@ -636,7 +634,7 @@ struct HomeView: View {
                         Task { @MainActor in
                             HistoryManager.shared.recordCompletedUpload(url: url, source: source, destination: "Mega", remotePath: uploadResult.remotePath)
                             DownloadQueue.shared.remove(id: queueId)
-                            LicenseManager.shared.recordSuccessfulDownload()
+                            await LicenseManager.shared.recordSuccessfulDownload()
                             tracker.megaUploads[key] = .done("Uploaded to \(megaRemotePath)")
                             tracker.megaFilenames[key] = uploadResult.remotePath
                             NotificationManager.shared.notifyUploadComplete(filename: uploadFileName(for: url), destination: megaRemotePath)
@@ -685,7 +683,7 @@ struct HomeView: View {
                                 DownloadQueue.shared.queue[idx].finalPath = destPath
                                 DownloadQueue.shared.save()
                             }
-                            LicenseManager.shared.recordSuccessfulDownload()
+                            await LicenseManager.shared.recordSuccessfulDownload()
                             tracker.gdriveUploads[key] = .done("Uploaded to GDrive")
                             NotificationManager.shared.notifyUploadComplete(filename: mp4File.lastPathComponent, destination: gdriveRemotePath)
                         }
@@ -716,7 +714,7 @@ struct HomeView: View {
                                 DownloadQueue.shared.queue[idx].finalPath = destPath
                                 DownloadQueue.shared.save()
                             }
-                            LicenseManager.shared.recordSuccessfulDownload()
+                            await LicenseManager.shared.recordSuccessfulDownload()
                             tracker.gdriveUploads[key] = .done("Uploaded to GDrive")
                             NotificationManager.shared.notifyUploadComplete(filename: uploadFileName(for: url), destination: gdriveRemotePath)
                         }
@@ -817,6 +815,160 @@ struct HomeView: View {
             DownloadQueue.shared.queue[idx].progress = lastPct
         }
         DownloadQueue.shared.save()
+    }
+}
+
+private struct DependencySetupPanel: View {
+    let gdriveRemoteName: String
+    @State private var checks: [DependencyCheck] = []
+
+    private var actionableChecks: [DependencyCheck] {
+        checks.filter { !$0.isReady }
+    }
+
+    var body: some View {
+        Group {
+            if !actionableChecks.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "wrench.and.screwdriver.fill")
+                            .foregroundStyle(Theme.amber)
+                        Text("Setup")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.textPrimary)
+                        Spacer()
+                        Button {
+                            Task { await refresh() }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Refresh setup checks")
+                    }
+
+                    VStack(spacing: 8) {
+                        ForEach(checks) { check in
+                            DependencyCheckRow(check: check)
+                        }
+                    }
+                }
+                .padding(12)
+                .glassCard(tint: Theme.amber.opacity(0.16), cornerRadius: 12)
+            }
+        }
+        .task {
+            await refresh()
+        }
+    }
+
+    private func refresh() async {
+        let remoteName = gdriveRemoteName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedRemoteName = remoteName.isEmpty ? "gdrive" : remoteName
+        let next = await Task.detached {
+            let ytDlpReady = ScraperEngine.isYTDLPAvailable
+            let ffmpegReady = VideoProcessor.findFFmpeg() != nil
+            let megaReady = MegaManager.isAvailable
+            let megaLoggedIn = megaReady && MegaManager.isLoggedIn
+            let rcloneReady = GDriveManager.isAvailable
+            let gdriveReady = rcloneReady && GDriveManager.isConfigured(remoteName: resolvedRemoteName)
+
+            return [
+                DependencyCheck(
+                    id: "yt-dlp",
+                    title: "yt-dlp",
+                    detail: "Broad site extraction, audio, and subtitles",
+                    status: ytDlpReady ? "Ready" : "Missing",
+                    command: ytDlpReady ? nil : "brew install yt-dlp",
+                    isReady: ytDlpReady
+                ),
+                DependencyCheck(
+                    id: "ffmpeg",
+                    title: "ffmpeg",
+                    detail: "HLS downloads and video processing",
+                    status: ffmpegReady ? "Ready" : "Missing",
+                    command: ffmpegReady ? nil : "brew install ffmpeg",
+                    isReady: ffmpegReady
+                ),
+                DependencyCheck(
+                    id: "mega",
+                    title: "MEGAcmd",
+                    detail: "Mega uploads",
+                    status: megaLoggedIn ? "Connected" : (megaReady ? "Sign in" : "Missing"),
+                    command: megaLoggedIn ? nil : (megaReady ? "mega-login" : "brew install --cask megacmd-app"),
+                    isReady: megaLoggedIn
+                ),
+                DependencyCheck(
+                    id: "gdrive",
+                    title: "Google Drive",
+                    detail: "rclone remote named \(resolvedRemoteName)",
+                    status: gdriveReady ? "Configured" : (rcloneReady ? "Configure" : "Missing"),
+                    command: gdriveReady ? nil : (rcloneReady ? "rclone config" : "brew install rclone"),
+                    isReady: gdriveReady
+                )
+            ]
+        }.value
+        checks = next
+    }
+}
+
+private struct DependencyCheck: Identifiable, Sendable {
+    let id: String
+    let title: String
+    let detail: String
+    let status: String
+    let command: String?
+    let isReady: Bool
+}
+
+private struct DependencyCheckRow: View {
+    let check: DependencyCheck
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: check.isReady ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                .foregroundStyle(check.isReady ? Theme.success : Theme.warning)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(check.title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text(check.status.uppercased())
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundStyle(check.isReady ? Theme.success : Theme.warning)
+                    Spacer()
+                }
+
+                Text(check.detail)
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textSecondary)
+
+                if let command = check.command {
+                    HStack(spacing: 6) {
+                        Text(command)
+                            .font(.system(size: 10, design: .monospaced).weight(.medium))
+                            .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Button {
+                            copy(command)
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Copy command")
+                    }
+                }
+            }
+        }
+        .padding(8)
+        .background(Theme.surface2.opacity(check.isReady ? 0.18 : 0.32), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func copy(_ command: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(command, forType: .string)
     }
 }
 

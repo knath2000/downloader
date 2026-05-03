@@ -40,8 +40,7 @@ struct DownloadVideoIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let allowed = await MainActor.run { LicenseManager.shared.canStartDownload() }
-        guard allowed else {
+        guard await LicenseManager.shared.preflight() else {
             throw IntentError.proRequired
         }
         let source = try await VideoScraper.extract(from: url.absoluteString)
@@ -49,7 +48,7 @@ struct DownloadVideoIntent: AppIntent {
             throw IntentError.noMp4Found
         }
         _ = try await MegaManager.upload(url: mp4, remotePath: remotePath, title: source.title) { _ in }
-        await MainActor.run { LicenseManager.shared.recordSuccessfulDownload() }
+        await LicenseManager.shared.recordSuccessfulDownload()
         return .result(dialog: "Downloaded and uploaded to Mega at \(remotePath)")
     }
 }

@@ -31,10 +31,7 @@ struct GDriveManager {
     }
 
     private static func findRclone() -> URL? {
-        for path in ["/usr/local/bin/rclone", "/opt/homebrew/bin/rclone", "/usr/bin/rclone"] {
-            if FileManager.default.fileExists(atPath: path) { return URL(fileURLWithPath: path) }
-        }
-        return nil
+        ToolLocator.find("rclone")
     }
 
     static func uploadLocalFile(_ localFile: URL, remoteName: String = "gdrive", remotePath: String = "VidDL/", onProgress: @escaping (ProgressEvent) -> Void) async throws {

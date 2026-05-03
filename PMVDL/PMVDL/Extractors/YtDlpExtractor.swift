@@ -231,10 +231,7 @@ struct YtDlpExtractor: VideoSiteExtractor {
     }
 
     private static func findYTDLPath() -> String? {
-        for path in ["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp", "/usr/bin/yt-dlp"] {
-            if FileManager.default.fileExists(atPath: path) { return path }
-        }
-        return nil
+        ToolLocator.find("yt-dlp")?.path
     }
 }
 

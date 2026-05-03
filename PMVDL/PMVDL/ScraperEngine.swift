@@ -1,5 +1,47 @@
 import Foundation
 
+struct ToolLocator {
+ static func find(_ executable: String, extraPaths: [String] = []) -> URL? {
+  for path in extraPaths where FileManager.default.isExecutableFile(atPath: path) {
+   return URL(fileURLWithPath: path)
+  }
+  for directory in searchDirectories() {
+   let path = (directory as NSString).appendingPathComponent(executable)
+   if FileManager.default.isExecutableFile(atPath: path) {
+    return URL(fileURLWithPath: path)
+   }
+  }
+  return nil
+ }
+
+ private static func searchDirectories() -> [String] {
+  let home = FileManager.default.homeDirectoryForCurrentUser.path
+  let envPaths = (ProcessInfo.processInfo.environment["PATH"] ?? "")
+   .split(separator: ":")
+   .map(String.init)
+
+  let defaults = [
+   "/opt/homebrew/bin",
+   "/opt/homebrew/sbin",
+   "/usr/local/bin",
+   "/usr/local/sbin",
+   "/opt/local/bin",
+   "/usr/bin",
+   "/bin",
+   "\(home)/.local/bin",
+   "\(home)/.nix-profile/bin",
+   "/nix/var/nix/profiles/default/bin"
+  ]
+
+  var seen = Set<String>()
+  return (envPaths + defaults).filter { path in
+   guard !path.isEmpty, !seen.contains(path) else { return false }
+   seen.insert(path)
+   return true
+  }
+ }
+}
+
 /// Protocol all site extractors must implement.
 protocol VideoSiteExtractor {
  static func supports(_ url: URL) -> Bool
@@ -35,15 +77,7 @@ struct ScraperEngine {
   throw VideoExtractorError.noVideoSources
  }
 
- static var isYTDLPAvailable: Bool {
-  ["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp"].contains {
-   FileManager.default.fileExists(atPath: $0)
-  }
- }
+ static var isYTDLPAvailable: Bool { ToolLocator.find("yt-dlp") != nil }
 
- static var isFFmpegAvailable: Bool {
-  ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"].contains {
-   FileManager.default.fileExists(atPath: $0)
-  }
- }
+ static var isFFmpegAvailable: Bool { VideoProcessor.findFFmpeg() != nil }
 }

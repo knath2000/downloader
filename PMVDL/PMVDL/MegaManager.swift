@@ -94,11 +94,7 @@ struct MegaManager {
     }
 
     private static func findMegaExec() -> URL? {
-        for p in ["/Applications/MEGAcmd.app/Contents/MacOS/mega-exec",
-                  "/usr/local/bin/mega-exec", "/opt/homebrew/bin/mega-exec"] {
-            if FileManager.default.fileExists(atPath: p) { return URL(fileURLWithPath: p) }
-        }
-        return nil
+        ToolLocator.find("mega-exec", extraPaths: ["/Applications/MEGAcmd.app/Contents/MacOS/mega-exec"])
     }
 
     private static func runMegaOutputCommand(_ megaExec: URL, arguments: [String], timeout: TimeInterval) async -> String? {

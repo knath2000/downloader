@@ -1151,9 +1151,21 @@ struct SettingsView: View {
     @State private var activateEmail = ""
     @State private var activationResult = ""
     @State private var isActivating = false
+    @State private var isCheckingDependencies = false
+    @State private var megaAvailable = MegaManager.isAvailable
+    @State private var megaLoggedIn = false
+    @State private var gdriveAvailable = GDriveManager.isAvailable
+    @State private var gdriveConfigured = false
+    @State private var ytDlpAvailable = ScraperEngine.isYTDLPAvailable
+    @State private var ffmpegAvailable = ScraperEngine.isFFmpegAvailable
 
     private var trimmedActivationEmail: String {
         activateEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var resolvedGDriveRemoteName: String {
+        let trimmed = gdriveRemoteName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "gdrive" : trimmed
     }
 
     var body: some View {
@@ -1163,51 +1175,41 @@ struct SettingsView: View {
                     Image(systemName: "gearshape.fill").foregroundStyle(Theme.accent)
                     Text("Settings").font(.headline).foregroundStyle(Theme.textPrimary)
                     Spacer()
+                    if isCheckingDependencies {
+                        ProgressView()
+                            .scaleEffect(0.65)
+                            .controlSize(.small)
+                    }
+                    Button {
+                        Task { await refreshDependencyChecks() }
+                    } label: {
+                        Label("Refresh Checks", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(isCheckingDependencies)
                 }
                 .padding(.horizontal)
                 .padding(.top, 8)
 
                 Form {
                     Section("Mega Upload") {
+                        megaSetupCard
                         TextField("Remote path", text: $megaRemotePath)
                             .textFieldStyle(.roundedBorder)
-                        HStack {
-                            if MegaManager.isAvailable {
-                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                                Text("Mega CLI installed").foregroundStyle(.secondary).font(.caption)
-                            } else {
-                                Text("brew install --cask megacmd-app")
-                                    .foregroundStyle(.orange).font(.caption)
-                            }
-                        }
-                        HStack {
-                            if MegaManager.isLoggedIn {
-                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                                Text("Logged in").foregroundStyle(.secondary).font(.caption)
-                            }
-                        }
+                        Text("VidDL uploads completed Mega transfers into this folder after MEGAcmd is installed and signed in.")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.textSecondary)
                     }
                     Section("Google Drive Upload") {
+                        gdriveSetupCard
                         TextField("Remote name", text: $gdriveRemoteName)
                             .textFieldStyle(.roundedBorder)
                         TextField("Remote path", text: $gdriveRemotePath)
                             .textFieldStyle(.roundedBorder)
-                        HStack {
-                            if GDriveManager.isAvailable {
-                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                                Text("rclone installed").foregroundStyle(.secondary).font(.caption)
-                            } else {
-                                Text("brew install rclone").foregroundStyle(.orange).font(.caption)
-                            }
-                        }
-                        HStack {
-                            if GDriveManager.isConfigured(remoteName: gdriveRemoteName) {
-                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                                Text("GDrive configured").foregroundStyle(.secondary).font(.caption)
-                            } else {
-                                Text("rclone config").foregroundStyle(.orange).font(.caption)
-                            }
-                        }
+                        Text("The remote name must match the Google Drive remote created in rclone.")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.textSecondary)
                     }
                     Section("Notifications") {
                         Toggle("Upload complete", isOn: Binding(
@@ -1251,22 +1253,22 @@ struct SettingsView: View {
                                 Text("Embedded").tag(1)
                             }
                         }
-                        HStack {
-                            if ScraperEngine.isYTDLPAvailable {
-                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                                Text("yt-dlp installed (audio + subs)").foregroundStyle(.secondary).font(.caption)
-                            } else {
-                                Text("brew install yt-dlp for audio/subs").foregroundStyle(.orange).font(.caption)
-                            }
-                        }
-                        HStack {
-                            if ScraperEngine.isFFmpegAvailable {
-                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                                Text("ffmpeg installed (HLS)").foregroundStyle(.secondary).font(.caption)
-                            } else {
-                                Text("brew install ffmpeg for HLS streams").foregroundStyle(.orange).font(.caption)
-                            }
-                        }
+                        SettingsDependencyInlineRow(
+                            title: "yt-dlp",
+                            readyText: "Installed for broad site extraction, audio, and subtitles",
+                            missingText: "Missing. Install it to improve extraction and audio/subtitle downloads.",
+                            command: "brew install yt-dlp",
+                            isReady: ytDlpAvailable,
+                            color: Theme.skyBlue
+                        )
+                        SettingsDependencyInlineRow(
+                            title: "ffmpeg",
+                            readyText: "Installed for HLS streams and video processing",
+                            missingText: "Missing. Install it for HLS streams and post-processing.",
+                            command: "brew install ffmpeg",
+                            isReady: ffmpegAvailable,
+                            color: Theme.coral
+                        )
                         Button("Open Downloads Folder") {
                             NSWorkspace.shared.open(DownloadManager.shared.downloadDir)
                         }.buttonStyle(.plain).font(.caption)
@@ -1368,6 +1370,257 @@ struct SettingsView: View {
                 .frame(maxHeight: .infinity)
             }
         }
+        .task {
+            await refreshDependencyChecks()
+        }
+        .onChange(of: gdriveRemoteName) { _, _ in
+            Task { await refreshDependencyChecks() }
+        }
+    }
+
+    @ViewBuilder
+    private var megaSetupCard: some View {
+        if megaLoggedIn {
+            SettingsDependencyCard(
+                icon: "cloud.fill",
+                title: "Mega upload is ready",
+                status: "Ready",
+                detail: "VidDL can find MEGAcmd and the current Mega session is signed in.",
+                command: nil,
+                footnote: "Uploads will use the remote path below.",
+                color: Theme.success,
+                isReady: true
+            )
+        } else if megaAvailable {
+            SettingsDependencyCard(
+                icon: "person.crop.circle.badge.exclamationmark",
+                title: "MEGAcmd is installed, but not signed in",
+                status: "Sign in required",
+                detail: "Mega uploads are disabled until MEGAcmd has an active Mega account session.",
+                command: "mega-login",
+                footnote: "Open MEGAcmd or run the command, sign in, then click Refresh Checks.",
+                color: Theme.warning,
+                isReady: false
+            )
+        } else {
+            SettingsDependencyCard(
+                icon: "exclamationmark.triangle.fill",
+                title: "MEGAcmd is missing",
+                status: "Missing",
+                detail: "Mega uploads are disabled because VidDL cannot find MEGAcmd or the mega-exec command on this Mac.",
+                command: "brew install --cask megacmd-app",
+                footnote: "Install MEGAcmd, open it once to sign in, then click Refresh Checks.",
+                color: Theme.error,
+                isReady: false
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var gdriveSetupCard: some View {
+        if gdriveConfigured {
+            SettingsDependencyCard(
+                icon: "externaldrive.fill.badge.checkmark",
+                title: "Google Drive upload is ready",
+                status: "Configured",
+                detail: "VidDL can find rclone and the \(resolvedGDriveRemoteName) remote.",
+                command: nil,
+                footnote: "Uploads will use the remote path below.",
+                color: Theme.success,
+                isReady: true
+            )
+        } else if gdriveAvailable {
+            SettingsDependencyCard(
+                icon: "externaldrive.badge.exclamationmark",
+                title: "Google Drive remote is not configured",
+                status: "Configure remote",
+                detail: "rclone is installed, but VidDL cannot find a remote named \(resolvedGDriveRemoteName).",
+                command: "rclone config",
+                footnote: "Create a Google Drive remote named exactly \(resolvedGDriveRemoteName), then click Refresh Checks.",
+                color: Theme.warning,
+                isReady: false
+            )
+        } else {
+            SettingsDependencyCard(
+                icon: "externaldrive.badge.xmark",
+                title: "rclone is missing",
+                status: "Missing",
+                detail: "Google Drive uploads are disabled because VidDL cannot find the rclone command on this Mac.",
+                command: "brew install rclone",
+                footnote: "Install rclone, create a Google Drive remote named \(resolvedGDriveRemoteName), then click Refresh Checks.",
+                color: Theme.error,
+                isReady: false
+            )
+        }
+    }
+
+    private func refreshDependencyChecks() async {
+        if isCheckingDependencies { return }
+        isCheckingDependencies = true
+        let remoteName = resolvedGDriveRemoteName
+        let snapshot = await Task.detached {
+            let megaReady = MegaManager.isAvailable
+            let rcloneReady = GDriveManager.isAvailable
+            return SettingsDependencySnapshot(
+                megaAvailable: megaReady,
+                megaLoggedIn: megaReady && MegaManager.isLoggedIn,
+                gdriveAvailable: rcloneReady,
+                gdriveConfigured: rcloneReady && GDriveManager.isConfigured(remoteName: remoteName),
+                ytDlpAvailable: ScraperEngine.isYTDLPAvailable,
+                ffmpegAvailable: ScraperEngine.isFFmpegAvailable
+            )
+        }.value
+        megaAvailable = snapshot.megaAvailable
+        megaLoggedIn = snapshot.megaLoggedIn
+        gdriveAvailable = snapshot.gdriveAvailable
+        gdriveConfigured = snapshot.gdriveConfigured
+        ytDlpAvailable = snapshot.ytDlpAvailable
+        ffmpegAvailable = snapshot.ffmpegAvailable
+        isCheckingDependencies = false
+    }
+}
+
+private struct SettingsDependencySnapshot: Sendable {
+    let megaAvailable: Bool
+    let megaLoggedIn: Bool
+    let gdriveAvailable: Bool
+    let gdriveConfigured: Bool
+    let ytDlpAvailable: Bool
+    let ffmpegAvailable: Bool
+}
+
+private struct SettingsDependencyCard: View {
+    let icon: String
+    let title: String
+    let status: String
+    let detail: String
+    let command: String?
+    let footnote: String
+    let color: Color
+    let isReady: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 9)
+                        .fill(color.opacity(isReady ? 0.18 : 0.24))
+                        .frame(width: 34, height: 34)
+                    Image(systemName: icon)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(color)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(2)
+                        Spacer(minLength: 8)
+                        Text(status.uppercased())
+                            .font(.system(size: 9, weight: .black))
+                            .foregroundStyle(color)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(color.opacity(0.16), in: Capsule())
+                    }
+
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            if let command {
+                SettingsCommandRow(command: command)
+            }
+
+            Text(footnote)
+                .font(.caption2)
+                .foregroundStyle(Theme.textSecondary.opacity(0.85))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .glassCard(tint: color.opacity(isReady ? 0.10 : 0.18), cornerRadius: 12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(color.opacity(isReady ? 0.25 : 0.45), lineWidth: 1)
+        )
+    }
+}
+
+private struct SettingsDependencyInlineRow: View {
+    let title: String
+    let readyText: String
+    let missingText: String
+    let command: String
+    let isReady: Bool
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: isReady ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                    .foregroundStyle(isReady ? Theme.success : Theme.warning)
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(isReady ? "READY" : "MISSING")
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundStyle(isReady ? Theme.success : Theme.warning)
+                Spacer()
+            }
+
+            Text(isReady ? readyText : missingText)
+                .font(.caption2)
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !isReady {
+                SettingsCommandRow(command: command)
+            }
+        }
+        .padding(10)
+        .background(Theme.surface2.opacity(0.22), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke((isReady ? Theme.success : color).opacity(0.25), lineWidth: 1)
+        )
+    }
+}
+
+private struct SettingsCommandRow: View {
+    let command: String
+    @State private var copied = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(command)
+                .font(.system(size: 11, design: .monospaced).weight(.semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+
+            Spacer(minLength: 8)
+
+            Button {
+                ClipboardManager.copy(command)
+                copied = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                    copied = false
+                }
+            } label: {
+                Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

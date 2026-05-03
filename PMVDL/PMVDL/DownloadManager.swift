@@ -938,10 +938,7 @@ class DownloadManager: ObservableObject {
     }
 
     private func findYTDLPath() -> String? {
-        for p in ["/opt/homebrew/bin/yt-dlp", "/usr/local/bin/yt-dlp", "/usr/bin/yt-dlp"] {
-            if FileManager.default.fileExists(atPath: p) { return p }
-        }
-        return nil
+        ToolLocator.find("yt-dlp")?.path
     }
 
     /// Reveal downloaded file in Finder.

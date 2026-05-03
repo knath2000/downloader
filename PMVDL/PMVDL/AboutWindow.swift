@@ -21,7 +21,7 @@ final class AboutWindowController: NSWindowController {
 
         let contentView = AboutView()
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 450),
             styleMask: [.closable, .titled, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -46,10 +46,10 @@ struct AboutView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Icon + title
-            Image(systemName: "film")
-                .resizable().scaledToFit()
+            Image("brandLogo")
+                .resizable()
+                .scaledToFit()
                 .frame(width: 64, height: 64)
-                .foregroundStyle(.blue)
                 .padding(.top, 16)
 
             Text("VidDL").font(.title.bold())
@@ -97,6 +97,13 @@ struct AboutView: View {
             .padding(.horizontal)
 
             Spacer()
+
+            Text("VidDL sends a per-Mac hardware identifier to enforce the free download limit and Pro license redemption.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 6)
 
             // Footer
             Text("Built for macOS 14.0+")
