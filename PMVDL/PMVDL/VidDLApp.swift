@@ -19,7 +19,6 @@ struct VidDLApp: App {
                 Button("Home") { appState.select(.home) }.keyboardShortcut("1", modifiers: .command)
                 Button("Library") { appState.select(.library) }.keyboardShortcut("2", modifiers: .command)
                 Button("Downloads") { appState.select(.downloads) }.keyboardShortcut("3", modifiers: .command)
-                Button("Transfers") { appState.select(.transfers) }.keyboardShortcut("4", modifiers: .command)
                 Button("Settings") { appState.select(.settings) }.keyboardShortcut(",", modifiers: .command)
             }
             CommandMenu("Downloads") {
@@ -27,6 +26,8 @@ struct VidDLApp: App {
             }
             CommandGroup(replacing: .appInfo) {
                 Button("About VidDL") { showAboutWindow() }
+                Button("Check for Updates...") { UpdateManager.shared.checkForUpdates() }
+                    .disabled(!UpdateManager.shared.isAvailable)
             }
         }
 
@@ -125,12 +126,6 @@ struct MenuBarQuickView: View {
             Button("Extract: " + (clip as NSString).lastPathComponent) {
                 appState.showMainWindow()
             }
-            Divider()
-        }
-
-        if TransferManager.shared.isActive {
-            Text("\(TransferManager.shared.transfers.count) uploading...")
-                .foregroundStyle(.secondary)
             Divider()
         }
 

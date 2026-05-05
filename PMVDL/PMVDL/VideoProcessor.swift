@@ -75,28 +75,16 @@ struct VideoProcessor {
     }
 
     private static func runTool(_ executable: URL, arguments: [String], timeout: TimeInterval) async throws -> (status: Int32, stdout: String, stderr: String) {
-        let process = Process()
-        process.executableURL = executable
-        process.arguments = arguments
-        let outPipe = Pipe()
-        let errPipe = Pipe()
-        process.standardOutput = outPipe
-        process.standardError = errPipe
-        try process.run()
-
-        let started = Date()
-        while process.isRunning {
-            if Date().timeIntervalSince(started) > timeout {
-                process.terminate()
-                process.waitUntilExit()
-                throw VideoValidationError.invalidFile("Video verification timed out.")
-            }
-            try await Task.sleep(for: .milliseconds(200))
+        do {
+            let result = try await SubprocessRunner.run(
+                executable: executable,
+                arguments: arguments,
+                timeout: timeout
+            )
+            return (result.exitStatus, result.stdout, result.stderr)
+        } catch SubprocessRunnerError.timedOut {
+            throw VideoValidationError.invalidFile("Video verification timed out.")
         }
-
-        let stdout = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let stderr = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        return (process.terminationStatus, stdout, stderr)
     }
 
     private static func cleanValidationMessage(_ message: String) -> String {
@@ -163,46 +151,29 @@ struct VideoProcessor {
         args.append(contentsOf: operation.ffmpegArgs)
         args.append(output.path)
 
-        let process = Process()
-        process.executableURL = ffmpeg
-        process.arguments = args
-        process.standardOutput = Pipe()
-
-        let errPipe = Pipe()
-        process.standardError = errPipe
-
-        // Parse progress from stderr
-        errPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if data.isEmpty { errPipe.fileHandleForReading.readabilityHandler = nil; return }
-            if let str = String(data: data, encoding: .utf8) {
-                // ffmpeg time=00:01:23.45 → extract progress
-                if let timeMatch = try? NSRegularExpression(
-                    pattern: "time=(\\d+):(\\d+):(\\d+\\.\\d+)"
-                ).firstMatch(in: str, range: NSRange(str.startIndex..<str.endIndex, in: str)),
-                   let timeRange = Range(timeMatch.range, in: str) {
-                    let timeStr = str[timeRange].dropFirst(5)
-                    onProgress("Processing… \(timeStr)")
+        let result: SubprocessResult
+        do {
+            result = try await SubprocessRunner.run(
+                executable: ffmpeg,
+                arguments: args,
+                timeout: 7200,
+                stderrHandler: { text in
+                    if let timeMatch = try? NSRegularExpression(
+                        pattern: "time=(\\d+):(\\d+):(\\d+\\.\\d+)"
+                    ).firstMatch(in: text, range: NSRange(text.startIndex..<text.endIndex, in: text)),
+                       let timeRange = Range(timeMatch.range, in: text) {
+                        let timeStr = text[timeRange].dropFirst(5)
+                        onProgress("Processing… \(timeStr)")
+                    }
                 }
-            }
+            )
+        } catch SubprocessRunnerError.timedOut {
+            throw ProcessorError.timedOut
         }
 
-        try process.run()
-
-        let start = Date()
-        while process.isRunning {
-            if Date().timeIntervalSince(start) > 7200 {
-                process.terminate()
-                throw ProcessorError.timedOut
-            }
-            try await Task.sleep(for: .milliseconds(500))
-        }
-
-        errPipe.fileHandleForReading.readabilityHandler = nil
-
-        guard process.terminationStatus == 0,
+        guard result.exitStatus == 0,
               FileManager.default.fileExists(atPath: output.path) else {
-            throw ProcessorError.processFailed("Exit code \(process.terminationStatus)")
+            throw ProcessorError.processFailed("Exit code \(result.exitStatus)")
         }
 
         onProgress("Processing complete")

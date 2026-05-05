@@ -45,9 +45,25 @@ class VideoLibrary: ObservableObject {
     }
 
     func addIfNew(_ item: LibraryItem) {
-        if !items.contains(where: { $0.url == item.url }) {
-            add(item)
+        let merged = Self.mergedLibraryItems(existing: items, incoming: item)
+        guard merged != items else { return }
+        items = merged
+        save()
+    }
+
+    nonisolated static func mergedLibraryItems(existing: [LibraryItem], incoming: LibraryItem) -> [LibraryItem] {
+        var copy = existing
+        if let idx = copy.firstIndex(where: { $0.url == incoming.url }) {
+            if (copy[idx].thumbnailURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true),
+               let thumbnailURL = incoming.thumbnailURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !thumbnailURL.isEmpty {
+                copy[idx].thumbnailURL = thumbnailURL
+            }
+            return copy
         }
+
+        copy.insert(incoming, at: 0)
+        return copy
     }
 
     func remove(_ item: LibraryItem) {
@@ -58,6 +74,22 @@ class VideoLibrary: ObservableObject {
     func updateRemotePaths(for item: LibraryItem, cloud: CloudTarget, path: String) {
         guard let idx = items.firstIndex(where: { $0.id == item.id }) else { return }
         items[idx].remotePaths[cloud.rawValue] = path
+        save()
+    }
+
+    func updateThumbnailURL(for item: LibraryItem, thumbnailURL: String) {
+        updateThumbnailURL(forID: item.id, thumbnailURL: thumbnailURL)
+    }
+
+    func updateThumbnailURL(forID id: UUID, thumbnailURL: String) {
+        let normalized = thumbnailURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty,
+              let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        guard items[idx].thumbnailURL != normalized else { return }
+
+        var copy = items
+        copy[idx].thumbnailURL = normalized
+        items = copy
         save()
     }
 }

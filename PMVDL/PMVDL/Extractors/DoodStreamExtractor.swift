@@ -4,7 +4,12 @@ import Foundation
 /// DoodStream exposes a direct MP4 URL via a JavaScript player on the page.
 /// The video URL can be found via a p.a.c.k.e.r unpack or by direct JS config patterns.
 struct DoodStreamExtractor: VideoSiteExtractor {
-  private static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+  typealias PlaymogoPassResolver = (URL, URL) async throws -> String
+
+  private struct PageFetchResult {
+    let html: String
+    let finalURL: URL
+  }
 
   static func supports(_ url: URL) -> Bool {
     guard let host = url.host()?.lowercased() else { return false }
@@ -14,11 +19,28 @@ struct DoodStreamExtractor: VideoSiteExtractor {
       || host.hasSuffix(".doodstream.com") || host.hasSuffix(".doodstream.org") || host.hasSuffix(".dood.wf")
       || host.hasSuffix(".dood.pm") || host.hasSuffix(".dood.to") || host.hasSuffix(".dood.ws")
       || host.hasSuffix(".dood.one") || host.hasSuffix(".dood.watch") || host.hasSuffix(".dood.la")
-      || host.hasSuffix(".dood.sh") || host == "www.playmogo.com"
+      || host.hasSuffix(".dood.sh") || isPlaymogoHost(host)
   }
 
   static func extract(fromHTML html: String, url: URL) async throws -> VideoSource {
-    // 1. Convert /d/ to /e/ to ensure we hit the embed player
+    try await extract(
+      fromHTML: html,
+      url: url,
+      resolvedPageURL: nil,
+      playmogoPassResolver: nil,
+      randomSuffix: makeRandomPlaymogoSuffix,
+      nowMilliseconds: currentMilliseconds
+    )
+  }
+
+  static func extract(
+    fromHTML html: String,
+    url: URL,
+    resolvedPageURL: URL?,
+    playmogoPassResolver: PlaymogoPassResolver?,
+    randomSuffix: @escaping () -> String,
+    nowMilliseconds: @escaping () -> String
+  ) async throws -> VideoSource {
     var targetUrl = url
     if targetUrl.path.starts(with: "/d/") {
       var comps = URLComponents(url: targetUrl, resolvingAgainstBaseURL: false)
@@ -28,109 +50,84 @@ struct DoodStreamExtractor: VideoSiteExtractor {
       }
     }
 
+    let fetched: PageFetchResult
+    if html.isEmpty {
+      fetched = try await fetchPageResult(url: targetUrl)
+    } else {
+      fetched = PageFetchResult(html: html, finalURL: resolvedPageURL ?? targetUrl)
+    }
+
+    targetUrl = resolvedPageURL ?? fetched.finalURL
     let host = targetUrl.host()?.lowercased() ?? ""
-    var title = ""
-    var thumbnail: String? = nil
+    let isPlaymogo = isPlaymogoHost(host)
+    let pageHtml = fetched.html
+    let title = extractTitle(from: pageHtml) ?? (isPlaymogo ? "Playmogo Video" : "DoodStream Video")
+    let thumbnail = extractThumbnail(from: pageHtml)
     var finalVideoUrl: String?
 
-    if host.contains("playmogo") {
-      print("Playmogo detected. Trying WebView extraction first...")
+    if isPlaymogo {
+      Log.extractionDood.debug("Playmogo detected. Trying static pass_md5 extraction first...")
+      finalVideoUrl = await findPlaymogoVideoUrl(
+        in: pageHtml,
+        pageURL: targetUrl,
+        passResolver: playmogoPassResolver ?? fetchPlaymogoPassBase,
+        randomSuffix: randomSuffix,
+        nowMilliseconds: nowMilliseconds
+      )
 
-      if let pageHtml = try? await fetchPage(url: targetUrl) {
-        title = extractTitle(from: pageHtml) ?? "Playmogo Video"
-        thumbnail = extractThumbnail(from: pageHtml)
-      } else {
-        title = "Playmogo Video"
-      }
-
-      do {
-        finalVideoUrl = try await WebViewExtractor.shared.extractVideoUrl(from: targetUrl, timeout: 90)
-        if let url = finalVideoUrl, isValidCandidate(url) {
-          print("[DoodStream] WebView extracted candidate URL: \(url)")
-        } else if let url = finalVideoUrl {
-          print("[DoodStream] Warning: WebView extracted invalid URL, rejecting: \(url)")
+      if finalVideoUrl == nil {
+        Log.extractionDood.debug("Static Playmogo extraction failed. Falling back to WebViewExtractor...")
+        do {
+          finalVideoUrl = try await WebViewExtractor.shared.extractVideoUrl(from: targetUrl, timeout: 90)
+          if let url = finalVideoUrl, isValidCandidate(url) {
+            Log.extractionDood.debug("WebView extracted candidate URL: \(url, privacy: .public)")
+          } else if let url = finalVideoUrl {
+            Log.extractionDood.error("WebView extracted invalid URL, rejecting: \(url, privacy: .public)")
+            finalVideoUrl = nil
+          }
+        } catch {
+          Log.extractionDood.error("WebView extraction failed: \(error.localizedDescription, privacy: .public)")
           finalVideoUrl = nil
         }
-      } catch {
-        print("[DoodStream] WebView extraction failed: \(error)")
-        finalVideoUrl = nil
       }
 
-      if finalVideoUrl == nil, let pageHtml = try? await fetchPage(url: targetUrl) {
-        if title.isEmpty {
-          title = extractTitle(from: pageHtml) ?? "Playmogo Video"
-        }
-        if thumbnail == nil {
-          thumbnail = extractThumbnail(from: pageHtml)
-        }
-
-        if let foundUrl = findDoodOrCloudCandidate(in: pageHtml) {
-          finalVideoUrl = foundUrl
-          print("[DoodStream] Found static helper candidate: \(foundUrl)")
-        }
-
-        if finalVideoUrl == nil {
-          if let foundUrl = findVideoUrl(in: pageHtml) ?? findVideoUrlViaPacker(pageHtml) {
-            if isValidCandidate(foundUrl) {
-              finalVideoUrl = foundUrl
-              print("[DoodStream] Found valid dood.video URL via standard extraction: \(foundUrl)")
-            } else {
-              print("[DoodStream] Skipping invalid URL from standard extraction: \(foundUrl)")
-            }
-          }
-        }
-      }
-      
-    } else {
-      // Standard DoodStream domains
-      let pageHtml = html.isEmpty ? ((try? await fetchPage(url: targetUrl)) ?? "") : html
-      title = extractTitle(from: pageHtml) ?? "DoodStream Video"
-      thumbnail = extractThumbnail(from: pageHtml)
-
-      if !pageHtml.isEmpty {
-        finalVideoUrl = findVideoUrl(in: pageHtml) ?? findVideoUrlViaPacker(pageHtml)
+      if finalVideoUrl == nil, let foundUrl = findDoodOrCloudCandidate(in: pageHtml) {
+        finalVideoUrl = foundUrl
+        Log.extractionDood.debug("Found static helper candidate: \(foundUrl, privacy: .public)")
       }
 
       if finalVideoUrl == nil {
-        print("Static extraction failed. Falling back to WebViewExtractor...")
-        finalVideoUrl = try? await WebViewExtractor.shared.extractVideoUrl(from: targetUrl, timeout: 25)
-
-        // Validate extracted URL
-        if let url = finalVideoUrl, !url.contains("dood.video") {
-            print("[DoodStream] Warning: Fallback extracted URL does not contain 'dood.video': \(url)")
-        }
-      }
-    }
-
-    // Additional fallback: If still no valid URL for Playmogo, try URL resolution on any candidate
-    if finalVideoUrl == nil && host.contains("playmogo") {
-      print("[DoodStream] All extraction failed for Playmogo, trying URL resolution on page HTML...")
-      if let htmlContent = try? await fetchPage(url: targetUrl) {
-        if let candidateUrl = findDoodOrCloudCandidate(in: htmlContent) {
-          print("[DoodStream] Found candidate URL: \(candidateUrl)")
-          if let resolvedUrl = await resolveUrl(candidateUrl) {
-            if isValidFinalVideoUrl(resolvedUrl) {
-              finalVideoUrl = resolvedUrl
-              print("[DoodStream] Resolved to valid dood.video URL: \(resolvedUrl)")
-            }
+        if let foundUrl = findVideoUrl(in: pageHtml) ?? findVideoUrlViaPacker(pageHtml) {
+          if isValidCandidate(foundUrl) {
+            finalVideoUrl = foundUrl
+            Log.extractionDood.info("Found valid Playmogo-compatible URL via standard extraction: \(foundUrl, privacy: .public)")
+          } else {
+            Log.extractionDood.debug("Skipping invalid URL from standard extraction: \(foundUrl, privacy: .public)")
           }
         }
+      }
+    } else {
+      finalVideoUrl = findVideoUrl(in: pageHtml) ?? findVideoUrlViaPacker(pageHtml)
+
+      if finalVideoUrl == nil {
+        Log.extractionDood.debug("Static extraction failed. Falling back to WebViewExtractor...")
+        finalVideoUrl = try? await WebViewExtractor.shared.extractVideoUrl(from: targetUrl, timeout: 25)
       }
     }
 
     // If we have a cloudatacdn.com URL for normal DoodStream, try to resolve it.
     // Playmogo must keep the CDN URL because the dood.video redirect resolves to loopback locally.
-    if let currentUrl = finalVideoUrl, currentUrl.contains("cloudatacdn.com"), !host.contains("playmogo") {
-      print("[DoodStream] Detected intermediate CDN URL, attempting to resolve final URL...")
+    if let currentUrl = finalVideoUrl, currentUrl.contains("cloudatacdn.com"), !isPlaymogo {
+      Log.extractionDood.debug("Detected intermediate CDN URL, attempting to resolve final URL...")
       if let resolvedUrl = await resolveUrl(currentUrl) {
         if isValidFinalVideoUrl(resolvedUrl) {
           finalVideoUrl = resolvedUrl
-          print("[DoodStream] Resolved to final dood.video URL: \(resolvedUrl)")
+          Log.extractionDood.info("Resolved to final dood.video URL: \(resolvedUrl, privacy: .public)")
         } else {
-          print("[DoodStream] Resolved URL is not a dood.video URL: \(resolvedUrl)")
+          Log.extractionDood.error("Resolved URL is not a dood.video URL: \(resolvedUrl, privacy: .public)")
         }
       } else {
-        print("[DoodStream] Failed to resolve intermediate URL")
+        Log.extractionDood.error("Failed to resolve intermediate URL")
       }
     }
 
@@ -138,25 +135,25 @@ struct DoodStreamExtractor: VideoSiteExtractor {
       throw DoodStreamError.noVideoSource
     }
 
-    let playmogoHeaders = host.contains("playmogo") ? [
+    let playmogoHeaders = isPlaymogo ? [
       "Referer": targetUrl.absoluteString,
-      "User-Agent": userAgent
+      "User-Agent": NetworkConstants.chromeUserAgent
     ] : nil
 
-    if host.contains("playmogo"), !isFullCloudMediaUrl(videoUrl) {
-      print("[DoodStream] ERROR: Final Playmogo URL is not a playable CDN URL: \(videoUrl)")
+    if isPlaymogo, !isFullCloudMediaUrl(videoUrl) {
+      Log.extractionDood.error("Final Playmogo URL is not a playable CDN URL: \(videoUrl, privacy: .public)")
       throw DoodStreamError.noVideoSource
     }
 
-    if !host.contains("playmogo"), !isValidFinalVideoUrl(videoUrl) {
-      print("[DoodStream] ERROR: Final URL does not contain a playable dood.video URL: \(videoUrl)")
+    if !isPlaymogo, !isValidFinalVideoUrl(videoUrl) {
+      Log.extractionDood.error("Final URL does not contain a playable dood.video URL: \(videoUrl, privacy: .public)")
       throw DoodStreamError.noVideoSource
     }
 
     // For Playmogo the URL requires Referer headers; only expose it via the hls quality entry
     // (which carries headers) so that batch-download paths that skip per-URL headers don't
     // silently download garbage from the CDN redirect.
-    let mp4Field: String? = host.contains("playmogo") ? nil : videoUrl
+    let mp4Field: String? = isPlaymogo ? nil : videoUrl
     return VideoSource(
       mp4: mp4Field,
       hls: [VideoSource.Quality(
@@ -168,15 +165,17 @@ struct DoodStreamExtractor: VideoSiteExtractor {
       )],
       title: title,
       thumbnail: thumbnail,
-      siteName: host.contains("playmogo") ? "Playmogo" : "DoodStream"
+      siteName: isPlaymogo ? "Playmogo" : "DoodStream"
     )
   }
 
   // MARK: - Page Fetching
 
-  private static func fetchPage(url: URL) async throws -> String {
+  private static func fetchPageResult(url: URL) async throws -> PageFetchResult {
     var request = URLRequest(url: url)
-    request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+    request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
+    request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
+    request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
     request.timeoutInterval = 15
 
     let (data, response) = try await URLSession.shared.data(for: request)
@@ -185,7 +184,12 @@ struct DoodStreamExtractor: VideoSiteExtractor {
     let html = String(data: data, encoding: .utf8) else {
       throw DoodStreamError.networkError
     }
-    return html
+
+    return PageFetchResult(html: html, finalURL: httpResponse.url ?? url)
+  }
+
+  private static func fetchPage(url: URL) async throws -> String {
+    try await fetchPageResult(url: url).html
   }
 
   // MARK: - Metadata
@@ -214,6 +218,72 @@ struct DoodStreamExtractor: VideoSiteExtractor {
   }
 
   // MARK: - Video URL extraction
+
+  private static func isPlaymogoHost(_ host: String) -> Bool {
+    host == "playmogo.com" ||
+    host == "www.playmogo.com" ||
+    host.hasSuffix(".playmogo.com")
+  }
+
+  private static func findPlaymogoVideoUrl(
+    in html: String,
+    pageURL: URL,
+    passResolver: PlaymogoPassResolver,
+    randomSuffix: () -> String,
+    nowMilliseconds: () -> String
+  ) async -> String? {
+    guard let passPath = extractJsStringValue(pattern: #"\$\.get\(\s*['"]([^'"]+)['"]"#, in: html),
+          let passURL = URL(string: passPath, relativeTo: pageURL)?.absoluteURL,
+          let tokenPrefix = extractPlaymogoTokenPrefix(from: html) else {
+      return nil
+    }
+
+    do {
+      let base = try await passResolver(passURL, pageURL)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !base.isEmpty else { return nil }
+
+      let finalURL = base + randomSuffix() + tokenPrefix + nowMilliseconds()
+      guard isFullCloudMediaUrl(finalURL) else { return nil }
+      return finalURL
+    } catch {
+      Log.extractionDood.error("Playmogo pass_md5 fetch failed: \(error.localizedDescription, privacy: .public)")
+      return nil
+    }
+  }
+
+  private static func extractPlaymogoTokenPrefix(from html: String) -> String? {
+    extractJsStringValue(
+      pattern: #"return\s+a\s*\+\s*['"]([^'"]+)['"]\s*\+\s*Date\.now\(\)"#,
+      in: html
+    )
+  }
+
+  private static func fetchPlaymogoPassBase(passURL: URL, referer: URL) async throws -> String {
+    var request = URLRequest(url: passURL)
+    request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
+    request.setValue(referer.absoluteString, forHTTPHeaderField: "Referer")
+    request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+    request.setValue("*/*", forHTTPHeaderField: "Accept")
+    request.timeoutInterval = 15
+
+    let (data, response) = try await URLSession.shared.data(for: request)
+    guard let httpResponse = response as? HTTPURLResponse,
+          (200...299).contains(httpResponse.statusCode),
+          let body = String(data: data, encoding: .utf8) else {
+      throw DoodStreamError.networkError
+    }
+    return body
+  }
+
+  private static func makeRandomPlaymogoSuffix() -> String {
+    let alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+    return String((0..<10).compactMap { _ in alphabet.randomElement() })
+  }
+
+  private static func currentMilliseconds() -> String {
+    String(Int(Date().timeIntervalSince1970 * 1000))
+  }
 
    /// Try direct JS config patterns first (fastest path).
   private static func findVideoUrl(in html: String) -> String? {
@@ -477,19 +547,19 @@ struct DoodStreamExtractor: VideoSiteExtractor {
     var request = URLRequest(url: urlObj)
     request.httpMethod = "HEAD"
     request.timeoutInterval = 30
-    request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15", forHTTPHeaderField: "User-Agent")
+    request.setValue(NetworkConstants.safariUserAgent, forHTTPHeaderField: "User-Agent")
 
     do {
       let (_, response) = try await dataWithoutFollowingRedirects(for: request)
       if let httpResponse = response as? HTTPURLResponse {
         if let location = httpResponse.value(forHTTPHeaderField: "Location") {
-          print("[DoodStream] Redirect location: \(location)")
+          Log.extractionDood.debug("Redirect location: \(location, privacy: .public)")
           if isValidFinalVideoUrl(location) {
             return location
           }
         }
         if !(300...399).contains(httpResponse.statusCode) {
-          print("[DoodStream] HEAD did not return redirect status \(httpResponse.statusCode), trying GET...")
+          Log.extractionDood.debug("HEAD did not return redirect status \(httpResponse.statusCode, privacy: .public), trying GET...")
           return await resolveUrlWithGet(url: url)
         }
       }
@@ -497,7 +567,7 @@ struct DoodStreamExtractor: VideoSiteExtractor {
       if let finalUrl = finalUrlFromError(error) {
         return finalUrl
       }
-      print("[DoodStream] Error resolving URL with HEAD: \(error)")
+      Log.extractionDood.error("Error resolving URL with HEAD: \(error.localizedDescription, privacy: .public)")
       // Try GET as fallback
       return await resolveUrlWithGet(url: url)
     }
@@ -512,13 +582,13 @@ struct DoodStreamExtractor: VideoSiteExtractor {
     var request = URLRequest(url: urlObj)
     request.httpMethod = "GET"
     request.timeoutInterval = 30
-    request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15", forHTTPHeaderField: "User-Agent")
+    request.setValue(NetworkConstants.safariUserAgent, forHTTPHeaderField: "User-Agent")
 
     do {
       let (_, response) = try await dataWithoutFollowingRedirects(for: request)
       if let httpResponse = response as? HTTPURLResponse {
         if let location = httpResponse.value(forHTTPHeaderField: "Location") {
-          print("[DoodStream] GET redirect location: \(location)")
+          Log.extractionDood.debug("GET redirect location: \(location, privacy: .public)")
           if isValidFinalVideoUrl(location) {
             return location
           }
@@ -528,7 +598,7 @@ struct DoodStreamExtractor: VideoSiteExtractor {
       if let finalUrl = finalUrlFromError(error) {
         return finalUrl
       }
-      print("[DoodStream] Error resolving URL with GET: \(error)")
+      Log.extractionDood.error("Error resolving URL with GET: \(error.localizedDescription, privacy: .public)")
     }
     return nil
   }

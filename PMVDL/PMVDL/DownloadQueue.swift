@@ -35,12 +35,40 @@ class DownloadQueue: ObservableObject {
         }
     }
 
-    func add(url: String, quality: String, targetCloud: CloudTarget = .mega, displayTitle: String? = nil) -> UUID {
-        let item = DownloadQueueItem(url: url, quality: quality, targetCloud: targetCloud, displayTitle: displayTitle)
+    func add(
+        url: String,
+        quality: String,
+        targetCloud: CloudTarget = .mega,
+        displayTitle: String? = nil,
+        retryPayload: DownloadRetryPayload? = nil
+    ) -> UUID {
+        let item = DownloadQueueItem(
+            url: url,
+            quality: quality,
+            targetCloud: targetCloud,
+            displayTitle: displayTitle,
+            retryPayload: retryPayload
+        )
         queue.append(item)
         save()
         processNextIfNeeded()
         return item.id
+    }
+
+    /// Resets a failed queue item back to pending so `DownloadJobRunner` can re-run it.
+    /// Returns false if the item does not exist or is not retryable.
+    @discardableResult
+    func resetForRetry(id: UUID) -> Bool {
+        guard let idx = queue.firstIndex(where: { $0.id == id }),
+              queue[idx].canRetry else { return false }
+        queue[idx].status = .pending
+        queue[idx].progress = 0
+        queue[idx].finalPath = nil
+        queue[idx].uploadStarted = nil
+        queue[idx].statusMessage = "Retrying…"
+        queue[idx].megatag = nil
+        save()
+        return true
     }
 
     func remove(_ item: DownloadQueueItem) {
@@ -57,13 +85,12 @@ class DownloadQueue: ObservableObject {
 
     func pause(_ item: DownloadQueueItem) {
         guard let idx = queue.firstIndex(where: { $0.id == item.id }) else { return }
-        if case .failed = queue[idx].status { queue[idx].status = .paused }
-        else if case .downloading = queue[idx].status {
+        // Failed items are retried via the Retry button, not paused/resumed.
+        switch queue[idx].status {
+        case .downloading, .verifying, .uploading, .pending:
             queue[idx].status = .paused
-        } else if case .verifying = queue[idx].status {
-            queue[idx].status = .paused
-        } else if case .uploading = queue[idx].status {
-            queue[idx].status = .paused
+        default:
+            break
         }
         cancelTask(for: item.id)
         save()
@@ -99,7 +126,8 @@ class DownloadQueue: ObservableObject {
     }
 
     func resumeAll() {
-        for i in queue.indices where queue[i].status == .paused || queue[i].status == .failed("") {
+        // Only resume explicitly paused items. Failed items are retried via resetForRetry/Retry button.
+        for i in queue.indices where queue[i].status == .paused {
             queue[i].status = .pending
             queue[i].progress = 0
         }
@@ -113,16 +141,84 @@ class DownloadQueue: ObservableObject {
     }
 
     func updateProgress(id: UUID, status: QueueStatus, progress: Double) {
+        update(id: id, status: status, progress: progress, message: nil)
+    }
+
+    func update(id: UUID, status: QueueStatus, progress: Double, message: String? = nil) {
         guard let idx = queue.firstIndex(where: { $0.id == id }) else { return }
         let previousStatus = queue[idx].status
         let previousUploadStarted = queue[idx].uploadStarted
+        let previousMessage = queue[idx].statusMessage
         if status == .uploading {
             queue[idx].uploadStarted = true
         }
         queue[idx].status = status
         queue[idx].progress = progress
-        if previousStatus != status || previousUploadStarted != queue[idx].uploadStarted || status.isTerminal {
+        queue[idx].statusMessage = message
+        if previousStatus != status || previousUploadStarted != queue[idx].uploadStarted || previousMessage != message || status.isTerminal {
             save()
+        }
+    }
+
+    func complete(id: UUID, finalPath: String?, message: String) {
+        guard let idx = queue.firstIndex(where: { $0.id == id }) else { return }
+        queue[idx].status = .completed
+        queue[idx].progress = 100
+        queue[idx].statusMessage = message
+        queue[idx].finalPath = finalPath
+        save()
+    }
+
+    func fail(id: UUID, error: Error) {
+        fail(id: id, message: error.localizedDescription)
+    }
+
+    func fail(id: UUID, message: String) {
+        guard let idx = queue.firstIndex(where: { $0.id == id }) else { return }
+        queue[idx].status = .failed(message)
+        queue[idx].progress = 0
+        queue[idx].statusMessage = message
+        save()
+    }
+
+    func item(id: UUID) -> DownloadQueueItem? {
+        queue.first { $0.id == id }
+    }
+
+    func latestFinalPath(for url: String, target: CloudTarget) -> String? {
+        queue
+            .filter { $0.url == url && $0.targetCloud == target }
+            .sorted { $0.createdAt > $1.createdAt }
+            .first(where: { $0.finalPath != nil })?
+            .finalPath
+    }
+
+    func projectedState(for item: DownloadQueueItem) -> UploadState? {
+        let message = item.statusMessage
+        switch item.status {
+        case .pending:
+            return .uploading(message ?? "Queued")
+        case .downloading, .verifying, .uploading:
+            return .uploading(message ?? statusLabel(for: item))
+        case .completed:
+            return .done(message ?? "Done")
+        case .failed(let reason):
+            return .failed(reason.isEmpty ? (message ?? "Failed") : reason)
+        case .paused:
+            return .uploading(message ?? "Paused")
+        }
+    }
+
+    private func statusLabel(for item: DownloadQueueItem) -> String {
+        switch item.status {
+        case .downloading:
+            return String(format: "Downloading… %.0f%%", item.progress)
+        case .verifying:
+            return "Verifying video…"
+        case .uploading:
+            return String(format: "Uploading… %.0f%%", item.progress)
+        default:
+            return item.statusMessage ?? ""
         }
     }
 

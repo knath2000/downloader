@@ -50,9 +50,6 @@ enum Theme {
         case .library:    return skyBlue
         case .downloads:  return electricLime
         case .mega:       return hotPink
-        case .scheduler:  return lavender
-        case .transfers:  return amber
-        case .processing: return taoRed
         case .settings:   return Color(hex: "#A0A0FF")
         }
     }

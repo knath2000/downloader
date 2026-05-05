@@ -2,7 +2,6 @@ import Foundation
 
 /// Extracts video sources from vidara.so pages.
 struct VidaraExtractor: VideoSiteExtractor {
-    private static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
     private static let apiURL = URL(string: "https://vidara.so/api/stream")!
 
     static func supports(_ url: URL) -> Bool {
@@ -54,7 +53,7 @@ struct VidaraExtractor: VideoSiteExtractor {
         }
 
         var request = URLRequest(url: url)
-        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
         let (data, _) = try await URLSession.shared.data(for: request)
         guard let playlist = String(data: data, encoding: .utf8) else {
             return [VideoSource.Quality(label: "master", url: masterUrl)]
@@ -101,7 +100,7 @@ struct VidaraExtractor: VideoSiteExtractor {
         var request = URLRequest(url: apiURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
 
         let body = ["filecode": filecode, "device": "web"]
         request.httpBody = try JSONEncoder().encode(body)

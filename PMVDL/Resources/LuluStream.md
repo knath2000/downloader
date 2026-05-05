@@ -13,10 +13,28 @@ This document captures the working implementation and the failure modes that wer
 
 1. Resolve the page to a file code.
 2. Fetch the wrapper page for metadata like title and thumbnail.
-3. Fetch the embed page and decode the packed JWPlayer script.
-4. Extract the signed HLS master playlist URL from the decoded player config.
-5. Carry the embed-page `Referer` and browser `User-Agent` through to download time.
-6. Refresh the HLS URL again at download time if needed.
+3. Fetch the embed page.
+4. Search the raw embed HTML for a JWPlayer `.m3u8` source first.
+5. If no direct HLS URL is present, decode the packed JWPlayer script and search the decoded config.
+6. Extract the signed HLS master playlist URL.
+7. Carry the embed-page `Referer` and browser `User-Agent` through to download time.
+8. Refresh the HLS URL again at download time if needed.
+
+## 2026-05-04 extractor update
+
+The latest confirmed LuluVid failure was not a downloader or header issue. Source extraction failed because the implementation required a p.a.c.k.e.r `eval(...)` block before it would look for HLS. The live embed page instead exposed the JWPlayer HLS URL directly in script config.
+
+The working extractor now uses a layered source-discovery strategy:
+
+1. `findM3u8InText(_:)` on the raw embed HTML.
+2. `extractPackedBlock(_:)` + `unpackPacker(_:)` only as a fallback.
+3. `findM3u8InText(_:)` on decoded packed JS.
+
+Regression coverage lives in `PMVDL/PMVDLTests/DownloadResolutionTests.swift`:
+
+- Direct JWPlayer config with `.m3u8` and no `eval(...)`.
+- Packed config fallback for older embed shapes.
+- Per-quality HLS headers preserved through download resolution.
 
 ## What broke during implementation
 

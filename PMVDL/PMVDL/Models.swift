@@ -2,7 +2,7 @@ import Foundation
 
 // ===== EXISTING MODELS =====
 
-struct VideoSource: Equatable {
+struct VideoSource: Codable, Equatable {
     enum Kind: String, Codable {
         case direct      // direct file (.mp4, etc.)
         case hlsManifest // HLS .m3u8 that must be materialized via ffmpeg
@@ -28,13 +28,21 @@ struct VideoSource: Equatable {
     let uploader: String?
     let siteName: String?
     let isAudio: Bool
+    /// Source-level HTTP headers required for downloading the video (e.g. Referer for hot-link
+    /// protected CDNs like pmvhaven.com's video.pmvhaven.com origin). Used as a fallback when
+    /// a per-quality `headers` map isn't available (e.g. the bare `mp4` URL is not in `hls`).
+    let headers: [String: String]?
 
-    init(mp4: String?, hls: [Quality], title: String? = nil, thumbnail: String? = nil, duration: TimeInterval? = nil, uploader: String? = nil, siteName: String? = nil, isAudio: Bool = false) {
-        self.mp4 = mp4; self.hls = hls; self.title = title; self.thumbnail = thumbnail; self.duration = duration; self.uploader = uploader; self.siteName = siteName; self.isAudio = isAudio
+    init(mp4: String?, hls: [Quality], title: String? = nil, thumbnail: String? = nil, duration: TimeInterval? = nil, uploader: String? = nil, siteName: String? = nil, isAudio: Bool = false, headers: [String: String]? = nil) {
+        self.mp4 = mp4; self.hls = hls; self.title = title; self.thumbnail = thumbnail; self.duration = duration; self.uploader = uploader; self.siteName = siteName; self.isAudio = isAudio; self.headers = headers
     }
 
     var displaySiteName: String {
         SiteDisplayLabels.displayName(for: siteName)
+    }
+
+    func headers(forQualityURL url: String) -> [String: String]? {
+        hls.first(where: { $0.url == url })?.headers ?? headers
     }
 }
 
@@ -145,16 +153,6 @@ enum VideoFileNaming {
     }
 }
 
-struct TransferItem: Identifiable, Hashable {
-    let id: String
-    let tag: String
-    let filename: String
-    let progress: Double   // 0-100
-    let size: String
-    let state: String
-    let remotePath: String
-}
-
 // ===== NEW TIER 2 MODELS =====
 
 struct LibraryItem: Identifiable, Codable, Hashable {
@@ -167,16 +165,51 @@ struct LibraryItem: Identifiable, Codable, Hashable {
     var thumbnailURL: String?
     var remotePaths: [String: String] // "mega": "/Cloud/...", "gdrive": "gdrive:VidDL/..."
 
-    init(id: UUID = UUID(), url: String, title: String, mp4Url: String?, hlsUrls: [VideoSource.Quality], thumbnailURL: String? = nil) {
+    init(
+        id: UUID = UUID(),
+        url: String,
+        title: String,
+        mp4Url: String?,
+        hlsUrls: [VideoSource.Quality],
+        extractedAt: Date = Date(),
+        thumbnailURL: String? = nil,
+        remotePaths: [String: String] = [:]
+    ) {
         self.id = id
         self.url = url
         self.title = title
         self.mp4Url = mp4Url
         self.hlsUrls = hlsUrls
-        self.extractedAt = Date()
+        self.extractedAt = extractedAt
         self.thumbnailURL = thumbnailURL
-        self.remotePaths = [:]
+        self.remotePaths = remotePaths
     }
+}
+
+// MARK: - Retry snapshot models
+
+/// Non-secret snapshot of destination settings stored with each queue item so the download
+/// can be retried without re-resolving the media URL.  Excludes seedboxWebdavPassword
+/// intentionally — the current credential is read from AppStorage at retry time.
+struct DownloadRetryContext: Codable, Equatable {
+    let megaRemotePath: String
+    let gdriveRemoteName: String
+    let gdriveRemotePath: String
+    let seedboxTransferMode: String
+    let seedboxRemoteName: String
+    let seedboxRemotePath: String
+    let seedboxWebdavURL: String
+    let seedboxWebdavUser: String
+}
+
+/// Full payload needed to re-run a download job without HomeView extraction state.
+struct DownloadRetryPayload: Codable, Equatable {
+    let resolution: DownloadResolution
+    let target: CloudTarget
+    let context: DownloadRetryContext
+    /// GDrive jobs need the Mega remote path that was resolved at first-attempt time so
+    /// retry doesn't accidentally delete a different Mega file discovered later.
+    let gdriveMegaRemotePath: String?
 }
 
 enum QueueStatus: Codable, Equatable {
@@ -200,8 +233,19 @@ struct DownloadQueueItem: Identifiable, Codable {
     var displayTitle: String? // human-readable title (e.g. Vidara video name)
     var finalPath: String? // local file path or remote destination when done
     var uploadStarted: Bool?
+    var statusMessage: String?
+    /// Snapshot of the original resolution + destination settings used for one-click Retry.
+    /// Nil on items created before this feature was added — their Retry button is disabled.
+    var retryPayload: DownloadRetryPayload?
 
-    init(id: UUID = UUID(), url: String, quality: String, targetCloud: CloudTarget = .mega, displayTitle: String? = nil) {
+    init(
+        id: UUID = UUID(),
+        url: String,
+        quality: String,
+        targetCloud: CloudTarget = .mega,
+        displayTitle: String? = nil,
+        retryPayload: DownloadRetryPayload? = nil
+    ) {
         self.id = id
         self.url = url
         self.filename = (URL(string: url)?.lastPathComponent) ?? "video.mp4"
@@ -212,6 +256,17 @@ struct DownloadQueueItem: Identifiable, Codable {
         self.createdAt = Date()
         self.displayTitle = displayTitle
         self.uploadStarted = nil
+        self.statusMessage = nil
+        self.retryPayload = retryPayload
+    }
+
+    var isPaused: Bool { status == .paused }
+
+    /// True only for failed rows that carry a retry payload.
+    var canRetry: Bool {
+        guard retryPayload != nil else { return false }
+        if case .failed = status { return true }
+        return false
     }
 
     var hasEnteredUpload: Bool {
@@ -220,13 +275,6 @@ struct DownloadQueueItem: Identifiable, Codable {
 
     var isVisibleInDownloads: Bool {
         !(targetCloud == .mega && hasEnteredUpload)
-    }
-
-    var isVisibleInTransfers: Bool {
-        guard targetCloud == .mega else { return false }
-        if status == .uploading { return true }
-        if case .failed = status, uploadStarted == true { return true }
-        return false
     }
 }
 
@@ -267,13 +315,14 @@ struct CompletedUploadItem: Identifiable, Codable, Hashable {
 }
 
 enum CloudTarget: String, Codable, CaseIterable {
-    case local, mega, gdrive
+    case local, mega, gdrive, seedbox
 
     var displayName: String {
         switch self {
         case .local: return "Local"
         case .mega: return "Mega"
         case .gdrive: return "Google Drive"
+        case .seedbox: return "Seedbox"
         }
     }
 
@@ -282,6 +331,7 @@ enum CloudTarget: String, Codable, CaseIterable {
         case .local: return "externaldrive.fill"
         case .mega: return "cloud.fill"
         case .gdrive: return "g.circle.fill"
+        case .seedbox: return "server.rack"
         }
     }
 }
@@ -292,9 +342,6 @@ enum NavDestination: String, Codable, CaseIterable {
     case library = "Library"
     case downloads = "Downloads"
     case mega = "Mega"
-    case scheduler = "Scheduler"
-    case transfers = "Transfers"
-    case processing = "Processing"
     case settings = "Settings"
 
     var icon: String {
@@ -304,15 +351,12 @@ enum NavDestination: String, Codable, CaseIterable {
         case .library: return "books.vertical.fill"
         case .downloads: return "arrow.down.circle.fill"
         case .mega: return "cloud.fill"
-        case .scheduler: return "calendar.badge.clock"
-        case .transfers: return "arrow.up.circle.fill"
-        case .processing: return "wand.and.stars"
         case .settings: return "gearshape.fill"
         }
     }
 }
 
-struct ExtractResult {
+struct ExtractResult: Codable, Equatable {
     let url: String
     let source: VideoSource?
     let error: String?

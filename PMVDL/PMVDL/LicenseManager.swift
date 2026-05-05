@@ -31,15 +31,12 @@ class LicenseManager: ObservableObject {
 
     static let freeDownloadLimit = 5
     private static let baseURLKey = "licenseBackendBaseURL"
-    private static let activationEmailKey = "licenseActivationEmail"
-    private static let proActiveKey = "licenseProActive"
-    private static let freeDownloadsUsedKey = "licenseFreeDownloadsUsed"
+    private static let userDefaultsIsProKey = "licenseIsPro"
+    private static let userDefaultsFreeUsedKey = "licenseFreeUsed"
+    private static let userDefaultsActivationEmailKey = "licenseActivationEmail"
+    private static let userDefaultsRedeemedHwidKey = "licenseRedeemedHwid"
+    private static let userDefaultsTrialSyncedKey = "licenseTrialSynced"
     private static let trialHMACSecretKey = "licenseTrialHMACSecret"
-    private static let keychainFreeUsedAccount = "freeUsed"
-    private static let keychainIsProAccount = "isPro"
-    private static let keychainActivationEmailAccount = "activationEmail"
-    private static let keychainRedeemedHwidAccount = "redeemedHwid"
-    private static let keychainTrialSyncedAccount = "trialSynced"
 
     @Published var isPro: Bool
     @Published var activationEmail: String
@@ -51,27 +48,14 @@ class LicenseManager: ObservableObject {
     private let hwid = HardwareID.current
 
     private init() {
-        if KeychainStore.getInt(Self.keychainFreeUsedAccount) == nil {
-            let legacyEmail = UserDefaults.standard.string(forKey: Self.activationEmailKey) ?? ""
-            KeychainStore.setInt(0, account: Self.keychainFreeUsedAccount)
-            KeychainStore.setBool(false, account: Self.keychainIsProAccount)
-            KeychainStore.setBool(false, account: Self.keychainTrialSyncedAccount)
-            KeychainStore.setString(hwid, account: Self.keychainRedeemedHwidAccount)
-            if !legacyEmail.isEmpty {
-                KeychainStore.setString(
-                    legacyEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-                    account: Self.keychainActivationEmailAccount
-                )
-            }
-            UserDefaults.standard.removeObject(forKey: Self.freeDownloadsUsedKey)
-            UserDefaults.standard.removeObject(forKey: Self.proActiveKey)
-            UserDefaults.standard.removeObject(forKey: Self.activationEmailKey)
-        }
+        isPro = UserDefaults.standard.bool(forKey: Self.userDefaultsIsProKey)
+        activationEmail = UserDefaults.standard.string(forKey: Self.userDefaultsActivationEmailKey) ?? ""
+        freeDownloadsUsed = UserDefaults.standard.integer(forKey: Self.userDefaultsFreeUsedKey)
+        trialSynced = UserDefaults.standard.bool(forKey: Self.userDefaultsTrialSyncedKey)
 
-        isPro = KeychainStore.getBool(Self.keychainIsProAccount) ?? false
-        activationEmail = KeychainStore.getString(Self.keychainActivationEmailAccount) ?? ""
-        freeDownloadsUsed = KeychainStore.getInt(Self.keychainFreeUsedAccount) ?? 0
-        trialSynced = KeychainStore.getBool(Self.keychainTrialSyncedAccount) ?? false
+        if UserDefaults.standard.string(forKey: Self.userDefaultsRedeemedHwidKey) == nil {
+            UserDefaults.standard.set(hwid, forKey: Self.userDefaultsRedeemedHwidKey)
+        }
     }
 
     var freeDownloadsRemaining: Int {
@@ -150,7 +134,7 @@ class LicenseManager: ObservableObject {
             let checkout = try JSONDecoder().decode(CheckoutResponse.self, from: data)
             guard let url = URL(string: checkout.url) else { throw LicenseError.invalidCheckoutURL }
             activationEmail = normalized
-            KeychainStore.setString(normalized, account: Self.keychainActivationEmailAccount)
+            UserDefaults.standard.set(normalized, forKey: Self.userDefaultsActivationEmailKey)
             NSWorkspace.shared.open(url)
             lastError = ""
             return true
@@ -167,7 +151,7 @@ class LicenseManager: ObservableObject {
             return false
         }
         activationEmail = normalized
-        KeychainStore.setString(normalized, account: Self.keychainActivationEmailAccount)
+        UserDefaults.standard.set(normalized, forKey: Self.userDefaultsActivationEmailKey)
         return await refreshLicense()
     }
 
@@ -175,7 +159,7 @@ class LicenseManager: ObservableObject {
         let normalized = normalize(activationEmail)
         guard !normalized.isEmpty else {
             isPro = false
-            KeychainStore.setBool(false, account: Self.keychainIsProAccount)
+            UserDefaults.standard.set(false, forKey: Self.userDefaultsIsProKey)
             return false
         }
         guard var components = URLComponents(url: backendBaseURL?.appendingPathComponent("license") ?? URL(fileURLWithPath: ""), resolvingAgainstBaseURL: false) else {
@@ -202,8 +186,8 @@ class LicenseManager: ObservableObject {
             let status = try JSONDecoder().decode(LicenseStatusResponse.self, from: data)
             isPro = status.active
             activationEmail = status.email ?? normalized
-            KeychainStore.setBool(isPro, account: Self.keychainIsProAccount)
-            KeychainStore.setString(activationEmail, account: Self.keychainActivationEmailAccount)
+            UserDefaults.standard.set(isPro, forKey: Self.userDefaultsIsProKey)
+            UserDefaults.standard.set(activationEmail, forKey: Self.userDefaultsActivationEmailKey)
             lastError = status.active ? "" : (status.status ?? "No active Pro license found.")
             return status.active
         } catch {
@@ -226,7 +210,7 @@ class LicenseManager: ObservableObject {
             lastError = "Free download limit reached."
             return false
         } catch {
-            if isPro || KeychainStore.getBool(Self.keychainIsProAccount) == true {
+            if isPro {
                 return true
             }
             guard trialSynced else {
@@ -245,7 +229,7 @@ class LicenseManager: ObservableObject {
     func handleLicenseSuccess(email: String?) {
         if let email {
             activationEmail = normalize(email)
-            KeychainStore.setString(activationEmail, account: Self.keychainActivationEmailAccount)
+            UserDefaults.standard.set(activationEmail, forKey: Self.userDefaultsActivationEmailKey)
         }
         Task { await refreshLicense() }
     }
@@ -253,8 +237,8 @@ class LicenseManager: ObservableObject {
     func deactivateLocalLicense() {
         isPro = false
         activationEmail = ""
-        KeychainStore.delete(Self.keychainActivationEmailAccount)
-        KeychainStore.setBool(false, account: Self.keychainIsProAccount)
+        UserDefaults.standard.removeObject(forKey: Self.userDefaultsActivationEmailKey)
+        UserDefaults.standard.set(false, forKey: Self.userDefaultsIsProKey)
     }
 
     private func normalize(_ email: String) -> String {
@@ -267,21 +251,21 @@ class LicenseManager: ObservableObject {
         }
         if serverIsPro {
             isPro = true
-            KeychainStore.setBool(true, account: Self.keychainIsProAccount)
+            UserDefaults.standard.set(true, forKey: Self.userDefaultsIsProKey)
         }
         if let redeemedEmail, !redeemedEmail.isEmpty {
             activationEmail = normalize(redeemedEmail)
-            KeychainStore.setString(activationEmail, account: Self.keychainActivationEmailAccount)
+            UserDefaults.standard.set(activationEmail, forKey: Self.userDefaultsActivationEmailKey)
         }
         if markSynced {
             trialSynced = true
-            KeychainStore.setBool(true, account: Self.keychainTrialSyncedAccount)
+            UserDefaults.standard.set(true, forKey: Self.userDefaultsTrialSyncedKey)
         }
     }
 
     private func setFreeDownloadsUsed(_ value: Int) {
         freeDownloadsUsed = min(Self.freeDownloadLimit, max(0, value))
-        KeychainStore.setInt(freeDownloadsUsed, account: Self.keychainFreeUsedAccount)
+        UserDefaults.standard.set(freeDownloadsUsed, forKey: Self.userDefaultsFreeUsedKey)
     }
 
     private func postTrial<T: Decodable>(_ action: String) async throws -> T {

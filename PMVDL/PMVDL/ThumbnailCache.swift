@@ -1,5 +1,6 @@
 import AppKit
 import AVKit
+import CryptoKit
 import Foundation
 
 actor ThumbnailCache {
@@ -15,8 +16,40 @@ actor ThumbnailCache {
         memoryCache.countLimit = 100
     }
 
+    static func cacheKey(for identity: String) -> String {
+        let normalized = identity.trimmingCharacters(in: .whitespacesAndNewlines)
+        let digest = SHA256.hash(data: Data(normalized.utf8))
+        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        return "viddl_thumb_\(hex).jpg"
+    }
+
+    static func legacyCacheKey(for identity: String) -> String {
+        "viddl_thumb_\(identity.hashValue).jpg"
+    }
+
     func cachedImage(for url: String) -> NSImage? {
-        let key = "viddl_thumb_\(url.hashValue).jpg"
+        let key = Self.cacheKey(for: url)
+        if let image = cachedImage(forKey: key) { return image }
+
+        let legacyKey = Self.legacyCacheKey(for: url)
+        guard legacyKey != key else { return nil }
+        return cachedImage(forKey: legacyKey)
+    }
+
+    func cachedImage(forIdentity identity: String) -> NSImage? {
+        cachedImage(for: identity)
+    }
+
+    func store(_ image: NSImage, for url: String) {
+        store(image, forKey: Self.cacheKey(for: url))
+    }
+
+    func store(_ image: NSImage, forIdentity identity: String) {
+        store(image, for: identity)
+    }
+
+    /// Synchronous disk read for direct cache-key lookup (used by LibraryView).
+    func cachedImage(forKey key: String) -> NSImage? {
         if let img = memoryCache.object(forKey: key as NSString) { return img }
 
         let fileURL = diskDirectory.appendingPathComponent(key)
@@ -29,8 +62,7 @@ actor ThumbnailCache {
         return nil
     }
 
-    func store(_ image: NSImage, for url: String) {
-        let key = "viddl_thumb_\(url.hashValue).jpg"
+    private func store(_ image: NSImage, forKey key: String) {
         memoryCache.setObject(image, forKey: key as NSString)
 
         let fileURL = diskDirectory.appendingPathComponent(key)
@@ -39,19 +71,6 @@ actor ThumbnailCache {
            let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) {
             try? jpeg.write(to: fileURL)
         }
-    }
-
-    /// Synchronous disk read for direct cache-key lookup (used by LibraryView).
-    func cachedImage(forKey key: String) -> NSImage? {
-        if let img = memoryCache.object(forKey: key as NSString) { return img }
-        let fileURL = diskDirectory.appendingPathComponent(key)
-        if FileManager.default.fileExists(atPath: fileURL.path),
-           let data = try? Data(contentsOf: fileURL),
-           let img = NSImage(data: data) {
-            memoryCache.setObject(img, forKey: key as NSString)
-            return img
-        }
-        return nil
     }
 }
 
@@ -74,7 +93,7 @@ extension ThumbnailCache {
     /// Called during mega/gdrive upload when the file is already on disk.
     static func generateAndCache(fromLocalFile localPath: String, forRemoteUrl url: String) {
         // Check cache first — synchronous disk read
-        let key = "viddl_thumb_\(url.hashValue).jpg"
+        let key = ThumbnailCache.cacheKey(for: url)
         if cachedThumbnail(forKey: key) != nil { return }
 
         let fileURL = URL(fileURLWithPath: localPath)
@@ -108,13 +127,19 @@ extension ThumbnailCache {
         // Check cache first
         if let cached = await shared.cachedImage(for: url) { return cached }
 
-        var request = URLRequest(url: URL(string: url)!)
+        guard let remoteURL = URL(string: url) else { throw ThumbnailError.invalidURL(url) }
+        var request = URLRequest(url: remoteURL)
         request.setValue("bytes=0-2097151", forHTTPHeaderField: "Range")
-        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", forHTTPHeaderField: "User-Agent")
-        let (data, _) = try await URLSession.shared.data(for: request)
+        request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse,
+           !(200...299).contains(http.statusCode) {
+            throw ThumbnailError.httpStatus(http.statusCode)
+        }
         guard !data.isEmpty else { throw ThumbnailError.emptyResponse }
 
-        let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("viddl_thumb_\(url.hashValue).mp4")
+        let tempBase = ThumbnailCache.cacheKey(for: url).replacingOccurrences(of: ".jpg", with: "")
+        let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("\(tempBase).mp4")
         try data.write(to: tempFile)
         defer { try? FileManager.default.removeItem(at: tempFile) }
 
@@ -131,9 +156,62 @@ extension ThumbnailCache {
         await shared.store(image, for: url)
         return image
     }
+
+    static func downloadAndCacheImage(
+        fromImageURL imageURLString: String,
+        cacheIdentity: String? = nil,
+        referer: String? = nil
+    ) async throws -> NSImage {
+        let trimmed = imageURLString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let imageURL = URL(string: trimmed) else {
+            throw ThumbnailError.invalidURL(trimmed)
+        }
+
+        let identity = cacheIdentity ?? trimmed
+        if let cached = await shared.cachedImage(forIdentity: identity) {
+            return cached
+        }
+
+        var request = URLRequest(url: imageURL)
+        request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
+        if let referer, !referer.isEmpty {
+            request.setValue(referer, forHTTPHeaderField: "Referer")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse,
+           !(200...299).contains(http.statusCode) {
+            throw ThumbnailError.httpStatus(http.statusCode)
+        }
+
+        guard let image = NSImage(data: data) else {
+            throw ThumbnailError.invalidImage
+        }
+
+        await shared.store(image, forIdentity: identity)
+        return image
+    }
 }
 
 enum ThumbnailError: LocalizedError {
     case emptyResponse
-    var errorDescription: String? { "No data received" }
+    case invalidURL(String)
+    case httpStatus(Int)
+    case invalidImage
+    case noThumbnailCandidate
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyResponse:
+            return "No data received"
+        case .invalidURL(let value):
+            return "Invalid thumbnail URL: \(value)"
+        case .httpStatus(let status):
+            return "Thumbnail request failed with HTTP \(status)"
+        case .invalidImage:
+            return "Thumbnail response was not a valid image"
+        case .noThumbnailCandidate:
+            return "No thumbnail candidate was available"
+        }
+    }
 }

@@ -31,15 +31,9 @@ struct LuluStreamExtractor: VideoSiteExtractor {
             title = extractTitle(from: embedHtmlForTitle) ?? title
         }
 
-        // (2) Fetch embed page and find HLS from packed JS
+        // (2) Fetch embed page and find HLS
         let embedHtml = try await fetchPage(at: embedUrl)
-        guard let packed = extractPackedBlock(embedHtml) else {
-            throw LuluStreamError.noSourceFound(filecode: filecode)
-        }
-        guard let decoded = unpackPacker(packed) else {
-            throw LuluStreamError.decodeError(filecode: filecode, reason: "Failed to unpack p.a.c.k.e.r. packed script")
-        }
-        guard let hlsUrl = findM3u8InText(decoded) else {
+        guard let hlsUrl = findHlsSource(embedHtml) else {
             throw LuluStreamError.noSourceFound(filecode: filecode)
         }
 
@@ -133,6 +127,12 @@ struct LuluStreamExtractor: VideoSiteExtractor {
               let url = findM3u8InText(decoded) else { return nil }
         return url
     }
+
+#if DEBUG
+    static func findHlsSourceForTesting(_ html: String) -> String? {
+        findHlsSource(html)
+    }
+#endif
 
     /// Search any text for .m3u8 URLs in JS object patterns.
     private static func findM3u8InText(_ text: String) -> String? {

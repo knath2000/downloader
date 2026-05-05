@@ -2,7 +2,6 @@ import Foundation
 
 /// Wraps yt-dlp CLI to extract videos from any supported site (1700+).
 struct YtDlpExtractor: VideoSiteExtractor {
-    private static let browserUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
     private static let directMediaExtensions: Set<String> = ["mp4", "mov", "m4v", "webm", "mkv"]
 
     static func supports(_ url: URL) -> Bool {
@@ -16,62 +15,40 @@ struct YtDlpExtractor: VideoSiteExtractor {
             throw ScraperError.toolNotInstalled(name: "yt-dlp", installCmd: "brew install yt-dlp")
         }
 
-        // Use shell redirection to temp files instead of pipes.
-        // `readDataToEndOfFile()` and `readabilityHandler` both have buffering issues
-        // that truncate large JSON payloads from YouTube — writing to files avoids this.
-        // No timeout: let yt-dlp finish naturally; exit code 15 is handled gracefully.
-        return try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let stdoutPath = NSTemporaryDirectory() + "viddl_yt_out_\(UUID().uuidString).json"
-                let stderrPath = NSTemporaryDirectory() + "viddl_yt_err_\(UUID().uuidString).txt"
-
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/bin/bash")
-                // --no-playlist prevents stalls on playlist-like YouTube pages
-                let escapedUrl = url.absoluteString.replacingOccurrences(of: "'", with: "'\\''")
-                let cmd = "\(ytDlpPath) --no-playlist --dump-json --no-download --no-warnings '\(escapedUrl)' > \(stdoutPath) 2> \(stderrPath)"
-                process.arguments = ["-c", cmd]
-
-                let startTime = Date()
-
-                do {
-                    try process.run()
-                } catch {
-                    cleanup(paths: stdoutPath, stderrPath)
-                    continuation.resume(throwing: error)
-                    return
-                }
-
-                // No timeout — metadata extraction can take several minutes for large channel pages
-                process.waitUntilExit()
-                let elapsed = Date().timeIntervalSince(startTime)
-
-                // Read complete output from files (guaranteed not truncated)
-                let stdoutData = (try? Data(contentsOf: URL(fileURLWithPath: stdoutPath))) ?? Data()
-                let stderrData = (try? Data(contentsOf: URL(fileURLWithPath: stderrPath))) ?? Data()
-                cleanup(paths: stdoutPath, stderrPath)
-
-                let stderr = String(data: stderrData, encoding: .utf8) ?? ""
-                let exitCode = process.terminationStatus
-
-                // Always attempt JSON parse regardless of exit code.
-                // yt-dlp often writes valid JSON to stdout before exiting with a non-zero code
-                // (e.g. code 15 from SIGTERM, or various warnings treated as errors).
-                if !stdoutData.isEmpty,
-                   let json = try? JSONSerialization.jsonObject(with: stdoutData) as? [String: Any] {
-                    continuation.resume(returning: parseVideoSource(from: json, url: url))
-                    return
-                }
-
-                // Genuine failure — report elapsed time and path for diagnosis
-                let stdoutStr = String(data: stdoutData, encoding: .utf8) ?? "(empty)"
-                continuation.resume(throwing: ScraperError.extractionFailed(
-                    "yt-dlp exited with code \(exitCode) after \(Int(elapsed))s. Path: \(ytDlpPath)." +
-                    (stderr.isEmpty ? "" : " stderr: \(stderr)") +
-                    (stdoutStr.count > 0 ? " stdout (first 200): \(String(stdoutStr.prefix(200)))" : "")
-                ))
-            }
+        // Keep redirecting to temp files so large YouTube JSON cannot be truncated by pipe capture.
+        let stdoutPath = NSTemporaryDirectory() + "viddl_yt_out_\(UUID().uuidString).json"
+        let stderrPath = NSTemporaryDirectory() + "viddl_yt_err_\(UUID().uuidString).txt"
+        let escapedUrl = url.absoluteString.replacingOccurrences(of: "'", with: "'\\''")
+        let cmd = "\(ytDlpPath) --no-playlist --dump-json --no-download --no-warnings '\(escapedUrl)' > \(stdoutPath) 2> \(stderrPath)"
+        let startTime = Date()
+        let result: SubprocessResult
+        do {
+            result = try await SubprocessRunner.run(
+                executable: URL(fileURLWithPath: "/bin/bash"),
+                arguments: ["-c", cmd]
+            )
+        } catch {
+            cleanup(paths: stdoutPath, stderrPath)
+            throw error
         }
+
+        let elapsed = Date().timeIntervalSince(startTime)
+        let stdoutData = (try? Data(contentsOf: URL(fileURLWithPath: stdoutPath))) ?? Data()
+        let stderrData = (try? Data(contentsOf: URL(fileURLWithPath: stderrPath))) ?? Data()
+        cleanup(paths: stdoutPath, stderrPath)
+
+        let stderr = String(data: stderrData, encoding: .utf8) ?? ""
+        if !stdoutData.isEmpty,
+           let json = try? JSONSerialization.jsonObject(with: stdoutData) as? [String: Any] {
+            return parseVideoSource(from: json, url: url)
+        }
+
+        let stdoutStr = String(data: stdoutData, encoding: .utf8) ?? "(empty)"
+        throw ScraperError.extractionFailed(
+            "yt-dlp exited with code \(result.exitStatus) after \(Int(elapsed))s. Path: \(ytDlpPath)." +
+            (stderr.isEmpty ? "" : " stderr: \(stderr)") +
+            (stdoutStr.count > 0 ? " stdout (first 200): \(String(stdoutStr.prefix(200)))" : "")
+        )
     }
 
     // MARK: - Parse
@@ -183,7 +160,7 @@ struct YtDlpExtractor: VideoSiteExtractor {
             headers[key] = value
         }
         ensureHeader("Referer", value: pageURL.absoluteString, in: &headers)
-        ensureHeader("User-Agent", value: browserUserAgent, in: &headers)
+        ensureHeader("User-Agent", value: NetworkConstants.chromeUserAgent, in: &headers)
         return headers
     }
 

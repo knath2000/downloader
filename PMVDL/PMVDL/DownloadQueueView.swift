@@ -3,6 +3,13 @@ import SwiftUI
 @MainActor
 struct DownloadQueueViewNew: View {
     @StateObject private var queue = DownloadQueue.shared
+    @AppStorage("seedboxWebdavPassword") private var seedboxWebdavPassword = ""
+    let onUpgradeRequired: () -> Void
+
+    init(onUpgradeRequired: @escaping () -> Void = {}) {
+        self.onUpgradeRequired = onUpgradeRequired
+    }
+
     private var downloadItems: [DownloadQueueItem] {
         queue.queue.filter(\.isVisibleInDownloads)
     }
@@ -17,9 +24,9 @@ struct DownloadQueueViewNew: View {
                 Button("Pause All") { downloadItems.forEach { queue.pause($0) } }
                     .buttonStyle(.bordered).controlSize(.small)
                     .disabled(downloadItems.allSatisfy { $0.status.isTerminal || $0.status == .paused })
-                Button("Resume All") { downloadItems.filter(isResumable).forEach { queue.resume($0) } }
+                Button("Resume All") { downloadItems.filter(\.isPaused).forEach { queue.resume($0) } }
                     .buttonStyle(.bordered).controlSize(.small)
-                    .disabled(!downloadItems.contains(where: isResumable))
+                    .disabled(!downloadItems.contains(where: \.isPaused))
                 Button("Clear Done") {
                     downloadItems.filter(\.status.isTerminal).forEach { queue.remove($0) }
                 }
@@ -43,12 +50,15 @@ struct DownloadQueueViewNew: View {
                 ScrollView {
                     VStack(spacing: 8) {
                         ForEach(downloadItems) { item in
-                            DownloadQueueRow(item: item,
+                            DownloadQueueRow(
+                                item: item,
                                 onRemove: { queue.remove(item) },
                                 onPause: { queue.pause(item) },
                                 onResume: { queue.resume(item) },
+                                onRetry: { retry(item) },
                                 onMoveUp: { queue.moveUp(item) },
-                                onMoveDown: { queue.moveDown(item) })
+                                onMoveDown: { queue.moveDown(item) }
+                            )
                             .glassCard(tint: Theme.electricLime.opacity(0.2), cornerRadius: 12)
                         }
                     }
@@ -61,10 +71,20 @@ struct DownloadQueueViewNew: View {
         }
     }
 
-    private func isResumable(_ item: DownloadQueueItem) -> Bool {
-        if item.status == .paused { return true }
-        if case .failed = item.status { return true }
-        return false
+    private func retry(_ item: DownloadQueueItem) {
+        guard case .failed = item.status,
+              let payload = item.retryPayload else { return }
+        Task { @MainActor in
+            guard await LicenseManager.shared.preflight() else {
+                onUpgradeRequired()
+                return
+            }
+            DownloadJobRunner.shared.startRetry(
+                queueId: item.id,
+                payload: payload,
+                seedboxWebdavPassword: seedboxWebdavPassword
+            )
+        }
     }
 }
 
@@ -73,6 +93,7 @@ struct DownloadQueueRow: View {
     let onRemove: () -> Void
     let onPause: () -> Void
     let onResume: () -> Void
+    let onRetry: () -> Void
     let onMoveUp: () -> Void
     let onMoveDown: () -> Void
 
@@ -106,7 +127,15 @@ struct DownloadQueueRow: View {
                         .buttonStyle(.bordered).controlSize(.mini)
                 }
                 Spacer()
-                if isPaused {
+                if isFailed {
+                    Button("Retry") { onRetry() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.mini)
+                        .disabled(item.retryPayload == nil)
+                        .help(item.retryPayload == nil
+                              ? "Retry unavailable for downloads created before this feature."
+                              : "Retry this download with the original settings.")
+                } else if isPaused {
                     Button("Resume") { onResume() }
                         .buttonStyle(.bordered).controlSize(.mini)
                 } else if isShowingProgress {
@@ -179,4 +208,9 @@ struct DownloadQueueRow: View {
     }
 
     var isPaused: Bool { item.status == .paused }
+
+    var isFailed: Bool {
+        if case .failed = item.status { return true }
+        return false
+    }
 }

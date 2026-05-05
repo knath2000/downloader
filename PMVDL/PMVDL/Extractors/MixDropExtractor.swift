@@ -3,12 +3,11 @@ import Foundation
 /// Extracts video sources from mixdrop.co / mixdrop.sx / mixdrop.pw.
 /// MixDrop uses a p.a.c.k.e.r style eval block that decodes to an HLS or direct MP4 URL.
 struct MixDropExtractor: VideoSiteExtractor {
- private static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 
  static func supports(_ url: URL) -> Bool {
  guard let host = url.host()?.lowercased() else { return false }
- return host == "mixdrop.ag" || host == "mixdrop.co" || host == "mixdrop.sx" || host == "mixdrop.pw" || host == "m1xdrop.click"
- || host.hasSuffix(".mixdrop.ag") || host.hasSuffix(".mixdrop.co") || host.hasSuffix(".mixdrop.sx") || host.hasSuffix(".mixdrop.pw") || host.hasSuffix(".m1xdrop.click")
+ return host == "mixdrop.ag" || host == "mixdrop.co" || host == "mixdrop.sx" || host == "mixdrop.pw" || host == "mixdrop.top" || host == "m1xdrop.click"
+ || host.hasSuffix(".mixdrop.ag") || host.hasSuffix(".mixdrop.co") || host.hasSuffix(".mixdrop.sx") || host.hasSuffix(".mixdrop.pw") || host.hasSuffix(".mixdrop.top") || host.hasSuffix(".m1xdrop.click")
  }
 
  static func extract(fromHTML html: String, url: URL) async throws -> VideoSource {
@@ -17,15 +16,20 @@ struct MixDropExtractor: VideoSiteExtractor {
  let title = extractTitle(from: pageHtml) ?? "MixDrop Video"
  let thumbnail = extractThumbnail(from: pageHtml)
 
- guard let videoUrl = findVideoUrl(in: pageHtml) ?? findVideoUrlViaPacker(pageHtml) else {
+ guard let videoUrl = findVideoUrl(in: pageHtml, pageURL: url) ?? findVideoUrlViaPacker(pageHtml, pageURL: url) else {
  throw MixDropError.noVideoSource
  }
 
- // MixDrop URLs are direct MP4s
+ let headers = [
+ "User-Agent": NetworkConstants.chromeUserAgent,
+ "Referer": url.absoluteString
+ ]
+
  let quality = VideoSource.Quality(
  label: "Video",
  url: videoUrl,
  kind: .direct,
+ headers: headers,
  sourcePageUrl: url.absoluteString
  )
 
@@ -34,7 +38,8 @@ struct MixDropExtractor: VideoSiteExtractor {
  hls: [quality],
  title: title,
  thumbnail: thumbnail,
- siteName: "MixDrop"
+ siteName: "MixDrop",
+ headers: headers
  )
  }
 
@@ -42,7 +47,7 @@ struct MixDropExtractor: VideoSiteExtractor {
 
  private static func fetchPage(url: URL) async throws -> String {
  var request = URLRequest(url: url)
- request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+ request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
  request.timeoutInterval = 15
 
  let (data, response) = try await URLSession.shared.data(for: request)
@@ -82,34 +87,125 @@ struct MixDropExtractor: VideoSiteExtractor {
  // MARK: - Video URL extraction
 
  /// Try direct JS config patterns first.
- private static func findVideoUrl(in html: String) -> String? {
- // sources: [{file: "https://..."}]
- if let url = extractJsStringValue(pattern: #"sources\s*:\s*\[\{file\s*:\s*['"]([^'"]+)['"]"#, in: html) {
+ private static func findVideoUrl(in html: String, pageURL: URL) -> String? {
+ if let url = extractMDCoreWurl(from: html, pageURL: pageURL) {
  return url
  }
- // direct file/source/download_url variables
- if let url = extractJsStringValue(pattern: "(?:download_url|downloadUrl|source|src|file)\\s*[=:]\\s*['\\\"]([^'\\\"]+)['\\\"]", in: html) {
+
+ if let url = extractSourcesFile(from: html, pageURL: pageURL) {
  return url
  }
- // data-src="https://..."
- if let url = extractHtmlAttrValue(attr: "data-src", in: html) {
+
+ if let url = extractKnownDownloadVariable(from: html, pageURL: pageURL) {
  return url
  }
- // video_url variable assignment
- if let url = extractJsStringValue(pattern: "video_url\\s*[=:]\\s*['\\\"]([^'\\\"]+)['\\\"]", in: html) {
- return url
+
+ if let url = extractHtmlAttrValue(attr: "data-src", in: html),
+ let normalized = normalizeMixDropMediaUrl(url, pageURL: pageURL) {
+ return normalized
  }
+
  return nil
  }
 
  /// Decode p.a.c.k.e.r style eval blocks that MixDrop sometimes uses.
- private static func findVideoUrlViaPacker(_ html: String) -> String? {
+ private static func findVideoUrlViaPacker(_ html: String, pageURL: URL) -> String? {
  guard let packed = extractPackedBlock(html) else { return nil }
  guard let decoded = unpackPacker(packed) else { return nil }
- return findVideoUrl(in: decoded)
+ return findVideoUrl(in: decoded, pageURL: pageURL)
  }
 
  // MARK: - Helpers
+
+ private static func extractMDCoreWurl(from html: String, pageURL: URL) -> String? {
+ let patterns = [
+ #"MDCore\.wurl\s*=\s*['"]([^'"]+)['"]"#,
+ #"\bwurl\s*[:=]\s*['"]([^'"]+)['"]"#
+ ]
+
+ for pattern in patterns {
+ if let raw = extractJsStringValue(pattern: pattern, in: html),
+ let normalized = normalizeMixDropMediaUrl(raw, pageURL: pageURL) {
+ return normalized
+ }
+ }
+
+ return nil
+ }
+
+ private static func extractSourcesFile(from html: String, pageURL: URL) -> String? {
+ let patterns = [
+ #"sources\s*:\s*\[\s*\{\s*file\s*:\s*['"]([^'"]+)['"]"#,
+ #"sources\s*:\s*\[\s*\{\s*["']file["']\s*:\s*['"]([^'"]+)['"]"#
+ ]
+
+ for pattern in patterns {
+ if let raw = extractJsStringValue(pattern: pattern, in: html),
+ let normalized = normalizeMixDropMediaUrl(raw, pageURL: pageURL) {
+ return normalized
+ }
+ }
+
+ return nil
+ }
+
+ private static func extractKnownDownloadVariable(from html: String, pageURL: URL) -> String? {
+ let patterns = [
+ #"\bdownload_url\s*[=:]\s*['"]([^'"]+)['"]"#,
+ #"\bdownloadUrl\s*[=:]\s*['"]([^'"]+)['"]"#,
+ #"\bvideo_url\s*[=:]\s*['"]([^'"]+)['"]"#
+ ]
+
+ for pattern in patterns {
+ if let raw = extractJsStringValue(pattern: pattern, in: html),
+ let normalized = normalizeMixDropMediaUrl(raw, pageURL: pageURL) {
+ return normalized
+ }
+ }
+
+ return nil
+ }
+
+ private static func normalizeMixDropMediaUrl(_ raw: String, pageURL: URL) -> String? {
+ let trimmed = raw
+ .replacingOccurrences(of: "&amp;", with: "&")
+ .trimmingCharacters(in: .whitespacesAndNewlines)
+
+ guard !trimmed.isEmpty else { return nil }
+
+ let normalized: String
+
+ if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
+ normalized = trimmed
+ } else if trimmed.hasPrefix("//") {
+ normalized = "https:" + trimmed
+ } else if trimmed.hasPrefix("/") {
+ normalized = URL(string: trimmed, relativeTo: pageURL)?.absoluteURL.absoluteString ?? trimmed
+ } else {
+ normalized = trimmed
+ }
+
+ guard isValidMixDropMediaUrl(normalized) else {
+ return nil
+ }
+
+ return normalized
+ }
+
+ private static func isValidMixDropMediaUrl(_ urlString: String) -> Bool {
+ guard let components = URLComponents(string: urlString),
+ let host = components.host?.lowercased() else {
+ return false
+ }
+
+ let path = components.percentEncodedPath.lowercased()
+
+ guard host == "mxcontent.net" || host.hasSuffix(".mxcontent.net") else {
+ return false
+ }
+
+ return path.hasSuffix(".mp4") || path.contains(".mp4")
+ }
 
  private static func extractJsStringValue(pattern: String, in text: String) -> String? {
  guard let regex = try? NSRegularExpression(pattern: pattern),
@@ -235,6 +331,7 @@ struct MixDropExtractor: VideoSiteExtractor {
  private static func decodeEscapes(_ s: String) -> String {
  s.replacingOccurrences(of: "\\n", with: "\n")
  .replacingOccurrences(of: "\\t", with: "\t")
+ .replacingOccurrences(of: "\\/", with: "/")
  .replacingOccurrences(of: "\\'", with: "'")
  .replacingOccurrences(of: "\\\\", with: "\\")
  }
@@ -242,7 +339,7 @@ struct MixDropExtractor: VideoSiteExtractor {
  private static func decode(p: String, a: Int, c: Int, k: String) -> String? {
  guard a >= 2 && a <= 62 else { return nil }
  let keys = k.components(separatedBy: "|")
- var words = p.components(separatedBy: " ")
+ let words = p.components(separatedBy: " ")
  var result = ""
 
  for word in words {

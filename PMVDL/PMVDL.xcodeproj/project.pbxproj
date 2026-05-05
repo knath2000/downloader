@@ -14,9 +14,9 @@
 	A10042 /* CloudSyncScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20042; };
 	A10043 /* WidgetDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20043; };
 	A10047 /* ActiveWorkTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20047; };
-	A10008 /* MegaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20009; };
-	A10011 /* GDriveManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20011; };
-	A10012 /* TransferManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20012; };
+		A10008 /* MegaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20009; };
+		A10011 /* GDriveManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20011; };
+		A10086 /* SeedboxManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20086 /* SeedboxManager.swift */; };
 	A10010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20010; };
 	A10013 /* AppStateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20013; };
 	A10014 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20014; };
@@ -25,6 +25,7 @@
 	A10017 /* DownloadQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20017; };
 	A10018 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20018; };
 	A10019 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20019; };
+	A10089 /* LibraryThumbnailResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20089 /* LibraryThumbnailResolver.swift */; };
 	A10020 /* DownloadQueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20020; };
 	A10052 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20052; };
 	A10021 /* DropHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20021; };
@@ -39,13 +40,7 @@
 	A10031 /* M3U8Extractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20031; };
 	A10032 /* ScraperErrors.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20032; };
 	A10033 /* CloudHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20033; };
-	A10034 /* CronParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20034; };
-	A10035 /* ScheduledTask.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20035; };
-	A10036 /* SchedulerEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20036; };
-	A10037 /* SchedulerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20037; };
 	A10038 /* VideoProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20038; };
-	A10039 /* ProcessingProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20039; };
-	A10040 /* ProcessingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20040; };
 	A10041 /* CloudKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20041; };
 	A10053 /* VidaraExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20053; };
 	A10055 /* LuluStreamExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20055; };
@@ -57,9 +52,47 @@
 	A10060 /* WebViewExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20060 /* WebViewExtractor.swift */; };
 	A10061 /* LicenseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20061 /* LicenseManager.swift */; };
 	A10064 /* HardwareID.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20064 /* HardwareID.swift */; };
-	A10065 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20065 /* KeychainStore.swift */; };
 	A10062 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20062; };
 		A10063 /* GlassComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20063; };
+	A10066 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A30002 /* Sparkle */; };
+	A10067 /* HistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20067 /* HistoryManager.swift */; };
+	A10068 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20068 /* HistoryView.swift */; };
+	A10069 /* MegaView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20069 /* MegaView.swift */; };
+	A10071 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20071 /* SettingsView.swift */; };
+	A10087 /* SettingsDependencyState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20087 /* SettingsDependencyState.swift */; };
+	A10088 /* SettingsDependencyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20088 /* SettingsDependencyStore.swift */; };
+	A10072 /* DependencySetupPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20072 /* DependencySetupPanel.swift */; };
+	A10073 /* VideoResultRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20073 /* VideoResultRow.swift */; };
+	A10090 /* HomeLayoutMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20090 /* HomeLayoutMetrics.swift */; };
+	A10091 /* HomeURLInputModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20091 /* HomeURLInputModel.swift */; };
+	A10092 /* HomeHeroHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20092 /* HomeHeroHeader.swift */; };
+	A10093 /* HomeURLInputCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20093 /* HomeURLInputCard.swift */; };
+	A10094 /* VideoResultPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20094 /* VideoResultPresentation.swift */; };
+	A10095 /* BatchDownloadBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20095 /* BatchDownloadBar.swift */; };
+	A10096 /* HomeStatusRail.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20096 /* HomeStatusRail.swift */; };
+	A10097 /* VideoResultCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20097 /* VideoResultCard.swift */; };
+	A10074 /* String+Parsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20074 /* String+Parsing.swift */; };
+	A10075 /* NetworkConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20075 /* NetworkConstants.swift */; };
+	A10076 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20076 /* Logging.swift */; };
+	A10077 /* SubprocessRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20077 /* SubprocessRunner.swift */; };
+	A10078 /* DownloadPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20078 /* DownloadPaths.swift */; };
+	A10079 /* DownloadProgressParsers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20079 /* DownloadProgressParsers.swift */; };
+	A10080 /* DownloadResolution.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20080 /* DownloadResolution.swift */; };
+	A10081 /* DownloadJobs.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20081 /* DownloadJobs.swift */; };
+	A10082 /* DirectDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20082 /* DirectDownloader.swift */; };
+	A10083 /* YtDlpRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20083 /* YtDlpRunner.swift */; };
+	A10084 /* HLSDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20084 /* HLSDownloader.swift */; };
+	A10085 /* EncryptedHLSDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20085 /* EncryptedHLSDecoder.swift */; };
+	T10001 /* SubprocessRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20001 /* SubprocessRunnerTests.swift */; };
+	T10002 /* DownloadResolutionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20002 /* DownloadResolutionTests.swift */; };
+	T10003 /* DownloadQueueProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20003 /* DownloadQueueProjectionTests.swift */; };
+	T10004 /* ProgressParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20004 /* ProgressParserTests.swift */; };
+	T10005 /* SettingsDependencyStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20005 /* SettingsDependencyStateTests.swift */; };
+	T10006 /* ThumbnailCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20006 /* ThumbnailCacheTests.swift */; };
+	T10007 /* LibraryThumbnailResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20007 /* LibraryThumbnailResolverTests.swift */; };
+	T10008 /* HomeURLInputModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20008 /* HomeURLInputModelTests.swift */; };
+	T10009 /* VideoResultPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20009 /* VideoResultPresentationTests.swift */; };
+	T10010 /* HomeBatchTargetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20010 /* HomeBatchTargetTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -70,9 +103,9 @@
 	A20005 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 	A20010 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 	A20008 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-	A20009 /* MegaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MegaManager.swift; sourceTree = "<group>"; };
-	A20011 /* GDriveManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GDriveManager.swift; sourceTree = "<group>"; };
-	A20012 /* TransferManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransferManager.swift; sourceTree = "<group>"; };
+		A20009 /* MegaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MegaManager.swift; sourceTree = "<group>"; };
+		A20011 /* GDriveManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GDriveManager.swift; sourceTree = "<group>"; };
+		A20086 /* SeedboxManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeedboxManager.swift; sourceTree = "<group>"; };
 	A20013 /* AppStateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateManager.swift; sourceTree = "<group>"; };
 	A20014 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 	A20015 /* ThumbnailCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailCache.swift; sourceTree = "<group>"; };
@@ -80,6 +113,7 @@
 	A20017 /* DownloadQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadQueue.swift; sourceTree = "<group>"; };
 	A20018 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 	A20019 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+	A20089 /* LibraryThumbnailResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryThumbnailResolver.swift; sourceTree = "<group>"; };
 	A20020 /* DownloadQueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadQueueView.swift; sourceTree = "<group>"; };
 	A20021 /* DropHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DropHandler.swift; sourceTree = "<group>"; };
 	A20022 /* AboutWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutWindow.swift; sourceTree = "<group>"; };
@@ -97,13 +131,7 @@
 	A20056 /* ProviderLinkExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderLinkExtractor.swift; sourceTree = "<group>"; };
 	A20054 /* DownloadProgressDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadProgressDelegate.swift; sourceTree = "<group>"; };
 	A20033 /* CloudHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudHub.swift; sourceTree = "<group>"; };
-	A20034 /* CronParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CronParser.swift; sourceTree = "<group>"; };
-	A20035 /* ScheduledTask.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduledTask.swift; sourceTree = "<group>"; };
-	A20036 /* SchedulerEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulerEngine.swift; sourceTree = "<group>"; };
-	A20037 /* SchedulerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchedulerView.swift; sourceTree = "<group>"; };
 	A20038 /* VideoProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoProcessor.swift; sourceTree = "<group>"; };
-	A20039 /* ProcessingProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingProfile.swift; sourceTree = "<group>"; };
-	A20040 /* ProcessingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessingView.swift; sourceTree = "<group>"; };
 	A20041 /* CloudKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitManager.swift; sourceTree = "<group>"; };
 	A20042 /* CloudSyncScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncScheduler.swift; sourceTree = "<group>"; };
 	A20043 /* WidgetDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataStore.swift; sourceTree = "<group>"; };
@@ -124,14 +152,60 @@
 	A20060 /* WebViewExtractor.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WebViewExtractor.swift; sourceTree = "<group>"; };
 	A20061 /* LicenseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseManager.swift; sourceTree = "<group>"; };
 	A20064 /* HardwareID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareID.swift; sourceTree = "<group>"; };
-	A20065 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 	A20062 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		A20063 /* GlassComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassComponents.swift; sourceTree = "<group>"; };
+	A20067 /* HistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryManager.swift; sourceTree = "<group>"; };
+	A20068 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+	A20069 /* MegaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MegaView.swift; sourceTree = "<group>"; };
+	A20071 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+	A20087 /* SettingsDependencyState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDependencyState.swift; sourceTree = "<group>"; };
+	A20088 /* SettingsDependencyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDependencyStore.swift; sourceTree = "<group>"; };
+	A20072 /* DependencySetupPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DependencySetupPanel.swift; sourceTree = "<group>"; };
+	A20073 /* VideoResultRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoResultRow.swift; sourceTree = "<group>"; };
+	A20090 /* HomeLayoutMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeLayoutMetrics.swift; sourceTree = "<group>"; };
+	A20091 /* HomeURLInputModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeURLInputModel.swift; sourceTree = "<group>"; };
+	A20092 /* HomeHeroHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeHeroHeader.swift; sourceTree = "<group>"; };
+	A20093 /* HomeURLInputCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeURLInputCard.swift; sourceTree = "<group>"; };
+	A20094 /* VideoResultPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoResultPresentation.swift; sourceTree = "<group>"; };
+	A20095 /* BatchDownloadBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchDownloadBar.swift; sourceTree = "<group>"; };
+	A20096 /* HomeStatusRail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeStatusRail.swift; sourceTree = "<group>"; };
+	A20097 /* VideoResultCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoResultCard.swift; sourceTree = "<group>"; };
+	A20074 /* String+Parsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Parsing.swift"; sourceTree = "<group>"; };
+	A20075 /* NetworkConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkConstants.swift; sourceTree = "<group>"; };
+	A20076 /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
+	A20077 /* SubprocessRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubprocessRunner.swift; sourceTree = "<group>"; };
+	A20078 /* DownloadPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadPaths.swift; sourceTree = "<group>"; };
+	A20079 /* DownloadProgressParsers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadProgressParsers.swift; sourceTree = "<group>"; };
+	A20080 /* DownloadResolution.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadResolution.swift; sourceTree = "<group>"; };
+	A20081 /* DownloadJobs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadJobs.swift; sourceTree = "<group>"; };
+	A20082 /* DirectDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectDownloader.swift; sourceTree = "<group>"; };
+	A20083 /* YtDlpRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YtDlpRunner.swift; sourceTree = "<group>"; };
+	A20084 /* HLSDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HLSDownloader.swift; sourceTree = "<group>"; };
+	A20085 /* EncryptedHLSDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncryptedHLSDecoder.swift; sourceTree = "<group>"; };
 	A30001 /* VidDL.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VidDL.app; sourceTree = BUILT_PRODUCTS_DIR; };
+	T20001 /* SubprocessRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubprocessRunnerTests.swift; sourceTree = "<group>"; };
+	T20002 /* DownloadResolutionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadResolutionTests.swift; sourceTree = "<group>"; };
+	T20003 /* DownloadQueueProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadQueueProjectionTests.swift; sourceTree = "<group>"; };
+	T20004 /* ProgressParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressParserTests.swift; sourceTree = "<group>"; };
+	T20005 /* SettingsDependencyStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDependencyStateTests.swift; sourceTree = "<group>"; };
+	T20006 /* ThumbnailCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailCacheTests.swift; sourceTree = "<group>"; };
+	T20007 /* LibraryThumbnailResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryThumbnailResolverTests.swift; sourceTree = "<group>"; };
+	T20008 /* HomeURLInputModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeURLInputModelTests.swift; sourceTree = "<group>"; };
+	T20009 /* VideoResultPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoResultPresentationTests.swift; sourceTree = "<group>"; };
+	T20010 /* HomeBatchTargetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeBatchTargetTests.swift; sourceTree = "<group>"; };
+	T30001 /* VidDLTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VidDLTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 	A40001 /* Frameworks */ = {
+		isa = PBXFrameworksBuildPhase;
+		buildActionMask = 2147483647;
+		files = (
+			A10066 /* Sparkle in Frameworks */,
+		);
+		runOnlyForDeploymentPostprocessing = 0;
+	};
+	T40001 /* Frameworks */ = {
 		isa = PBXFrameworksBuildPhase;
 		buildActionMask = 2147483647;
 		files = (
@@ -145,6 +219,7 @@
 		isa = PBXGroup;
 		children = (
 			A50002 /* PMVDL */,
+			T50001 /* PMVDLTests */,
 			A50003 /* Products */,
 			A50004 /* Extensions */,
 			A50005 /* Resources */,
@@ -156,42 +231,45 @@
 		children = (
 			A20004 /* VidDLApp.swift */,
 			A20005 /* ContentView.swift */,
+			A50011 /* History */,
+			A50012 /* Mega */,
+			A50014 /* Settings */,
+			A50015 /* Home */,
+			A50016 /* Extensions */,
+			A50017 /* Downloads */,
+			A50018 /* Infrastructure */,
 			A20018 /* HomeView.swift */,
 			A20019 /* LibraryView.swift */,
 			A20020 /* DownloadQueueView.swift */,
-			A20037 /* SchedulerView.swift */,
-			A20040 /* ProcessingView.swift */,
 			A20002 /* VideoScraper.swift */,
 			A20003 /* ClipboardManager.swift */,
 			A20001 /* Models.swift */,
 			A20028 /* ScraperEngine.swift */,
 			A50010 /* Extractors */,
 			A20013 /* AppStateManager.swift */,
-			A20012 /* TransferManager.swift */,
-			A20009 /* MegaManager.swift */,
-			A20011 /* GDriveManager.swift */,
-			A20033 /* CloudHub.swift */,
+				A20009 /* MegaManager.swift */,
+				A20011 /* GDriveManager.swift */,
+				A20086 /* SeedboxManager.swift */,
+				A20033 /* CloudHub.swift */,
 			A20017 /* DownloadQueue.swift */,
 			A20016 /* VideoLibrary.swift */,
 			A20015 /* ThumbnailCache.swift */,
+			A20089 /* LibraryThumbnailResolver.swift */,
 			A20014 /* NotificationManager.swift */,
 			A20027 /* IntentHandler.swift */,
 			A20021 /* DropHandler.swift */,
 			A20023 /* UpdateManager.swift */,
 			A20061 /* LicenseManager.swift */,
 			A20064 /* HardwareID.swift */,
-			A20065 /* KeychainStore.swift */,
 			A20062 /* Theme.swift */,
 				A20063 /* GlassComponents.swift */,
+			A20075 /* NetworkConstants.swift */,
+			A20076 /* Logging.swift */,
 			A20025 /* ProFeatureGate.swift */,
 			A20026 /* UpgradeOverlay.swift */,
 			A20022 /* AboutWindow.swift */,
 			A20047 /* ActiveWorkTracker.swift */,
-			A20036 /* SchedulerEngine.swift */,
-			A20035 /* ScheduledTask.swift */,
-			A20034 /* CronParser.swift */,
 			A20038 /* VideoProcessor.swift */,
-			A20039 /* ProcessingProfile.swift */,
 			A20041 /* CloudKitManager.swift */,
 			A20042 /* CloudSyncScheduler.swift */,
 			A20043 /* WidgetDataStore.swift */,
@@ -204,12 +282,105 @@
 		path = PMVDL;
 		sourceTree = "<group>";
 	};
+	A50011 /* History */ = {
+		isa = PBXGroup;
+		children = (
+			A20067 /* HistoryManager.swift */,
+			A20068 /* HistoryView.swift */,
+		);
+		path = History;
+		sourceTree = "<group>";
+	};
+	A50012 /* Mega */ = {
+		isa = PBXGroup;
+		children = (
+			A20069 /* MegaView.swift */,
+		);
+		path = Mega;
+		sourceTree = "<group>";
+	};
+	A50014 /* Settings */ = {
+		isa = PBXGroup;
+		children = (
+			A20071 /* SettingsView.swift */,
+			A20087 /* SettingsDependencyState.swift */,
+			A20088 /* SettingsDependencyStore.swift */,
+		);
+		path = Settings;
+		sourceTree = "<group>";
+	};
+	A50015 /* Home */ = {
+		isa = PBXGroup;
+		children = (
+			A20090 /* HomeLayoutMetrics.swift */,
+			A20091 /* HomeURLInputModel.swift */,
+			A20092 /* HomeHeroHeader.swift */,
+			A20093 /* HomeURLInputCard.swift */,
+			A20094 /* VideoResultPresentation.swift */,
+			A20095 /* BatchDownloadBar.swift */,
+			A20096 /* HomeStatusRail.swift */,
+			A20097 /* VideoResultCard.swift */,
+			A20072 /* DependencySetupPanel.swift */,
+			A20073 /* VideoResultRow.swift */,
+		);
+		path = Home;
+		sourceTree = "<group>";
+	};
+	A50016 /* Extensions */ = {
+		isa = PBXGroup;
+		children = (
+			A20074 /* String+Parsing.swift */,
+		);
+		path = Extensions;
+		sourceTree = "<group>";
+	};
+	A50017 /* Downloads */ = {
+		isa = PBXGroup;
+		children = (
+			A20078 /* DownloadPaths.swift */,
+			A20079 /* DownloadProgressParsers.swift */,
+			A20080 /* DownloadResolution.swift */,
+			A20081 /* DownloadJobs.swift */,
+			A20082 /* DirectDownloader.swift */,
+			A20083 /* YtDlpRunner.swift */,
+			A20084 /* HLSDownloader.swift */,
+			A20085 /* EncryptedHLSDecoder.swift */,
+		);
+		path = Downloads;
+		sourceTree = "<group>";
+	};
+	A50018 /* Infrastructure */ = {
+		isa = PBXGroup;
+		children = (
+			A20077 /* SubprocessRunner.swift */,
+		);
+		path = Infrastructure;
+		sourceTree = "<group>";
+	};
 	A50003 /* Products */ = {
 		isa = PBXGroup;
 		children = (
 			A30001 /* VidDL.app */,
+			T30001 /* VidDLTests.xctest */,
 		);
 		name = Products;
+		sourceTree = "<group>";
+	};
+	T50001 /* PMVDLTests */ = {
+		isa = PBXGroup;
+		children = (
+			T20001 /* SubprocessRunnerTests.swift */,
+			T20002 /* DownloadResolutionTests.swift */,
+			T20003 /* DownloadQueueProjectionTests.swift */,
+			T20004 /* ProgressParserTests.swift */,
+			T20005 /* SettingsDependencyStateTests.swift */,
+			T20006 /* ThumbnailCacheTests.swift */,
+			T20007 /* LibraryThumbnailResolverTests.swift */,
+			T20008 /* HomeURLInputModelTests.swift */,
+			T20009 /* VideoResultPresentationTests.swift */,
+			T20010 /* HomeBatchTargetTests.swift */,
+		);
+		path = PMVDLTests;
 		sourceTree = "<group>";
 	};
 	A50004 /* Extensions */ = {
@@ -295,11 +466,41 @@
 		dependencies = (
 		);
 		name = PMVDL;
+		packageProductDependencies = (
+			A30002 /* Sparkle */,
+		);
 		productName = VidDL;
 		productReference = A30001 /* VidDL.app */;
 		productType = "com.apple.product-type.application";
 	};
+	T60001 /* VidDLTests */ = {
+		isa = PBXNativeTarget;
+		buildConfigurationList = T80001 /* Build configuration list for PBXNativeTarget "VidDLTests" */;
+		buildPhases = (
+			T70001 /* Sources */,
+			T40001 /* Frameworks */,
+		);
+		buildRules = (
+		);
+		dependencies = (
+			T60002 /* PBXTargetDependency */,
+		);
+		name = VidDLTests;
+		productName = VidDLTests;
+		productReference = T30001 /* VidDLTests.xctest */;
+		productType = "com.apple.product-type.bundle.unit-test";
+	};
 /* End PBXNativeTarget section */
+
+/* Begin PBXContainerItemProxy section */
+	T60003 /* PBXContainerItemProxy */ = {
+		isa = PBXContainerItemProxy;
+		containerPortal = A90001 /* Project object */;
+		proxyType = 1;
+		remoteGlobalIDString = A60001;
+		remoteInfo = PMVDL;
+	};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXProject section */
 	A90001 /* Project object */ = {
@@ -318,11 +519,15 @@
 			Base,
 		);
 		mainGroup = A50001;
+		packageReferences = (
+			A90002 /* XCRemoteSwiftPackageReference "Sparkle" */,
+		);
 		productRefGroup = A50003 /* Products */;
 		projectDirPath = "";
 		projectRoot = "";
 		targets = (
 			A60001 /* PMVDL */,
+			T60001 /* VidDLTests */,
 		);
 	};
 /* End PBXProject section */
@@ -357,6 +562,7 @@
 			A10017 /* DownloadQueue.swift in Sources */,
 			A10018 /* HomeView.swift in Sources */,
 			A10019 /* LibraryView.swift in Sources */,
+			A10089 /* LibraryThumbnailResolver.swift in Sources */,
 			A10020 /* DownloadQueueView.swift in Sources */,
 			A10021 /* DropHandler.swift in Sources */,
 			A10022 /* AboutWindow.swift in Sources */,
@@ -373,20 +579,14 @@
 			A10055 /* LuluStreamExtractor.swift in Sources */,
 			A10056 /* ProviderLinkExtractor.swift in Sources */,
 			A10033 /* CloudHub.swift in Sources */,
-			A10034 /* CronParser.swift in Sources */,
-			A10035 /* ScheduledTask.swift in Sources */,
-			A10036 /* SchedulerEngine.swift in Sources */,
-			A10037 /* SchedulerView.swift in Sources */,
 			A10038 /* VideoProcessor.swift in Sources */,
-			A10039 /* ProcessingProfile.swift in Sources */,
-			A10040 /* ProcessingView.swift in Sources */,
 			A10041 /* CloudKitManager.swift in Sources */,
 			A10042 /* CloudSyncScheduler.swift in Sources */,
 			A10043 /* WidgetDataStore.swift in Sources */,
 			A10047 /* ActiveWorkTracker.swift in Sources */,
-			A10008 /* MegaManager.swift in Sources */,
-			A10011 /* GDriveManager.swift in Sources */,
-			A10012 /* TransferManager.swift in Sources */,
+				A10008 /* MegaManager.swift in Sources */,
+				A10011 /* GDriveManager.swift in Sources */,
+				A10086 /* SeedboxManager.swift in Sources */,
 			A10052 /* DownloadManager.swift in Sources */,
 			A10054 /* DownloadProgressDelegate.swift in Sources */,
 			A10057 /* StreamTapeExtractor.swift in Sources */,
@@ -395,13 +595,65 @@
 			A10060 /* WebViewExtractor.swift in Sources */,
 			A10061 /* LicenseManager.swift in Sources */,
 			A10064 /* HardwareID.swift in Sources */,
-			A10065 /* KeychainStore.swift in Sources */,
 			A10062 /* Theme.swift in Sources */,
 				A10063 /* GlassComponents.swift in Sources */,
+			A10067 /* HistoryManager.swift in Sources */,
+			A10068 /* HistoryView.swift in Sources */,
+			A10069 /* MegaView.swift in Sources */,
+			A10071 /* SettingsView.swift in Sources */,
+			A10087 /* SettingsDependencyState.swift in Sources */,
+			A10088 /* SettingsDependencyStore.swift in Sources */,
+			A10072 /* DependencySetupPanel.swift in Sources */,
+			A10073 /* VideoResultRow.swift in Sources */,
+			A10090 /* HomeLayoutMetrics.swift in Sources */,
+			A10091 /* HomeURLInputModel.swift in Sources */,
+			A10092 /* HomeHeroHeader.swift in Sources */,
+			A10093 /* HomeURLInputCard.swift in Sources */,
+			A10094 /* VideoResultPresentation.swift in Sources */,
+			A10095 /* BatchDownloadBar.swift in Sources */,
+			A10096 /* HomeStatusRail.swift in Sources */,
+			A10097 /* VideoResultCard.swift in Sources */,
+			A10074 /* String+Parsing.swift in Sources */,
+			A10075 /* NetworkConstants.swift in Sources */,
+			A10076 /* Logging.swift in Sources */,
+			A10077 /* SubprocessRunner.swift in Sources */,
+			A10078 /* DownloadPaths.swift in Sources */,
+			A10079 /* DownloadProgressParsers.swift in Sources */,
+			A10080 /* DownloadResolution.swift in Sources */,
+			A10081 /* DownloadJobs.swift in Sources */,
+			A10082 /* DirectDownloader.swift in Sources */,
+			A10083 /* YtDlpRunner.swift in Sources */,
+			A10084 /* HLSDownloader.swift in Sources */,
+			A10085 /* EncryptedHLSDecoder.swift in Sources */,
+		);
+		runOnlyForDeploymentPostprocessing = 0;
+	};
+	T70001 /* Sources */ = {
+		isa = PBXSourcesBuildPhase;
+		buildActionMask = 2147483647;
+		files = (
+			T10001 /* SubprocessRunnerTests.swift in Sources */,
+			T10002 /* DownloadResolutionTests.swift in Sources */,
+			T10003 /* DownloadQueueProjectionTests.swift in Sources */,
+			T10004 /* ProgressParserTests.swift in Sources */,
+			T10005 /* SettingsDependencyStateTests.swift in Sources */,
+			T10006 /* ThumbnailCacheTests.swift in Sources */,
+			T10007 /* LibraryThumbnailResolverTests.swift in Sources */,
+			T10008 /* HomeURLInputModelTests.swift in Sources */,
+			T10009 /* VideoResultPresentationTests.swift in Sources */,
+			T10010 /* HomeBatchTargetTests.swift in Sources */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+	T60002 /* PBXTargetDependency */ = {
+		isa = PBXTargetDependency;
+		target = A60001 /* PMVDL */;
+		targetProxy = T60003 /* PBXContainerItemProxy */;
+	};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 	B10001 /* Debug */ = {
@@ -413,10 +665,15 @@
 			DEAD_CODE_STRIPPING = YES;
 			DEBUG_INFORMATION_FORMAT = dwarf;
 			ENABLE_HARDENED_RUNTIME = YES;
+			ENABLE_TESTABILITY = YES;
 			GCC_OPTIMIZATION_LEVEL = 0;
 			INFOPLIST_FILE = PMVDL/Info.plist;
 			PRODUCT_NAME = VidDL;
 			INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+			LD_RUNPATH_SEARCH_PATHS = (
+				"$(inherited)",
+				"@executable_path/../Frameworks",
+			);
 			MACOSX_DEPLOYMENT_TARGET = 14.0;
 			MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 			ONLY_ACTIVE_ARCH = YES;
@@ -441,6 +698,10 @@
 			INFOPLIST_FILE = PMVDL/Info.plist;
 			PRODUCT_NAME = VidDL;
 			INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+			LD_RUNPATH_SEARCH_PATHS = (
+				"$(inherited)",
+				"@executable_path/../Frameworks",
+			);
 			MACOSX_DEPLOYMENT_TARGET = 14.0;
 			MTL_ENABLE_DEBUG_INFO = NO;
 			PRODUCT_BUNDLE_IDENTIFIER = com.pmvdl.app;
@@ -484,6 +745,44 @@
 		};
 		name = Release;
 	};
+	T90001 /* Debug */ = {
+		isa = XCBuildConfiguration;
+		buildSettings = {
+			BUNDLE_LOADER = "$(TEST_HOST)";
+			CODE_SIGN_IDENTITY = "-";
+			CODE_SIGN_STYLE = Automatic;
+			DEBUG_INFORMATION_FORMAT = dwarf;
+			GENERATE_INFOPLIST_FILE = YES;
+			MACOSX_DEPLOYMENT_TARGET = 14.0;
+			PRODUCT_BUNDLE_IDENTIFIER = com.pmvdl.app.tests;
+			PRODUCT_NAME = "$(TARGET_NAME)";
+			SDKROOT = macosx;
+			SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG";
+			SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			SWIFT_VERSION = 5.0;
+			TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VidDL.app/Contents/MacOS/VidDL";
+		};
+		name = Debug;
+	};
+	T90002 /* Release */ = {
+		isa = XCBuildConfiguration;
+		buildSettings = {
+			BUNDLE_LOADER = "$(TEST_HOST)";
+			CODE_SIGN_IDENTITY = "-";
+			CODE_SIGN_STYLE = Automatic;
+			DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+			GENERATE_INFOPLIST_FILE = YES;
+			MACOSX_DEPLOYMENT_TARGET = 14.0;
+			PRODUCT_BUNDLE_IDENTIFIER = com.pmvdl.app.tests;
+			PRODUCT_NAME = "$(TARGET_NAME)";
+			SDKROOT = macosx;
+			SWIFT_COMPILATION_MODE = wholemodule;
+			SWIFT_OPTIMIZATION_LEVEL = "-O";
+			SWIFT_VERSION = 5.0;
+			TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VidDL.app/Contents/MacOS/VidDL";
+		};
+		name = Release;
+	};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -505,7 +804,35 @@
 		defaultConfigurationIsVisible = 0;
 		defaultConfigurationName = Release;
 	};
+	T80001 /* Build configuration list for PBXNativeTarget "VidDLTests" */ = {
+		isa = XCConfigurationList;
+		buildConfigurations = (
+			T90001 /* Debug */,
+			T90002 /* Release */,
+		);
+		defaultConfigurationIsVisible = 0;
+		defaultConfigurationName = Release;
+	};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+	A90002 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+		isa = XCRemoteSwiftPackageReference;
+		repositoryURL = "https://github.com/sparkle-project/Sparkle";
+		requirement = {
+			branch = "2.x";
+			kind = branch;
+		};
+	};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+	A30002 /* Sparkle */ = {
+		isa = XCSwiftPackageProductDependency;
+		package = A90002 /* XCRemoteSwiftPackageReference "Sparkle" */;
+		productName = Sparkle;
+	};
+/* End XCSwiftPackageProductDependency section */
 };
 rootObject = A90001 /* Project object */;
 }

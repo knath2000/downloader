@@ -21,7 +21,7 @@ final class AboutWindowController: NSWindowController {
 
         let contentView = AboutView()
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 450),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 490),
             styleMask: [.closable, .titled, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -36,6 +36,8 @@ final class AboutWindowController: NSWindowController {
 }
 
 struct AboutView: View {
+    @ObservedObject private var updateManager = UpdateManager.shared
+
     var version: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?.?.?"
     }
@@ -57,6 +59,31 @@ struct AboutView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.bottom, 4)
+
+            HStack(spacing: 8) {
+                Button {
+                    updateManager.checkForUpdates()
+                } label: {
+                    Label("Check for Updates...", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .disabled(!updateManager.isAvailable)
+
+                if updateManager.isChecking {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 16, height: 16)
+                }
+            }
+            .padding(.bottom, 4)
+
+            if let message = updateManager.statusMessage {
+                Text(message)
+                    .font(.caption2)
+                    .foregroundColor(updateManager.lastError == nil ? .secondary : .red)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
 
             Divider().padding(.horizontal).padding(.vertical, 8)
 

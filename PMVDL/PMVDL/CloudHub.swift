@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Cloud Provider ID
 
 enum CloudProviderID: String, Codable, CaseIterable, Identifiable {
-    case mega, gdrive, dropbox, onedrive, local
+    case mega, gdrive, seedbox, dropbox, onedrive, local
 
     var id: String { rawValue }
 
@@ -11,6 +11,7 @@ enum CloudProviderID: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .mega: return "Mega"
         case .gdrive: return "Google Drive"
+        case .seedbox: return "Seedbox"
         case .dropbox: return "Dropbox"
         case .onedrive: return "OneDrive"
         case .local: return "Local Folder"
@@ -21,6 +22,11 @@ enum CloudProviderID: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .mega: return MegaManager.isAvailable && MegaManager.isLoggedIn
         case .gdrive: return GDriveManager.isAvailable && GDriveManager.isConfigured()
+        case .seedbox:
+            if UserDefaults.standard.string(forKey: "seedboxTransferMode") == "webdav" {
+                return !(UserDefaults.standard.string(forKey: "seedboxWebdavURL") ?? "").isEmpty
+            }
+            return SeedboxManager.isRcloneAvailable
         case .dropbox, .onedrive: return GDriveManager.isAvailable  // rclone-based
         case .local: return true
         }
@@ -146,6 +152,7 @@ class CloudHub: ObservableObject {
         isUploading = true
         var results: [CloudUploadResult] = []
         let filename = VideoFileNaming.mp4FileName(title: title, fallback: URL(string: videoUrl)?.lastPathComponent ?? "video")
+        let seedboxMode = try? seedboxModeFromDefaults()
 
         // First upload to Mega to establish the file, then to other targets
         // For auto-delete: track Mega upload result, then delete after GDrive succeeds
@@ -179,6 +186,14 @@ class CloudHub: ObservableObject {
                                     onProgress(.gdrive, msg)
                                 }
                                 return (.success(.gdrive, message: "Uploaded to GDrive"), nil)
+                            case .seedbox:
+                                guard let seedboxMode else { throw SeedboxError.notConfigured }
+                                let manager = SeedboxManager(mode: seedboxMode)
+                                guard let sourceURL = URL(string: videoUrl) else { throw SeedboxError.invalidSourceURL }
+                                _ = try await manager.upload(sourceURL: sourceURL, filename: filename) { progress in
+                                    onProgress(.seedbox, String(format: "Transferring to seedbox… %.0f%%", progress * 100))
+                                }
+                                return (.success(.seedbox, message: "Uploaded to Seedbox"), nil)
                             case .dropbox:
                                 try await GDriveManager.upload(url: videoUrl, remoteName: "dropbox", remotePath: "VidDL/", title: title) { msg in
                                     onProgress(.dropbox, msg)
@@ -223,9 +238,10 @@ class CloudHub: ObservableObject {
         // After all uploads complete, delete Mega files that were successfully copied to GDrive/Dropbox/OneDrive
         if let megaPath = megaRemotePath {
             let gdriveOk = results.contains { $0.provider == .gdrive && $0.success }
+            let seedboxOk = results.contains { $0.provider == .seedbox && $0.success }
             let dropboxOk = results.contains { $0.provider == .dropbox && $0.success }
             let onedriveOk = results.contains { $0.provider == .onedrive && $0.success }
-            if gdriveOk || dropboxOk || onedriveOk {
+            if gdriveOk || seedboxOk || dropboxOk || onedriveOk {
                 do {
                     try await MegaManager.delete(remotePath: megaPath)
                 } catch {
@@ -237,5 +253,23 @@ class CloudHub: ObservableObject {
         isUploading = false
         lastResults = results
         return results
+    }
+
+    private func seedboxModeFromDefaults() throws -> SeedboxTransferMode {
+        let remotePath = UserDefaults.standard.string(forKey: "seedboxRemotePath") ?? "/"
+        if UserDefaults.standard.string(forKey: "seedboxTransferMode") == "webdav" {
+            let rawURL = UserDefaults.standard.string(forKey: "seedboxWebdavURL") ?? ""
+            guard let baseURL = URL(string: rawURL), !rawURL.isEmpty else { throw SeedboxError.notConfigured }
+            return .webdav(
+                baseURL: baseURL,
+                user: UserDefaults.standard.string(forKey: "seedboxWebdavUser") ?? "",
+                password: UserDefaults.standard.string(forKey: "seedboxWebdavPassword") ?? "",
+                remotePath: remotePath
+            )
+        }
+        return .rclone(
+            remoteName: UserDefaults.standard.string(forKey: "seedboxRemoteName") ?? "seedbox",
+            remotePath: remotePath
+        )
     }
 }

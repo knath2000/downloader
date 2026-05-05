@@ -1,3 +1,25 @@
+# VidDL LuluVid/LuluStream Extractor Fix - Session Summary
+**Date:** 2026-05-04
+**Project:** VidDL
+**Issue:** LuluVid/LuluStream source extraction failing when live embed pages expose direct JWPlayer HLS instead of packed JS only
+
+## Latest Confirmed Fix
+
+The Lulu extractor now searches raw embed HTML for `.m3u8` before falling back to the Dean Edwards p.a.c.k.e.r decoder. This fixes current LuluVid pages that contain a direct JWPlayer `sources: [{ file: "...m3u8..." }]` config and no usable `eval(...)` block.
+
+Key files:
+- `PMVDL/PMVDL/Extractors/LuluStreamExtractor.swift`
+- `PMVDL/PMVDLTests/DownloadResolutionTests.swift`
+- `PMVDL/Resources/LuluStream.md`
+- `docs/SESSION_2026_05_04_LULUVID_EXTRACTOR_FIX.md`
+
+Validation:
+- Debug build succeeded from `xcodebuild -project PMVDL/PMVDL.xcodeproj -scheme PMVDL -configuration Debug -derivedDataPath /tmp/viddl-run-derived build`.
+- Launched `/tmp/viddl-run-derived/Build/Products/Debug/VidDL.app`.
+- User confirmed the previously failing LuluVid link now works.
+
+---
+
 # VidDL Playmogo Extraction Fix - Session Summary
 **Date:** 2026-04-28
 **Project:** VidDL

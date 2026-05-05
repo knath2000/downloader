@@ -50,7 +50,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
             self.webView?.navigationDelegate = self
 
             // Set user agent to match browser
-            self.webView?.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+            self.webView?.customUserAgent = NetworkConstants.safariUserAgent
 
             let request = URLRequest(url: url)
             self.webView?.load(request)
@@ -58,7 +58,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
             // Increased timeout safety switch
             DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
                 if let c = self.continuation {
-                    print("[WebView] Timeout reached after \(timeout) seconds")
+                    Log.extractionWebView.debug("Timeout reached after \(timeout, privacy: .public) seconds")
                     self.continuation = nil
                     self.cleanup()
                     c.resume(throwing: WebViewError.timeout)
@@ -81,7 +81,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         if navigationAction.navigationType == .linkActivated || navigationAction.navigationType == .other {
-            print("[WebView] Starting navigation to: \(navigationAction.request.url?.absoluteString ?? "unknown")")
+            Log.extractionWebView.debug("Starting navigation to: \(navigationAction.request.url?.absoluteString ?? "unknown", privacy: .public)")
         }
 
         lastNavigationUrl = navigationAction.request.url
@@ -89,7 +89,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
             isFirstNavigation = false
         } else {
             redirectCount += 1
-            print("[WebView] Redirect #\(redirectCount): \(navigationAction.request.url?.absoluteString ?? "unknown")")
+            Log.extractionWebView.debug("Redirect #\(self.redirectCount, privacy: .public): \(navigationAction.request.url?.absoluteString ?? "unknown", privacy: .public)")
         }
         decisionHandler(.allow)
     }
@@ -97,21 +97,21 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         let loadTime = Date().timeIntervalSince(startTime)
         let currentUrl = webView.url
-        print("[WebView] Page loaded after \(loadTime) seconds. Redirect count: \(redirectCount), Final URL: \(currentUrl?.absoluteString ?? "nil")")
+        Log.extractionWebView.debug("Page loaded after \(loadTime, privacy: .public) seconds. Redirect count: \(self.redirectCount, privacy: .public), Final URL: \(currentUrl?.absoluteString ?? "nil", privacy: .public)")
 
         guard let currentUrl = currentUrl,
               let scheme = currentUrl.scheme?.lowercased(),
               (scheme == "http" || scheme == "https"),
               currentUrl.absoluteString != "about:blank",
               !currentUrl.absoluteString.hasPrefix("about:srcdoc") else {
-            print("[WebView] Skipping non-HTTP(S) or about: page")
+            Log.extractionWebView.debug("Skipping non-HTTP(S) or about: page")
             return
         }
 
         // Check if this is a Cloudflare challenge page
         let urlString = currentUrl.absoluteString
         if urlString.contains("challenges.cloudflare.com") || urlString.contains("turnstile") {
-            print("[WebView] Detected Cloudflare challenge, will wait longer for completion")
+            Log.extractionWebView.debug("Detected Cloudflare challenge, will wait longer for completion")
             isCloudflareChallenge = true
             // Don't start polling yet, wait for challenge to complete
             return
@@ -134,7 +134,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
         // Start polling for video URL
         if !hasStartedPolling {
             hasStartedPolling = true
-            print("[WebView] Will start polling in \(pollingDelay) seconds...")
+            Log.extractionWebView.debug("Will start polling in \(pollingDelay, privacy: .public) seconds...")
             DispatchQueue.main.asyncAfter(deadline: .now() + pollingDelay) {
                 self.executeScript()
             }
@@ -143,7 +143,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
     
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         let nsError = error as NSError
-        print("[WebView] Navigation failed: \(error.localizedDescription) (Code: \(nsError.code))")
+        Log.extractionWebView.error("Navigation failed: \(error.localizedDescription, privacy: .public) (Code: \(nsError.code, privacy: .public))")
         // Don't cancel immediately for cancelled requests (-999) - these might be normal during redirects
         if nsError.code != -999, let c = self.continuation {
             self.continuation = nil
@@ -154,7 +154,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         let nsError = error as NSError
-        print("[WebView] Provisional navigation failed: \(error.localizedDescription) (Code: \(nsError.code))")
+        Log.extractionWebView.error("Provisional navigation failed: \(error.localizedDescription, privacy: .public) (Code: \(nsError.code, privacy: .public))")
         // Don't cancel immediately for cancelled requests (-999) - these might be normal during redirects
         if nsError.code != -999, let c = self.continuation {
             self.continuation = nil
@@ -164,7 +164,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
     }
     
     private func executeScript() {
-        print("[WebView] Starting URL polling...")
+        Log.extractionWebView.debug("Starting URL polling...")
         pollForVideoUrl(attempt: 1, maxAttempts: 60) // Poll for up to 60 seconds
     }
 
@@ -324,7 +324,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
             guard let self = self else { return }
 
             if let error = error {
-                print("[WebView] JavaScript evaluation error: \(error.localizedDescription) (Code: \((error as NSError).code))")
+                Log.extractionWebView.error("JavaScript evaluation error: \(error.localizedDescription, privacy: .public) (Code: \((error as NSError).code, privacy: .public))")
                 // Continue polling instead of failing immediately
                 if attempt < maxAttempts {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -339,7 +339,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
             if let resultDict = result as? [String: Any] {
                 // Check if result contains an error
                 if let errorMsg = resultDict["error"] as? String {
-                    print("[WebView] JavaScript execution error: \(errorMsg)")
+                    Log.extractionWebView.error("JavaScript execution error: \(errorMsg, privacy: .public)")
                     if attempt < maxAttempts {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                             self.pollForVideoUrl(attempt: attempt + 1, maxAttempts: maxAttempts)
@@ -370,15 +370,15 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
     }
 
     private func handlePollingExhausted() {
-        print("[WebView] No video URL found after polling")
+        Log.extractionWebView.debug("No video URL found after polling")
         // If no video-specific URL is found, use the final page URL if it contains dood.video
         if let final = self.finalUrl, final.absoluteString.contains("dood.video") {
             let urlString = final.absoluteString
             if isFinalDoodVideoUrl(urlString) {
-                print("[WebView] Using final page URL: \(urlString)")
+                Log.extractionWebView.info("Using final page URL: \(urlString, privacy: .public)")
                 self.continuation?.resume(returning: urlString)
             } else {
-                print("[WebView] Final page URL is not a valid video URL: \(urlString)")
+                Log.extractionWebView.debug("Final page URL is not a valid video URL: \(urlString, privacy: .public)")
                 self.continuation?.resume(throwing: WebViewError.noVideoUrlFound)
             }
         } else {
@@ -394,12 +394,12 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
         }
 
         guard !isRejectedAsset(candidate) else {
-            print("[WebView] Skipping invalid URL via \(type): \(candidate)")
+            Log.extractionWebView.debug("Skipping invalid URL via \(type, privacy: .public): \(candidate, privacy: .public)")
             return false
         }
 
         if isFinalDoodVideoUrl(candidate) || isFullCloudMediaUrl(candidate) {
-            print("[WebView] Found candidate URL via \(type): \(candidate)")
+            Log.extractionWebView.info("Found candidate URL via \(type, privacy: .public): \(candidate, privacy: .public)")
             let c = continuation
             continuation = nil
             cleanup()
@@ -408,7 +408,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
         }
 
         if candidate.lowercased().contains("dood.video") || candidate.lowercased().contains("cloudatacdn.com") {
-            print("[WebView] Observed intermediate URL via \(type): \(candidate)")
+            Log.extractionWebView.debug("Observed intermediate URL via \(type, privacy: .public): \(candidate, privacy: .public)")
             return false
         }
 

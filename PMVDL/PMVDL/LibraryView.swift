@@ -3,6 +3,7 @@ import SwiftUI
 @MainActor
 struct LibraryView: View {
     @StateObject private var library = VideoLibrary.shared
+    @StateObject private var thumbnailStore = LibraryThumbnailStore()
     @State private var searchText = ""
 
     var filteredItems: [LibraryItem] {
@@ -29,10 +30,23 @@ struct LibraryView: View {
                     .foregroundStyle(Theme.accent)
                     .padding(.horizontal, 8).padding(.vertical, 3)
                     .background(Theme.accentDim, in: Capsule())
-                Button("Refresh Thumbnails") {
+                Button {
                     regenerateAllThumbnails()
+                } label: {
+                    HStack(spacing: 6) {
+                        if thumbnailStore.isRefreshing {
+                            ProgressView()
+                                .controlSize(.small)
+                                .scaleEffect(0.7)
+                            Text("Refreshing...")
+                        } else {
+                            Text("Refresh Thumbnails")
+                        }
+                    }
                 }
-                .buttonStyle(.bordered).controlSize(.small)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(thumbnailStore.isRefreshing || library.items.isEmpty)
             }
             .padding(.horizontal)
             .padding(.top, 8)
@@ -55,7 +69,18 @@ struct LibraryView: View {
                         GridItem(.adaptive(minimum: 200), spacing: 12)
                     ], spacing: 12) {
                         ForEach(filteredItems) { item in
-                            LibraryCardView(item: item, thumbnail: cachedThumbnail(for: item))
+                            LibraryCardView(
+                                item: item,
+                                thumbnail: thumbnailStore.image(for: item),
+                                isThumbnailLoading: thumbnailStore.isLoading(item),
+                                thumbnailFailed: thumbnailStore.didFail(item),
+                                refreshThumbnail: {
+                                    Task { await thumbnailStore.load(item: item, force: true) }
+                                }
+                            )
+                            .task(id: thumbnailTaskID(for: item)) {
+                                await thumbnailStore.load(item: item)
+                            }
                         }
                     }
                     .padding(.horizontal)
@@ -65,28 +90,23 @@ struct LibraryView: View {
         }
     }
 
-    private func cachedThumbnail(for item: LibraryItem) -> NSImage? {
-        let url = item.mp4Url ?? item.url
-        let key = "viddl_thumb_\(url.hashValue).jpg"
-        return ThumbnailCache.cachedThumbnail(forKey: key)
+    private func regenerateAllThumbnails() {
+        Task {
+            await thumbnailStore.refresh(items: library.items, force: true)
+        }
     }
 
-    private func regenerateAllThumbnails() {
-        for item in library.items {
-            Task {
-                let url = item.mp4Url ?? item.url
-                let key = "viddl_thumb_\(url.hashValue).jpg"
-                let existing = await ThumbnailCache.shared.cachedImage(forKey: key)
-                guard existing == nil else { return }
-                _ = try? await ThumbnailCache.generateAndCache(fromRemoteURL: url)
-            }
-        }
+    private func thumbnailTaskID(for item: LibraryItem) -> String {
+        item.thumbnailURL ?? item.mp4Url ?? item.hlsUrls.first?.url ?? item.url
     }
 }
 
 struct LibraryCardView: View {
     let item: LibraryItem
     let thumbnail: NSImage?
+    let isThumbnailLoading: Bool
+    let thumbnailFailed: Bool
+    let refreshThumbnail: () -> Void
     @State private var isHovered = false
 
     var siteName: String {
@@ -111,10 +131,16 @@ struct LibraryCardView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                             .transition(.opacity)
                     } else {
-                        Image(systemName: "film")
-                            .resizable().scaledToFit()
-                            .frame(width: 28, height: 28)
-                            .foregroundStyle(Theme.accent.opacity(0.5))
+                        if isThumbnailLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(Theme.accent)
+                        } else {
+                            Image(systemName: thumbnailFailed ? "photo.badge.exclamationmark" : "film")
+                                .resizable().scaledToFit()
+                                .frame(width: 28, height: 28)
+                                .foregroundStyle(thumbnailFailed ? Theme.warning.opacity(0.8) : Theme.accent.opacity(0.5))
+                        }
                     }
                 }
 
@@ -145,6 +171,8 @@ struct LibraryCardView: View {
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(isHovered ? Theme.accent.opacity(0.3) : Theme.border, lineWidth: 0.5))
         .onHover { isHovered = $0 }
         .contextMenu {
+            Button("Refresh Thumbnail") { refreshThumbnail() }
+            Divider()
             Button("Copy Page URL") { ClipboardManager.copy(item.url) }
             if let mp4 = item.mp4Url {
                 Button("Copy MP4 Link") { ClipboardManager.copy(mp4) }
@@ -153,6 +181,87 @@ struct LibraryCardView: View {
             Button("Delete from Library", role: .destructive) {
                 withAnimation { VideoLibrary.shared.remove(item) }
             }
+        }
+    }
+}
+
+@MainActor
+final class LibraryThumbnailStore: ObservableObject {
+    @Published private var images: [UUID: NSImage] = [:]
+    @Published private var loadingIDs: Set<UUID> = []
+    @Published private var failedIDs: Set<UUID> = []
+    @Published var isRefreshing = false
+
+    private let resolver: LibraryThumbnailResolver
+    private var attemptedIdentities = Set<String>()
+
+    init(resolver: LibraryThumbnailResolver = .live) {
+        self.resolver = resolver
+    }
+
+    func image(for item: LibraryItem) -> NSImage? {
+        images[item.id]
+    }
+
+    func isLoading(_ item: LibraryItem) -> Bool {
+        loadingIDs.contains(item.id)
+    }
+
+    func didFail(_ item: LibraryItem) -> Bool {
+        failedIDs.contains(item.id)
+    }
+
+    func load(item: LibraryItem, force: Bool = false) async {
+        let identity = item.thumbnailURL ?? item.mp4Url ?? item.hlsUrls.first?.url ?? item.url
+        if !force, attemptedIdentities.contains(identity) { return }
+        attemptedIdentities.insert(identity)
+
+        if !force {
+            if let thumbnailURL = item.thumbnailURL,
+               let cached = await ThumbnailCache.shared.cachedImage(forIdentity: thumbnailURL) {
+                images[item.id] = cached
+                failedIDs.remove(item.id)
+                return
+            }
+            if let mediaURL = item.mp4Url,
+               let cached = await ThumbnailCache.shared.cachedImage(forIdentity: mediaURL) {
+                images[item.id] = cached
+                failedIDs.remove(item.id)
+                return
+            }
+            if let mediaURL = item.hlsUrls.first(where: { $0.kind != .pageUrl })?.url,
+               let cached = await ThumbnailCache.shared.cachedImage(forIdentity: mediaURL) {
+                images[item.id] = cached
+                failedIDs.remove(item.id)
+                return
+            }
+        }
+
+        loadingIDs.insert(item.id)
+        failedIDs.remove(item.id)
+        defer { loadingIDs.remove(item.id) }
+
+        do {
+            let result = try await resolver.loadThumbnail(for: item)
+            if let image = result.image {
+                images[item.id] = image
+            }
+            if let thumbnailURL = result.thumbnailURL,
+               result.source != .mediaFrame {
+                VideoLibrary.shared.updateThumbnailURL(forID: item.id, thumbnailURL: thumbnailURL)
+            }
+        } catch {
+            failedIDs.insert(item.id)
+        }
+    }
+
+    func refresh(items: [LibraryItem], force: Bool = false) async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
+        for item in items {
+            await load(item: item, force: force)
         }
     }
 }

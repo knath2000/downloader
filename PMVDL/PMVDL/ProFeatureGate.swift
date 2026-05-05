@@ -10,9 +10,6 @@ struct ProFeatureGate {
         isPro || count <= 5
     }
 
-    /// Scheduling downloads requires Pro.
-    static var canUseScheduler: Bool { isPro }
-
     /// Upload to multiple cloud providers simultaneously requires Pro.
     static var canMultiUpload: Bool { isPro }
 

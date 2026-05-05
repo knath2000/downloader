@@ -12,7 +12,7 @@ struct WidgetDataStore {
         self.defaults = UserDefaults(suiteName: appGroup)
     }
 
-    /// Called by TransferManager to update widget data.
+    /// Updates widget transfer status.
     func updateTransferCount(_ count: Int, progress: Double) {
         defaults?.set(count, forKey: "widgetTransferCount")
         defaults?.set(progress, forKey: "widgetProgress")

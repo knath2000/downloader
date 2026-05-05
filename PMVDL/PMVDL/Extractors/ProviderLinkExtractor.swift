@@ -3,7 +3,6 @@ import Foundation
 /// Extracts provider links from allpornstream.com pages.
 /// The page stores provider metadata in a Next.js RSC payload under `video_urls`.
 struct ProviderLinkExtractor: VideoSiteExtractor {
-    private static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 
     static func supports(_ url: URL) -> Bool {
         url.host()?.lowercased().contains("allpornstream.com") ?? false
@@ -20,15 +19,11 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
             throw VideoExtractorError.noVideoSources
         }
 
-        let qualities = deduplicate(entries).map { entry in
-            var label = entry.providerName.uppercased()
-            label += entry.isIframeFallback ? " · embed" : " · watch"
-            return VideoSource.Quality(
-                label: label,
-                url: entry.url,
-                kind: .pageUrl,
-                sourcePageUrl: entry.sourcePageUrl ?? url.absoluteString
-            )
+        let candidates = providerCandidates(from: entries, pageURL: url)
+        let qualities = await resolveProviderCandidates(candidates, pageURL: url)
+
+        guard !qualities.isEmpty else {
+            throw VideoExtractorError.noVideoSources
         }
 
         return VideoSource(
@@ -133,6 +128,49 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
         let url: String
         let isIframeFallback: Bool
         let sourcePageUrl: String?
+        let fileCode: String?
+    }
+
+    private struct ProviderCandidate {
+        let providerName: String
+        let selectedUrl: String
+        let watchUrl: String?
+        let embedUrl: String?
+        let fileCode: String?
+        let sourcePageUrl: String
+    }
+
+    private typealias ProviderResolver = (String) async throws -> VideoSource
+
+    struct ProviderCandidateForTesting: Equatable {
+        let providerName: String
+        let url: String
+    }
+
+    static func providerCandidatesForTesting(from html: String) -> [ProviderCandidateForTesting] {
+        let entries = parseVideoUrls(from: html)
+        let pageURL = URL(string: "https://allpornstream.com/post/test")!
+        return providerCandidates(from: entries, pageURL: pageURL).map {
+            ProviderCandidateForTesting(providerName: $0.providerName, url: $0.selectedUrl)
+        }
+    }
+
+    static func resolveProviderCandidatesForTesting(
+        _ candidates: [ProviderCandidateForTesting],
+        resolver: @escaping (String) async throws -> VideoSource
+    ) async -> [VideoSource.Quality] {
+        let internalCandidates = candidates.map {
+            ProviderCandidate(
+                providerName: $0.providerName,
+                selectedUrl: $0.url,
+                watchUrl: nil,
+                embedUrl: $0.url,
+                fileCode: providerFileCode(from: $0.url),
+                sourcePageUrl: $0.url
+            )
+        }
+        let pageURL = URL(string: "https://allpornstream.com/post/test")!
+        return await resolveProviderCandidates(internalCandidates, pageURL: pageURL, resolver: resolver)
     }
 
     private static func parseVideoUrlsObject(_ object: String) -> [ProviderEntry] {
@@ -175,19 +213,190 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
             providerName: provider,
             url: url,
             isIframeFallback: false,
-            sourcePageUrl: iframeByProvider[provider.lowercased()]
+            sourcePageUrl: iframeByProvider[provider.lowercased()],
+            fileCode: nil
         )
     }
 
     private static func parseIframeObject(_ item: String) -> ProviderEntry? {
         guard let provider = findJsonStringValue(for: "hosting_provider", in: item),
-              let url = findJsonStringValue(for: "embed_url", in: item) ?? findJsonStringValue(for: "url", in: item),
-              let statusCode = findJsonNumberValue(for: "status_code", in: item),
-              statusCode == 200 else {
+              let url = findJsonStringValue(for: "embed_url", in: item) ?? findJsonStringValue(for: "url", in: item) else {
             return nil
         }
 
-        return ProviderEntry(providerName: provider, url: url, isIframeFallback: true, sourcePageUrl: nil)
+        if let statusCode = findJsonNumberValue(for: "status_code", in: item), statusCode != 200 {
+            return nil
+        }
+
+        let fileCode = findJsonStringValue(for: "file_code", in: item)
+
+        return ProviderEntry(providerName: provider, url: url, isIframeFallback: true, sourcePageUrl: nil, fileCode: fileCode)
+    }
+
+    // MARK: - Provider resolution
+
+    private static func providerCandidates(from entries: [ProviderEntry], pageURL: URL) -> [ProviderCandidate] {
+        var orderedKeys: [String] = []
+        var watchByKey: [String: ProviderEntry] = [:]
+        var embedByKey: [String: ProviderEntry] = [:]
+
+        for entry in entries where !entry.isIframeFallback {
+            let key = groupingKey(for: entry)
+            if !orderedKeys.contains(key) {
+                orderedKeys.append(key)
+            }
+            watchByKey[key] = entry
+        }
+
+        for entry in entries where entry.isIframeFallback {
+            let key = groupingKey(for: entry)
+            if !orderedKeys.contains(key) {
+                orderedKeys.append(key)
+            }
+            embedByKey[key] = entry
+        }
+
+        return orderedKeys.compactMap { key in
+            let embed = embedByKey[key]
+            let watch = watchByKey[key]
+            guard let chosen = embed ?? watch else { return nil }
+            let sourcePageUrl = chosen.sourcePageUrl ?? (chosen.url.isEmpty ? pageURL.absoluteString : chosen.url)
+
+            return ProviderCandidate(
+                providerName: chosen.providerName.uppercased(),
+                selectedUrl: chosen.url,
+                watchUrl: watch?.url,
+                embedUrl: embed?.url,
+                fileCode: embed?.fileCode ?? watch?.fileCode ?? providerFileCode(from: chosen.url),
+                sourcePageUrl: sourcePageUrl
+            )
+        }
+    }
+
+    private static func resolveProviderCandidates(
+        _ candidates: [ProviderCandidate],
+        pageURL: URL,
+        resolver: @escaping ProviderResolver = { try await ScraperEngine.extract(from: $0) }
+    ) async -> [VideoSource.Quality] {
+        await withTaskGroup(of: (Int, [VideoSource.Quality]).self) { group in
+            for (index, candidate) in candidates.enumerated() where isResolvableProviderURL(candidate.selectedUrl) {
+                group.addTask {
+                    do {
+                        let resolved = try await resolver(candidate.selectedUrl)
+                        return (index, flatten(resolved, provider: candidate))
+                    } catch {
+                        return (index, [])
+                    }
+                }
+            }
+
+            var byIndex: [Int: [VideoSource.Quality]] = [:]
+            for await (index, qualities) in group {
+                byIndex[index] = qualities
+            }
+
+            return candidates.indices.flatMap { index in
+                if let qualities = byIndex[index], !qualities.isEmpty {
+                    return qualities
+                }
+                return [makeFallbackPageQuality(from: candidates[index], pageURL: pageURL)]
+            }
+        }
+    }
+
+    private static func flatten(_ source: VideoSource, provider candidate: ProviderCandidate) -> [VideoSource.Quality] {
+        var result: [VideoSource.Quality] = []
+        var seen = Set<String>()
+        let concrete = source.hls.filter { $0.kind != .pageUrl }
+
+        if concrete.isEmpty, let mp4 = source.mp4, seen.insert(mp4).inserted {
+            result.append(VideoSource.Quality(
+                label: "\(candidate.providerName) · Video",
+                url: mp4,
+                kind: .direct,
+                headers: source.headers(forQualityURL: mp4),
+                sourcePageUrl: candidate.sourcePageUrl
+            ))
+        } else {
+            for quality in concrete {
+                guard seen.insert(quality.url).inserted else { continue }
+                result.append(VideoSource.Quality(
+                    label: "\(candidate.providerName) · \(quality.label)",
+                    url: quality.url,
+                    kind: quality.kind,
+                    headers: quality.headers ?? source.headers(forQualityURL: quality.url),
+                    sourcePageUrl: quality.sourcePageUrl ?? candidate.sourcePageUrl
+                ))
+            }
+        }
+
+        return result
+    }
+
+    private static func makeFallbackPageQuality(from candidate: ProviderCandidate, pageURL: URL) -> VideoSource.Quality {
+        VideoSource.Quality(
+            label: "\(candidate.providerName) · provider page",
+            url: candidate.selectedUrl,
+            kind: .pageUrl,
+            sourcePageUrl: candidate.sourcePageUrl.isEmpty ? pageURL.absoluteString : candidate.sourcePageUrl
+        )
+    }
+
+    private static func groupingKey(for entry: ProviderEntry) -> String {
+        let provider = normalizedProviderKey(entry.providerName)
+        let file = entry.fileCode ?? providerFileCode(from: entry.url)
+        return "\(provider)|\(file ?? normalizedURLKey(entry.url))"
+    }
+
+    private static func normalizedProviderKey(_ providerName: String) -> String {
+        providerName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func normalizedURLKey(_ urlString: String) -> String {
+        guard let url = URL(string: urlString) else { return urlString.lowercased() }
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return urlString.lowercased()
+        }
+        let scheme = components.scheme?.lowercased()
+        let host = components.host?.lowercased()
+        components.scheme = scheme
+        components.host = host
+        components.query = nil
+        components.fragment = nil
+        return components.string ?? urlString.lowercased()
+    }
+
+    private static func providerFileCode(from urlString: String) -> String? {
+        guard let url = URL(string: urlString) else { return nil }
+        let parts = url.path.split(separator: "/").map(String.init)
+        guard let marker = parts.firstIndex(where: { ["v", "e", "f", "d"].contains($0) }),
+              marker + 1 < parts.count else {
+            return nil
+        }
+        return parts[marker + 1]
+    }
+
+    private static func isResolvableProviderURL(_ urlString: String) -> Bool {
+        guard let host = URL(string: urlString)?.host?.lowercased() else { return false }
+        return host == "streamtape.com" || host.hasSuffix(".streamtape.com")
+            || host == "streamtape.net" || host.hasSuffix(".streamtape.net")
+            || host == "mixdrop.ag" || host.hasSuffix(".mixdrop.ag")
+            || host == "mixdrop.co" || host.hasSuffix(".mixdrop.co")
+            || host == "mixdrop.sx" || host.hasSuffix(".mixdrop.sx")
+            || host == "mixdrop.pw" || host.hasSuffix(".mixdrop.pw")
+            || host == "mixdrop.top" || host.hasSuffix(".mixdrop.top")
+            || host == "m1xdrop.click" || host.hasSuffix(".m1xdrop.click")
+            || host == "doodstream.com" || host.hasSuffix(".doodstream.com")
+            || host == "doodstream.org" || host.hasSuffix(".doodstream.org")
+            || host == "dood.wf" || host.hasSuffix(".dood.wf")
+            || host == "dood.pm" || host.hasSuffix(".dood.pm")
+            || host == "dood.to" || host.hasSuffix(".dood.to")
+            || host == "dood.ws" || host.hasSuffix(".dood.ws")
+            || host == "dood.one" || host.hasSuffix(".dood.one")
+            || host == "dood.watch" || host.hasSuffix(".dood.watch")
+            || host == "dood.la" || host.hasSuffix(".dood.la")
+            || host == "dood.sh" || host.hasSuffix(".dood.sh")
+            || host == "playmogo.com" || host.hasSuffix(".playmogo.com")
     }
 
     // MARK: - JSON Helpers
@@ -538,7 +747,7 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
 
     private static func fetchPage(url: URL) async throws -> String {
         var request = URLRequest(url: url)
-        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
         request.setValue(url.absoluteString, forHTTPHeaderField: "Referer")
         request.timeoutInterval = 15
 

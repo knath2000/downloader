@@ -16,18 +16,12 @@ struct GDriveManager {
 
     static func isConfigured(remoteName: String = "gdrive") -> Bool {
         guard let rclone = findRclone() else { return false }
-        let p = Process()
-        p.executableURL = rclone
-        p.arguments = ["config", "show", remoteName]
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
-        try? p.run()
-        let t0 = Date()
-        while Date().timeIntervalSince(t0) < 5 {
-            if !p.isRunning { return p.terminationStatus == 0 }
-            Thread.sleep(forTimeInterval: 0.1)
-        }
-        p.terminate(); return false
+        let result = try? SubprocessRunner.runBlocking(
+            executable: rclone,
+            arguments: ["config", "show", remoteName],
+            timeout: 5
+        )
+        return result?.exitStatus == 0
     }
 
     private static func findRclone() -> URL? {
@@ -55,55 +49,30 @@ struct GDriveManager {
 
         onProgress(.uploading(msg: "Uploading to Google Drive… 0%", pct: 0))
 
-        let p = Process()
-        p.executableURL = rclone
-        p.arguments = ["copyto", localFile.path, remoteDest, "--progress", "--fast-list", "--transfers=1", "-v"]
-        let outPipe = Pipe()
-        let errPipe = Pipe()
-        p.standardOutput = outPipe
-        p.standardError = errPipe
-
-        let outHandle = outPipe.fileHandleForReading
         var lastUploadPct = -1
-        outHandle.readabilityHandler = { (handle: FileHandle) in
-            let data = handle.availableData
-            if data.isEmpty { outHandle.readabilityHandler = nil; return }
-            if let s = String(data: data, encoding: .utf8),
-               let pct = extractPercent(s),
+        let progressHandler: (String) -> Void = { text in
+            if let pct = DownloadProgressParsers.rclonePercent(from: text),
                pct > lastUploadPct {
                 lastUploadPct = pct
                 DispatchQueue.main.async { onProgress(.uploading(msg: "Uploading to Google Drive… \(pct)%", pct: Double(pct))) }
             }
         }
 
-        let errHandle = errPipe.fileHandleForReading
-        errHandle.readabilityHandler = { (handle: FileHandle) in
-            let data = handle.availableData
-            if data.isEmpty { errHandle.readabilityHandler = nil; return }
-            if let s = String(data: data, encoding: .utf8),
-               let pct = extractPercent(s),
-               pct > lastUploadPct {
-                lastUploadPct = pct
-                DispatchQueue.main.async { onProgress(.uploading(msg: "Uploading to Google Drive… \(pct)%", pct: Double(pct))) }
-            }
+        let result: SubprocessResult
+        do {
+            result = try await SubprocessRunner.run(
+                executable: rclone,
+                arguments: ["copyto", localFile.path, remoteDest, "--progress", "--fast-list", "--transfers=1", "-v"],
+                timeout: 7200,
+                stdoutHandler: progressHandler,
+                stderrHandler: progressHandler
+            )
+        } catch SubprocessRunnerError.timedOut {
+            throw GDriveError.uploadFailed("Upload timed out")
         }
 
-        try p.run()
-
-        let uploadStart = Date()
-        while p.isRunning {
-            if Date().timeIntervalSince(uploadStart) > 7200 {
-                p.terminate()
-                throw GDriveError.uploadFailed("Upload timed out")
-            }
-            try await Task.sleep(for: .milliseconds(500))
-        }
-
-        outHandle.readabilityHandler = nil
-        errHandle.readabilityHandler = nil
-
-        if p.terminationStatus != 0 {
-            throw GDriveError.uploadFailed("Upload failed (exit \(p.terminationStatus))")
+        if result.exitStatus != 0 {
+            throw GDriveError.uploadFailed("Upload failed (exit \(result.exitStatus))")
         }
 
         onProgress(.completed(msg: "Uploaded to Google Drive: \(remoteDest)"))
@@ -126,7 +95,7 @@ struct GDriveManager {
         let delegate = GDUploadProgressDelegate(onProgress: onProgress, destURL: tempFile)
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
         var request = URLRequest(url: URL(string: url)!)
-        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36", forHTTPHeaderField: "User-Agent")
+        request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
         headers?.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         try await delegate.performDownload(session: session, request: request)
 
@@ -141,71 +110,36 @@ struct GDriveManager {
         let remoteDest = "\(remoteName):\(uploadRemotePath)\(uniqueName)"
         onProgress("Uploading to Google Drive… 0%")
 
-        let p = Process()
-        p.executableURL = rclone
-        p.arguments = ["copyto", tempFile.path, remoteDest, "--progress", "--fast-list", "--transfers=1", "-v"]
-        let outPipe = Pipe()
-        let errPipe = Pipe()
-        p.standardOutput = outPipe
-        p.standardError = errPipe
-
-        let outHandle = outPipe.fileHandleForReading
         var lastUploadPct = -1
-        outHandle.readabilityHandler = { (handle: FileHandle) in
-            let data = handle.availableData
-            if data.isEmpty { outHandle.readabilityHandler = nil; return }
-            if let s = String(data: data, encoding: .utf8),
-               let pct = extractPercent(s),
+        let progressHandler: (String) -> Void = { text in
+            if let pct = DownloadProgressParsers.rclonePercent(from: text),
                pct > lastUploadPct {
                 lastUploadPct = pct
                 DispatchQueue.main.async { onProgress("Uploading to Google Drive… \(pct)%") }
             }
         }
 
-        let errHandle = errPipe.fileHandleForReading
-        errHandle.readabilityHandler = { (handle: FileHandle) in
-            let data = handle.availableData
-            if data.isEmpty { errHandle.readabilityHandler = nil; return }
-            if let s = String(data: data, encoding: .utf8),
-               let pct = extractPercent(s),
-               pct > lastUploadPct {
-                lastUploadPct = pct
-                DispatchQueue.main.async { onProgress("Uploading to Google Drive… \(pct)%") }
-            }
+        let result: SubprocessResult
+        do {
+            result = try await SubprocessRunner.run(
+                executable: rclone,
+                arguments: ["copyto", tempFile.path, remoteDest, "--progress", "--fast-list", "--transfers=1", "-v"],
+                timeout: 7200,
+                stdoutHandler: progressHandler,
+                stderrHandler: progressHandler
+            )
+        } catch SubprocessRunnerError.timedOut {
+            throw GDriveError.uploadFailed("Upload timed out")
         }
 
-        try p.run()
-
-        let uploadStart = Date()
-        while p.isRunning {
-            if Date().timeIntervalSince(uploadStart) > 7200 {
-                p.terminate()
-                throw GDriveError.uploadFailed("Upload timed out")
-            }
-            try await Task.sleep(for: .milliseconds(500))
-        }
-
-        outHandle.readabilityHandler = nil
-        errHandle.readabilityHandler = nil
-
-        if p.terminationStatus != 0 {
-            throw GDriveError.uploadFailed("Upload failed (exit \(p.terminationStatus))")
+        if result.exitStatus != 0 {
+            throw GDriveError.uploadFailed("Upload failed (exit \(result.exitStatus))")
         }
 
         onProgress("Uploaded to Google Drive: \(remoteDest)")
         return remoteDest
     }
 
-    private static func extractPercent(_ text: String) -> Int? {
-        if let m = try? NSRegularExpression(
-            pattern: "Transferred:[^\\n]*?(\\d+)%"
-        ).firstMatch(in: text, range: NSRange(location: 0, length: text.utf16.count)),
-           let r = Range(m.range(at: 1), in: text),
-           let pct = Double(text[r]), pct >= 0 {
-            return Int(pct)
-        }
-        return nil
-    }
 }
 
 // String-based download delegate (used by GDriveManager.upload)

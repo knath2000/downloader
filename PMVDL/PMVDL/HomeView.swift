@@ -1,15 +1,6 @@
 import SwiftUI
 import AppKit
 
-extension String {
-    /// Extract a percentage value from a string ending with "XX%".
-    func parsePercent() -> Double? {
-        guard let m = try? NSRegularExpression(pattern: "(\\d+)%$").firstMatch(in: self, range: NSRange(self.startIndex..., in: self)),
-              let r = Range(m.range(at: 1), in: self) else { return nil }
-        return Double(self[r])
-    }
-}
-
 struct HomeView: View {
     @ObservedObject var appState: AppStateManager
     @ObservedObject private var tracker = ActiveWorkTracker.shared
@@ -20,21 +11,65 @@ struct HomeView: View {
     var megaRemotePath: String
     var gdriveRemoteName: String
     var gdriveRemotePath: String
+    var seedboxTransferMode: String
+    var seedboxRemoteName: String
+    var seedboxRemotePath: String
+    var seedboxWebdavURL: String
+    var seedboxWebdavUser: String
+    var seedboxWebdavPassword: String
     let onUpgradeRequired: () -> Void
 
     var urlLines: [String] {
-        urlText
-            .split(separator: "\n")
-            .map { String($0) }
-            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        inputModel.validURLs
     }
 
     var batchTargetLinks: [String] {
-        results.compactMap { $0.source?.mp4 }.filter { tracker.localDownloads[$0] == nil }
+        batchTargetJobs.map(\.url)
     }
 
-    @FocusState private var urlFieldFocused: Bool
-    @State private var activeTab: Int = 0
+    private var inputModel: HomeURLInputModel {
+        HomeURLInputModel(rawText: urlText)
+    }
+
+    @State private var batchTarget: CloudTarget = .local
+
+    private struct BatchDownloadJob {
+        let url: String
+        let title: String?
+        let displayName: String
+        let uploadFileName: String
+    }
+
+    private func preferredBatchTarget(for source: VideoSource) -> VideoSource.Quality? {
+        if let mp4 = source.mp4 {
+            return VideoSource.Quality(label: "Video", url: mp4, kind: .direct, headers: source.headers)
+        }
+        return source.hls.first { $0.kind != .pageUrl }
+    }
+
+    private var batchTargetJobs: [BatchDownloadJob] {
+        results.compactMap { result in
+            guard let source = result.source,
+                  let target = preferredBatchTarget(for: source) else {
+                return nil
+            }
+            if let state = state(for: target.url, target: batchTarget) {
+                switch state {
+                case .uploading, .done:
+                    return nil
+                case .failed:
+                    break
+                }
+            }
+            let title = source.title
+            return BatchDownloadJob(
+                url: target.url,
+                title: title,
+                displayName: title ?? fileName(of: target.url),
+                uploadFileName: VideoFileNaming.mp4FileName(title: title, fallback: fileName(of: target.url))
+            )
+        }
+    }
 
     // Category rail items — quick-paste shortcuts for common platforms
     private let categoryItems: [CategoryIconRail.Item] = [
@@ -50,231 +85,33 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 0) {
-
-                // ── HEADER ───────────────────────────────────────────────
-                HStack(alignment: .center, spacing: 10) {
-                    Image("brandLogo")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 36, height: 36)
-                        .shadow(color: Theme.hotPink.opacity(0.25), radius: 6, y: 3)
-                    .bounceOnAppear(delay: 0)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Video Downloader")
-                            .font(Theme.marketplaceTitle)
-                            .foregroundStyle(
-                                LinearGradient(colors: [Theme.gold, Theme.coral],
-                                               startPoint: .leading, endPoint: .trailing)
-                            )
-                        HStack(spacing: 6) {
-                            if ScraperEngine.isYTDLPAvailable {
-                                PulsingDot(color: Theme.electricLime, size: 6)
-                                CartoonBadge(label: "yt-dlp ready", color: Theme.electricLime.opacity(0.9))
-                                    .bounceOnAppear(delay: 0.1)
-                            } else {
-                                CartoonBadge(label: "Install yt-dlp", color: Theme.taoRed, animated: true)
-                            }
-                        }
-                    }
-
-                    Spacer()
-
-                    if ProFeatureGate.isPro {
-                        CartoonBadge(label: "PRO", color: Theme.gold)
-                            .bounceOnAppear(delay: 0.15)
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.top, 12)
-                .padding(.bottom, 10)
-                .scrollEntrance(delay: 0)
-
-                DependencySetupPanel(gdriveRemoteName: gdriveRemoteName)
-                    .padding(.horizontal)
-                    .padding(.bottom, 10)
-                    .scrollEntrance(delay: 0.03)
-
-                // ── CATEGORY ICON RAIL ───────────────────────────────────
-                CategoryIconRail(items: categoryItems) { item in
-                    let placeholder = "https://\(item.id).com/"
-                    if !urlText.isEmpty { urlText += "\n" + placeholder }
-                    else { urlText = placeholder }
-                }
-                .scrollEntrance(delay: 0.05)
-
-                Divider()
-                    .background(Theme.border)
-                    .padding(.vertical, 8)
-
-                // ── URL INPUT SECTION ────────────────────────────────────
-                TaobaoSectionHeader(title: "Paste URLs", accentColor: Theme.coral)
-                    .scrollEntrance(delay: 0.08)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    TextEditor(text: $urlText)
-                        .frame(height: 64)
-                        .font(.system(size: 11, design: .monospaced).weight(.medium))
-                        .foregroundStyle(Theme.textPrimary)
-                        .scrollContentBackground(.hidden)
-                        .background(.clear)
-                        .focused($urlFieldFocused)
-                        .padding(10)
-                        .glassCard(tint: Theme.coral.opacity(urlFieldFocused ? 0.45 : 0.15),
-                                   cornerRadius: 12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Theme.coral.opacity(urlFieldFocused ? 0.65 : 0),
-                                        lineWidth: 1.5)
-                        )
-                        .animation(.easeInOut(duration: 0.2), value: urlFieldFocused)
-                        .padding(.horizontal)
-
-                    // Action row
-                    HStack(spacing: 8) {
-                        MarketplaceButton(title: "Extract All", icon: "bolt.fill",
-                                         prominent: true, action: extractAll)
-                            .keyboardShortcut(.return, modifiers: .command)
-                            .disabled(isLoading || urlLines.isEmpty)
-                            .opacity(isLoading || urlLines.isEmpty ? 0.5 : 1)
-                            .pressEffect()
-
-                        Button(action: pasteFromClipboard) {
-                            Label("Paste", systemImage: "clipboard")
-                        }
-                        .buttonStyle(.bordered)
-                        .pressEffect(scale: 0.93)
-
-                        Button(action: { urlText = "" }) {
-                            Label("Clear", systemImage: "xmark")
-                        }
-                        .buttonStyle(.bordered)
-                        .pressEffect(scale: 0.93)
-                    }
-                    .padding(.horizontal)
-                }
-                .scrollEntrance(delay: 0.1)
-
-                // ── LOADING STATE ─────────────────────────────────────────
-                if isLoading {
-                    VStack(spacing: 8) {
-                        GradientProgressBar(progress: 0.6)
-                            .padding(.horizontal)
-
-                        HStack(spacing: 8) {
-                            PulsingDot(color: Theme.coral, size: 7)
-                            Text(loadProgress.isEmpty ? "Extracting…" : loadProgress)
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(Theme.textSecondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal)
-
-                        // Shimmer skeleton placeholders
-                        VStack(spacing: 8) {
-                            ForEach(0..<3, id: \.self) { i in
-                                ShimmerCard(height: 68)
-                                    .padding(.horizontal)
-                                    .scrollEntrance(delay: Double(i) * 0.07)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 8)
-                    .transition(.opacity)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: HomeLayoutMetrics.cardSpacing) {
+                    mainColumn
+                        .frame(maxWidth: HomeLayoutMetrics.mainColumnMaxWidth)
+                    HomeStatusRail(
+                        inputModel: inputModel,
+                        resultCount: results.count,
+                        queuedCount: batchTargetLinks.count,
+                        isYtDlpReady: ScraperEngine.isYTDLPAvailable,
+                        isPro: ProFeatureGate.isPro
+                    )
                 }
 
-                // ── RESULTS ───────────────────────────────────────────────
-                if !results.isEmpty {
-                    VStack(spacing: 0) {
-                        // Section header with flip counter
-                        HStack {
-                            TaobaoSectionHeader(
-                                title: "Results",
-                                accentColor: Theme.coral
-                            )
-                            Spacer()
-                            HStack(spacing: 4) {
-                                FlipCounter(count: results.count, label: "found",
-                                            color: Theme.coral)
-                            }
-                            .padding(.trailing)
-                        }
-                        .scrollEntrance(delay: 0)
-
-                        LazyVStack(spacing: 10) {
-                            ForEach(Array(results.enumerated()), id: \.offset) { idx, result in
-                                glassResultCard(for: result)
-                                    .scrollEntrance(delay: Double(idx) * 0.06)
-                                    .pressEffect(scale: 0.98)
-                            }
-                        }
-                        .padding(.horizontal)
-                        .padding(.bottom, 8)
-                    }
-
-                    // ── BATCH DOWNLOAD ────────────────────────────────────
-                    if !batchTargetLinks.isEmpty {
-                        VStack(spacing: 6) {
-                            Divider().padding(.horizontal)
-
-                            if tracker.isBatchDownloading {
-                                HStack(spacing: 8) {
-                                    PulsingDot(color: Theme.electricLime)
-                                    Text(loadProgress)
-                                        .font(.caption)
-                                        .foregroundStyle(Theme.textSecondary)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal)
-                            }
-
-                            HStack(spacing: 8) {
-                                FlipCounter(count: batchTargetLinks.count, label: "queued",
-                                            color: Theme.electricLime)
-                                    .padding(.leading)
-                                Spacer()
-                            }
-
-                            MarketplaceButton(
-                                title: "Download All to Local",
-                                icon: "arrow.down.circle.fill",
-                                action: batchDownloadAll
-                            )
-                            .disabled(tracker.isBatchDownloading)
-                            .opacity(tracker.isBatchDownloading ? 0.5 : 1)
-                            .pressEffect()
-                            .padding(.horizontal)
-                            .padding(.bottom, 8)
-                        }
-                        .scrollEntrance(delay: 0.1)
-                    }
-
-                } else if !isLoading {
-                    // ── EMPTY STATE ───────────────────────────────────────
-                    VStack(spacing: 14) {
-                        Text("🎬")
-                            .font(.system(size: 52))
-                            .bounceOnAppear(delay: 0.1)
-
-                        Text("Drop a URL and smash Extract")
-                            .font(Theme.sectionHeader)
-                            .foregroundStyle(Theme.textSecondary)
-                            .multilineTextAlignment(.center)
-
-                        HStack(spacing: 8) {
-                            CartoonBadge(label: "Cmd+Return", color: Theme.skyBlue)
-                                .bounceOnAppear(delay: 0.2)
-                            CartoonBadge(label: "1700+ sites", color: Theme.electricLime)
-                                .bounceOnAppear(delay: 0.3)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 32)
-                    .padding(.bottom, 20)
-                    .scrollEntrance(delay: 0.15)
+                VStack(alignment: .leading, spacing: HomeLayoutMetrics.cardSpacing) {
+                    mainColumn
+                    HomeStatusRail(
+                        inputModel: inputModel,
+                        resultCount: results.count,
+                        queuedCount: batchTargetLinks.count,
+                        isYtDlpReady: ScraperEngine.isYTDLPAvailable,
+                        isPro: ProFeatureGate.isPro
+                    )
                 }
             }
+            .frame(maxWidth: HomeLayoutMetrics.pageMaxWidth, alignment: .top)
+            .frame(maxWidth: .infinity, alignment: .top)
+            .padding(HomeLayoutMetrics.pagePadding)
         }
         .onAppear {
             if let pending = appState.pendingExtractURL {
@@ -293,63 +130,148 @@ struct HomeView: View {
         }
     }
 
-    // ===== GLASS RESULT CARD =====
-    @ViewBuilder
-    private func glassResultCard(for result: ExtractResult) -> some View {
-        let accentColor = siteAccentColor(for: result.url)
-        let mp4Key = result.source?.mp4 ?? ""
-        let hlsKey = result.source?.hls.first?.url ?? ""
-        let key = mp4Key.isEmpty ? hlsKey : mp4Key
+    private var mainColumn: some View {
+        VStack(alignment: .leading, spacing: HomeLayoutMetrics.cardSpacing) {
+            HomeHeroHeader(isYtDlpReady: ScraperEngine.isYTDLPAvailable, isPro: ProFeatureGate.isPro)
 
-        HStack(spacing: 0) {
-            ColoredAccentStrip(color: accentColor)
-
-            VideoResultRow(
-                result: result,
-                localState: tracker.localDownloads[key],
-                megaState: tracker.megaUploads[key],
-                gdriveState: tracker.gdriveUploads[key],
-                onLocal: { url in Task { await startDownload(url: url, cloud: .local) } },
-                onMega: { url in Task { await startDownload(url: url, cloud: .mega) } },
-                onGDrive: { url in Task { await startDownload(url: url, cloud: .gdrive) } }
+            HomeURLInputCard(
+                text: $urlText,
+                isLoading: isLoading,
+                onPaste: pasteFromClipboard,
+                onClear: { urlText = "" },
+                onExtract: extractAll
             )
-        }
-        .glassCard(tint: accentColor.opacity(0.3), cornerRadius: 14)
-        .overlay(alignment: .topTrailing) {
-            badgeForResult(result, key: key)
-                .offset(x: 8, y: -8)
-                .zIndex(1)
+            .modifier(HomeDropDestination(
+                onUrlPaste: appendURLText,
+                onFileDrop: { _ in }
+            ))
+
+            supportedSources
+            DependencySetupPanel(gdriveRemoteName: gdriveRemoteName)
+
+            if isLoading {
+                loadingState
+            }
+
+            if !results.isEmpty {
+                resultsSection
+            } else if !isLoading {
+                emptyState
+            }
         }
     }
 
-    @ViewBuilder
-    private func badgeForResult(_ result: ExtractResult, key: String) -> some View {
-        if let state = tracker.localDownloads[key] {
-            switch state {
-            case .uploading: CartoonBadge(label: "Downloading", color: Theme.coral, animated: true)
-            case .done:      CartoonBadge(label: "Done", color: Theme.success)
-            case .failed:    CartoonBadge(label: "Failed", color: Theme.taoRed)
-            }
-        } else if result.error != nil {
-            CartoonBadge(label: "Error", color: Theme.taoRed)
-        } else if result.source != nil {
-            CartoonBadge(label: "Ready", color: Theme.electricLime)
+    private var supportedSources: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Popular supported sources")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Theme.textSecondary)
+            CategoryIconRail(items: categoryItems) { _ in }
         }
+    }
+
+    private var loadingState: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            GradientProgressBar(progress: 0.6)
+            Text(loadProgress.isEmpty ? "Extracting..." : loadProgress)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(Theme.textSecondary)
+
+            VStack(spacing: 8) {
+                ForEach(0..<3, id: \.self) { _ in
+                    ShimmerCard(height: 68)
+                }
+            }
+        }
+        .padding(14)
+        .glassCard(tint: Theme.skyBlue.opacity(0.08), cornerRadius: HomeLayoutMetrics.cardCornerRadius)
+    }
+
+    private var resultsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Results")
+                    .font(Theme.sectionHeader)
+                    .foregroundStyle(Theme.textPrimary)
+                Spacer()
+                Text("\(results.count) found")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Theme.skyBlue)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Theme.skyBlue.opacity(0.12), in: Capsule())
+            }
+
+            LazyVStack(spacing: 10) {
+                ForEach(Array(results.enumerated()), id: \.offset) { _, result in
+                    VideoResultCard(
+                        result: result,
+                        localState: { tracker.localDownloads[$0] },
+                        megaState: { tracker.megaUploads[$0] },
+                        gdriveState: { tracker.gdriveUploads[$0] },
+                        seedboxState: { tracker.seedboxUploads[$0] },
+                        onLocal: { url in Task { await startDownload(url: url, cloud: .local) } },
+                        onMega: { url in Task { await startDownload(url: url, cloud: .mega) } },
+                        onGDrive: { url in Task { await startDownload(url: url, cloud: .gdrive) } },
+                        onSeedbox: { url in Task { await startDownload(url: url, cloud: .seedbox) } }
+                    )
+                }
+            }
+
+            if !batchTargetLinks.isEmpty {
+                BatchDownloadBar(
+                    queuedCount: batchTargetLinks.count,
+                    selectedTarget: $batchTarget,
+                    isRunning: tracker.isBatchDownloading,
+                    progressText: loadProgress,
+                    action: batchDownloadAll
+                )
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Ready for URLs", systemImage: "sparkles")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.textPrimary)
+            Text("Paste a URL above, drop one onto the input card, or use Cmd+Return after pasting.")
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .glassCard(tint: Theme.surface2.opacity(0.12), cornerRadius: HomeLayoutMetrics.cardCornerRadius)
     }
 
     // ===== ACTIONS =====
     private func pasteFromClipboard() {
         if let clip = ClipboardManager.currentURL {
-            if !urlText.isEmpty { urlText += "\n" + clip } else { urlText = clip }
+            appendURLText(clip)
+        }
+    }
+
+    private func appendURLText(_ value: String) {
+        let lines = HomeURLInputModel(rawText: value).lines
+        guard !lines.isEmpty else { return }
+        let addition = lines.joined(separator: "\n")
+        if urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            urlText = addition
+        } else {
+            urlText += "\n" + addition
         }
     }
 
     private func extractAll() {
         let urls = urlLines
+        guard !urls.isEmpty, inputModel.invalidLines.isEmpty else { return }
         results = []
         isLoading = true
         loadProgress = ""
-        tracker.clear(except: Set(tracker.megaUploads.keys).union(tracker.gdriveUploads.keys))
+        tracker.clear(except: Set(tracker.megaUploads.keys)
+            .union(tracker.gdriveUploads.keys)
+            .union(tracker.seedboxUploads.keys))
         loadProgress = "Extracting \(urls.count) URL(s)…"
 
         Task {
@@ -379,7 +301,15 @@ struct HomeView: View {
             for r in ordered {
                 if let src = r.source {
                     let title = src.title ?? URL(string: r.url)?.pathComponents.last?.replacingOccurrences(of: "-", with: " ").capitalized ?? r.url
-                    VideoLibrary.shared.addIfNew(LibraryItem(url: r.url, title: title, mp4Url: src.mp4, hlsUrls: src.hls))
+                    VideoLibrary.shared.addIfNew(
+                        LibraryItem(
+                            url: r.url,
+                            title: title,
+                            mp4Url: src.mp4,
+                            hlsUrls: src.hls,
+                            thumbnailURL: src.thumbnail
+                        )
+                    )
                     HistoryManager.shared.record(url: r.url, source: src)
                 }
             }
@@ -390,53 +320,50 @@ struct HomeView: View {
     }
 
     private func batchDownloadAll() {
-        let links = batchTargetLinks
-        guard !links.isEmpty else { return }
+        let jobs = batchTargetJobs
+        guard !jobs.isEmpty else { return }
+        let selectedTarget = batchTarget
 
         Task {
-            guard await LicenseManager.shared.preflight(count: links.count) else {
+            guard await LicenseManager.shared.preflight(count: jobs.count) else {
                 onUpgradeRequired()
                 return
             }
-            let jobs = links.map { url in
-                (url: url, title: title(for: url), displayName: displayName(for: url), uploadFileName: uploadFileName(for: url))
-            }
             tracker.isBatchDownloading = true
-            loadProgress = "Downloading 0/\(links.count)…"
-            let semaphore = DispatchSemaphore(value: 3)
+            loadProgress = "\(selectedTarget.homeBatchButtonTitle) 0/\(jobs.count)…"
 
-            await withTaskGroup(of: (String, String, Bool, String?).self) { group in
-                for job in jobs {
+            var resolutions: [DownloadResolution] = []
+            for job in jobs {
+                do {
+                    resolutions.append(try await DownloadResolver.resolve(requestedUrl: job.url, in: results))
+                } catch {
+                    tracker.projectFailure(url: job.url, target: selectedTarget, message: error.localizedDescription)
+                    NotificationManager.shared.notifyUploadFailed(filename: job.uploadFileName, reason: error.localizedDescription)
+                }
+            }
+
+            let context = downloadJobContext
+            var nextIndex = 0
+            var done = jobs.count - resolutions.count
+
+            await withTaskGroup(of: Bool.self) { group in
+                func addNext() {
+                    guard nextIndex < resolutions.count else { return }
+                    let resolution = resolutions[nextIndex]
+                    nextIndex += 1
                     group.addTask {
-                        semaphore.wait(); defer { semaphore.signal() }
-                        do {
-                            let result = try await MegaManager.upload(url: job.url, remotePath: megaRemotePath, title: job.title) { event in
-                                Task { @MainActor in
-                                    tracker.localDownloads[job.url] = .uploading("\(job.displayName) — \(event.message)")
-                                }
-                            }
-                            Task { @MainActor in tracker.megaFilenames[job.url] = result.remotePath }
-                            return (job.url, job.uploadFileName, true, nil)
-                        } catch {
-                            return (job.url, job.uploadFileName, false, error.localizedDescription)
-                        }
+                        await DownloadJobRunner.shared.run(resolution: resolution, target: selectedTarget, context: context)
                     }
                 }
 
-                var done = 0
-                for await (url, uploadFileName, ok, err) in group {
+                for _ in 0..<min(3, resolutions.count) {
+                    addNext()
+                }
+
+                for await _ in group {
                     done += 1
-                    if ok {
-                        await LicenseManager.shared.recordSuccessfulDownload()
-                        tracker.localDownloads[url] = .done("Uploaded to \(megaRemotePath)")
-                        if results.first(where: { $0.source?.mp4 == url })?.source != nil {
-                            NotificationManager.shared.notifyUploadComplete(filename: uploadFileName, destination: megaRemotePath)
-                        }
-                    } else {
-                        tracker.localDownloads[url] = .failed(err ?? "Unknown")
-                        NotificationManager.shared.notifyUploadFailed(filename: uploadFileName, reason: err ?? "Unknown")
-                    }
-                    await MainActor.run { loadProgress = "Downloading… \(done)/\(links.count)" }
+                    await MainActor.run { loadProgress = "\(selectedTarget.homeBatchButtonTitle) \(done)/\(jobs.count)" }
+                    addNext()
                 }
             }
 
@@ -445,302 +372,31 @@ struct HomeView: View {
     }
 
     private func startDownload(url: String, cloud: CloudTarget) async {
-        let result = results.first { r in
-            r.source?.mp4 == url || r.source?.hls.contains(where: { $0.url == url }) == true
-        }
-        guard let result = result, var source = result.source else { return }
-        let title = source.title ?? fileName(of: url)
         guard await LicenseManager.shared.preflight() else {
             onUpgradeRequired()
             return
         }
-        let isHLS = url.contains(".m3u8")
-        // A quality entry with kind .direct has a pre-resolved URL — don't treat it as a yt-dlp
-        // site even if source.mp4 is nil (e.g. Playmogo, whose mp4 field is intentionally nil so
-        // that batch-download paths don't skip per-URL headers).
-        let qualityKind = source.hls.first(where: { $0.url == url })?.kind
-        let isYtDlpSite = source.mp4 == nil && !isHLS && qualityKind != .direct
-
-        // Look up any custom headers that came with this quality entry (e.g. LuluStream referer)
-        let hlsHeaders = source.hls.first(where: { $0.url == url })?.headers
-
-        // For .pageUrl entries (e.g. StreamTape/MixDrop/DoodStream from ProviderLink),
-        // try native extraction via ScraperEngine first before falling back to yt-dlp.
-        let qualityEntry = source.hls.first(where: { $0.url == url })
-        let nativeCandidates = uniqueCandidates([qualityEntry?.sourcePageUrl, url])
-        var resolvedUrl: String? = nil
-        if qualityEntry?.kind == .pageUrl && isYtDlpSite {
-            for candidate in nativeCandidates {
-                if let resolved = try? await ScraperEngine.extract(from: candidate),
-                   resolved.mp4 != nil || !resolved.hls.isEmpty {
-                    source = resolved
-                    resolvedUrl = resolved.mp4 ?? resolved.hls.first(where: { $0.kind != .pageUrl })?.url
-                    break
-                }
-            }
-        }
-
-        if qualityEntry?.kind == .pageUrl, isProviderHost(qualityEntry?.sourcePageUrl ?? url), resolvedUrl == nil {
-            NotificationManager.shared.notifyUploadFailed(filename: title, reason: "Provider URL could not be resolved: \(url)")
-            return
-        }
-
-        // Determine final URL and whether we're still going through yt-dlp
-        let finalUrl: String
-        let stillYtDlp: Bool
-        if let resolved = resolvedUrl {
-            finalUrl = resolved
-            stillYtDlp = false
-        } else {
-            finalUrl = url
-            stillYtDlp = isYtDlpSite
-        }
-
-        // Look up any custom headers that came with this quality entry (e.g. LuluStream referer)
-        let finalHlsHeaders = source.hls.first(where: { $0.url == url })?.headers
-
-        if cloud == .local {
-            let isAudio = source.isAudio
-            let key = "\(url.hashValue)"
-            let qualityLabel = isHLS ? "HLS" : (isAudio ? "Audio" : (stillYtDlp ? "yt-dlp" : "Video"))
-
-            // Create queue item
-            let queueId = DownloadQueue.shared.add(url: url, quality: qualityLabel, targetCloud: .local, displayTitle: title)
-
-            if isHLS {
-                tracker.localDownloads[key] = .uploading("Downloading HLS…")
-            } else if stillYtDlp {
-                tracker.localDownloads[key] = .uploading("Downloading via yt-dlp…")
-            } else if isAudio {
-                tracker.localDownloads[key] = .uploading("Downloading audio…")
-            } else {
-                tracker.localDownloads[key] = .uploading("Downloading…")
-            }
-
-            Task {
-                do {
-                    let destFile: URL
-                    if stillYtDlp {
-                        DownloadQueue.shared.updateProgress(id: queueId, status: .downloading, progress: 0)
-                        destFile = try await DownloadManager.shared.downloadViaYTDLPSite(
-                            pageUrl: finalUrl, title: title,
-                            onProgress: { msg in
-                                Task { @MainActor in tracker.localDownloads[key] = .uploading(msg) }
-                            })
-                    } else if isHLS {
-                        let hlsSource = source.hls.first(where: { $0.url == url })
-                        destFile = try await DownloadManager.shared.downloadHLS(
-                            m3u8Url: finalUrl, title: title, headers: finalHlsHeaders,
-                            sourcePageUrl: hlsSource?.sourcePageUrl,
-                            onProgress: { event in
-                                updateQueue(id: queueId, status: .downloading, progress: event.phase == .completing ? 99 : event.percent)
-                                Task { @MainActor in tracker.localDownloads[key] = .uploading(event.message) }
-                            }
-                        )
-                    } else if isAudio {
-                        DownloadQueue.shared.updateProgress(id: queueId, status: .downloading, progress: 0)
-                        destFile = try await DownloadManager.shared.downloadAudio(
-                            pageUrl: finalUrl, title: title,
-                            onProgress: { msg in
-                                Task { @MainActor in tracker.localDownloads[key] = .uploading(msg) }
-                            }
-                        )
-                    } else {
-                        DownloadQueue.shared.updateProgress(id: queueId, status: .downloading, progress: 0)
-                        let delegate = QueueDownloadProgressDelegate(
-                            queueId: queueId,
-                            onProgress: { pct in updateQueue(id: queueId, status: .downloading, progress: pct) }
-                        )
-                        destFile = try await DownloadManager.shared.downloadDirectWithDelegate(
-                            url: finalUrl, title: title, headers: finalHlsHeaders, delegate: delegate
-                        )
-                    }
-                    if !isAudio {
-                        updateQueue(id: queueId, status: .downloading, progress: 99)
-                        Task { @MainActor in tracker.localDownloads[key] = .uploading("Verifying video…") }
-                        try await VideoProcessor.verifyForUpload(destFile)
-                    }
-                    // Update library with local path
-                    let libraryItem = libraryItem(for: result)
-                    VideoLibrary.shared.updateRemotePaths(for: libraryItem, cloud: .local, path: destFile.path)
-                    Task { @MainActor in
-                        DownloadQueue.shared.updateProgress(id: queueId, status: .completed, progress: 100)
-                        if var idx = DownloadQueue.shared.queue.firstIndex(where: { $0.id == queueId }) {
-                            DownloadQueue.shared.queue[idx].finalPath = destFile.path
-                            DownloadQueue.shared.save()
-                        }
-                        await LicenseManager.shared.recordSuccessfulDownload()
-                        tracker.localDownloads[key] = .done("Saved to \(destFile.lastPathComponent)")
-                        NSWorkspace.shared.activateFileViewerSelecting([destFile])
-                        NotificationManager.shared.notifyUploadComplete(filename: destFile.lastPathComponent, destination: "Local")
-                    }
-                } catch {
-                    Task { @MainActor in
-                        saveFailedProgress(id: queueId, error: error)
-                        tracker.localDownloads[key] = .failed(error.localizedDescription)
-                        NotificationManager.shared.notifyUploadFailed(filename: title, reason: error.localizedDescription)
-                    }
-                }
-            }
-        } else if cloud == .mega {
-            guard MegaManager.isAvailable else { tracker.megaUploads[url] = .failed("No Mega CLI"); return }
-            guard MegaManager.isLoggedIn else { tracker.megaUploads[url] = .failed("Not logged in"); return }
-            let key = "\(url.hashValue)"
-            let queueId = DownloadQueue.shared.add(url: url, quality: "HLS → Mega", targetCloud: .mega, displayTitle: title)
-
-            if isHLS {
-                tracker.megaUploads[key] = .uploading("Materializing HLS…")
-                Task {
-                    do {
-                        let hlsSource = source.hls.first(where: { $0.url == url })
-                        let mp4File = try await DownloadManager.shared.downloadHLS(
-                            m3u8Url: finalUrl, title: title, headers: finalHlsHeaders,
-                            sourcePageUrl: hlsSource?.sourcePageUrl,
-                            onProgress: { event in
-                                updateQueue(id: queueId, status: .downloading, progress: event.phase == .completing ? 99 : event.percent)
-                                Task { @MainActor in tracker.megaUploads[key] = .uploading(event.message) }
-                            })
-                        let uploadResult = try await MegaManager.uploadLocalFile(mp4File, remotePath: megaRemotePath, uploadID: queueId) { event in
-                            updateQueue(id: queueId, status: queueStatus(for: event), progress: event.percent)
-                            Task { @MainActor in tracker.megaUploads[key] = .uploading(event.message) }
-                        }
-                        Task { @MainActor in
-                            let uploadedName = uploadResult.remotePath.split(separator: "/").last.map(String.init) ?? mp4File.lastPathComponent
-                            try? FileManager.default.removeItem(at: mp4File)
-                            HistoryManager.shared.recordCompletedUpload(url: url, source: source, destination: "Mega", remotePath: uploadResult.remotePath)
-                            DownloadQueue.shared.remove(id: queueId)
-                            await LicenseManager.shared.recordSuccessfulDownload()
-                            tracker.megaUploads[key] = .done("Uploaded to \(megaRemotePath)")
-                            tracker.megaFilenames[key] = uploadResult.remotePath
-                            NotificationManager.shared.notifyUploadComplete(filename: uploadedName, destination: megaRemotePath)
-                        }
-                    } catch {
-                        Task { @MainActor in
-                            saveFailedProgress(id: queueId, error: error)
-                            tracker.megaUploads[key] = .failed(error.localizedDescription)
-                            NotificationManager.shared.notifyUploadFailed(filename: title, reason: error.localizedDescription)
-                        }
-                    }
-                }
-            } else {
-                tracker.megaUploads[key] = .uploading("Downloading... 0%")
-                Task {
-                    do {
-                        updateQueue(id: queueId, status: .downloading, progress: 0)
-                        let uploadResult = try await MegaManager.upload(url: finalUrl, remotePath: megaRemotePath, title: title, headers: finalHlsHeaders, uploadID: queueId) { event in
-                            updateQueue(id: queueId, status: queueStatus(for: event), progress: event.percent)
-                            Task { @MainActor in tracker.megaUploads[key] = .uploading(event.message) }
-                        }
-                        Task { @MainActor in
-                            HistoryManager.shared.recordCompletedUpload(url: url, source: source, destination: "Mega", remotePath: uploadResult.remotePath)
-                            DownloadQueue.shared.remove(id: queueId)
-                            await LicenseManager.shared.recordSuccessfulDownload()
-                            tracker.megaUploads[key] = .done("Uploaded to \(megaRemotePath)")
-                            tracker.megaFilenames[key] = uploadResult.remotePath
-                            NotificationManager.shared.notifyUploadComplete(filename: uploadFileName(for: url), destination: megaRemotePath)
-                        }
-                    } catch {
-                        Task { @MainActor in
-                            DownloadQueue.shared.updateProgress(id: queueId, status: .failed(error.localizedDescription), progress: 0)
-                            tracker.megaUploads[key] = .failed(error.localizedDescription)
-                            NotificationManager.shared.notifyUploadFailed(filename: uploadFileName(for: url), reason: error.localizedDescription)
-                        }
-                    }
-                }
-            }
-        } else {
-            guard GDriveManager.isAvailable else { tracker.gdriveUploads[url] = .failed("rclone not installed"); return }
-            let key = "\(url.hashValue)"
-            let megaRemote = tracker.megaFilenames[url]
-            let queueId = DownloadQueue.shared.add(url: url, quality: gdriveTargetLabel(isHLS), targetCloud: .gdrive, displayTitle: title)
-
-            if isHLS {
-                tracker.gdriveUploads[key] = .uploading("Materializing HLS…")
-                Task {
-                    do {
-                        let hlsSource = source.hls.first(where: { $0.url == url })
-                        updateQueue(id: queueId, status: .downloading, progress: 0)
-                        let mp4File = try await DownloadManager.shared.downloadHLS(
-                            m3u8Url: finalUrl, title: title, headers: finalHlsHeaders,
-                            sourcePageUrl: hlsSource?.sourcePageUrl,
-                            onProgress: { event in
-                                updateQueue(id: queueId, status: event.phase == .completing ? .completed : .downloading, progress: event.percent)
-                                Task { @MainActor in tracker.gdriveUploads[key] = .uploading(event.message) }
-                            })
-                        try await GDriveManager.uploadLocalFile(mp4File, remoteName: gdriveRemoteName, remotePath: gdriveRemotePath) { event in
-                            updateQueue(id: queueId, status: event.phase == .completing ? .completed : .uploading, progress: event.percent)
-                            Task { @MainActor in tracker.gdriveUploads[key] = .uploading(event.message) }
-                        }
-                        if let megaPath = megaRemote {
-                            try? await MegaManager.delete(remotePath: megaPath)
-                            Task { @MainActor in tracker.megaFilenames.removeValue(forKey: megaPath) }
-                        }
-                        try? FileManager.default.removeItem(at: mp4File)
-                        Task { @MainActor in
-                            DownloadQueue.shared.updateProgress(id: queueId, status: .completed, progress: 100)
-                            let destPath = "\(gdriveRemoteName):\(gdriveRemotePath)\(mp4File.lastPathComponent)"
-                            if var idx = DownloadQueue.shared.queue.firstIndex(where: { $0.id == queueId }) {
-                                DownloadQueue.shared.queue[idx].finalPath = destPath
-                                DownloadQueue.shared.save()
-                            }
-                            await LicenseManager.shared.recordSuccessfulDownload()
-                            tracker.gdriveUploads[key] = .done("Uploaded to GDrive")
-                            NotificationManager.shared.notifyUploadComplete(filename: mp4File.lastPathComponent, destination: gdriveRemotePath)
-                        }
-                    } catch {
-                        Task { @MainActor in
-                            DownloadQueue.shared.updateProgress(id: queueId, status: .failed(error.localizedDescription), progress: 0)
-                            tracker.gdriveUploads[key] = .failed(error.localizedDescription)
-                            NotificationManager.shared.notifyUploadFailed(filename: title, reason: error.localizedDescription)
-                        }
-                    }
-                }
-            } else {
-                tracker.gdriveUploads[key] = .uploading("Downloading… 0%")
-                Task {
-                    do {
-                        DownloadQueue.shared.updateProgress(id: queueId, status: .downloading, progress: 0)
-                        let uploadedPath = try await GDriveManager.upload(url: finalUrl, remoteName: gdriveRemoteName, remotePath: gdriveRemotePath, title: title, headers: finalHlsHeaders) { msg in
-                            Task { @MainActor in tracker.gdriveUploads[key] = .uploading(msg) }
-                        }
-                        if let megaPath = megaRemote {
-                            try? await MegaManager.delete(remotePath: megaPath)
-                            Task { @MainActor in tracker.megaFilenames.removeValue(forKey: megaPath) }
-                        }
-                        Task { @MainActor in
-                            DownloadQueue.shared.updateProgress(id: queueId, status: .completed, progress: 100)
-                            let destPath = uploadedPath
-                            if var idx = DownloadQueue.shared.queue.firstIndex(where: { $0.id == queueId }) {
-                                DownloadQueue.shared.queue[idx].finalPath = destPath
-                                DownloadQueue.shared.save()
-                            }
-                            await LicenseManager.shared.recordSuccessfulDownload()
-                            tracker.gdriveUploads[key] = .done("Uploaded to GDrive")
-                            NotificationManager.shared.notifyUploadComplete(filename: uploadFileName(for: url), destination: gdriveRemotePath)
-                        }
-                    } catch {
-                        Task { @MainActor in
-                            DownloadQueue.shared.updateProgress(id: queueId, status: .failed(error.localizedDescription), progress: 0)
-                            tracker.gdriveUploads[key] = .failed(error.localizedDescription)
-                            NotificationManager.shared.notifyUploadFailed(filename: uploadFileName(for: url), reason: error.localizedDescription)
-                        }
-                    }
-                }
-            }
+        do {
+            let resolution = try await DownloadResolver.resolve(requestedUrl: url, in: results)
+            DownloadJobRunner.shared.start(resolution: resolution, target: cloud, context: downloadJobContext)
+        } catch {
+            tracker.projectFailure(url: url, target: cloud, message: error.localizedDescription)
+            NotificationManager.shared.notifyUploadFailed(filename: uploadFileName(for: url), reason: error.localizedDescription)
         }
     }
 
-    private func libraryItem(for result: ExtractResult) -> LibraryItem {
-        let title = result.source?.title ?? URL(string: result.url)?.pathComponents.last?.replacingOccurrences(of: "-", with: " ").capitalized ?? result.url
-        let existing = VideoLibrary.shared.items.first(where: { $0.url == result.url })
-        if let existing { return existing }
-        let newItem = LibraryItem(url: result.url, title: title, mp4Url: result.source?.mp4, hlsUrls: result.source?.hls ?? [])
-        VideoLibrary.shared.add(newItem)
-        return newItem
-    }
-
-    private func gdriveTargetLabel(_ isHLS: Bool) -> String {
-        isHLS ? "HLS → GDrive" : "GDrive"
+    private var downloadJobContext: DownloadJobContext {
+        DownloadJobContext(
+            megaRemotePath: megaRemotePath,
+            gdriveRemoteName: gdriveRemoteName,
+            gdriveRemotePath: gdriveRemotePath,
+            seedboxTransferMode: seedboxTransferMode,
+            seedboxRemoteName: seedboxRemoteName,
+            seedboxRemotePath: seedboxRemotePath,
+            seedboxWebdavURL: seedboxWebdavURL,
+            seedboxWebdavUser: seedboxWebdavUser,
+            seedboxWebdavPassword: seedboxWebdavPassword
+        )
     }
 
     private func fileName(of url: String) -> String {
@@ -761,351 +417,16 @@ struct HomeView: View {
         VideoFileNaming.mp4FileName(title: title(for: url), fallback: fileName(of: url))
     }
 
-    private func uniqueCandidates(_ candidates: [String?]) -> [String] {
-        var seen = Set<String>()
-        var result: [String] = []
-        for candidate in candidates.compactMap({ $0 }) {
-            if seen.insert(candidate).inserted {
-                result.append(candidate)
-            }
-        }
-        return result
-    }
-
-    private func isProviderHost(_ urlString: String) -> Bool {
-        guard let host = URL(string: urlString)?.host?.lowercased() else { return false }
-        return [
-            "streamtape.com", "streamtape.net",
-            "mixdrop.ag", "mixdrop.co", "mixdrop.sx", "mixdrop.pw", "m1xdrop.click",
-            "doodstream.com", "doodstream.org", "dood.wf", "dood.pm", "dood.la", "dood.to", "dood.sh", "dood.ws", "dood.one", "dood.watch", "playmogo.com"
-        ].contains(host)
-    }
-
-    private func parsePercent(from msg: String) -> Double? {
-        if let m = try? NSRegularExpression(pattern: "(\\d+)%$").firstMatch(in: msg, range: NSRange(msg.startIndex..., in: msg)),
-           let r = Range(m.range(at: 1), in: msg) {
-            return Double(msg[r])
-        }
-        return nil
-    }
-
-    /// Main-actor-safe queue progress update.
-    private func updateQueue(id: UUID, status: QueueStatus, progress: Double) {
-        Task { @MainActor in
-            DownloadQueue.shared.updateProgress(id: id, status: status, progress: progress)
-        }
-    }
-
-    private func queueStatus(for event: ProgressEvent) -> QueueStatus {
-        switch event.phase {
-        case .downloading: return .downloading
-        case .verifying: return .verifying
-        case .uploading: return .uploading
-        case .completing: return .completed
-        }
-    }
-
-    /// Save last known progress on failure so the Downloads tab doesn't reset to 0.
-    private func saveFailedProgress(id: UUID, error: Error) {
-        guard let idx = DownloadQueue.shared.queue.firstIndex(where: { $0.id == id }) else { return }
-        let lastPct = DownloadQueue.shared.queue[idx].progress
-        DownloadQueue.shared.queue[idx].status = .failed(error.localizedDescription)
-        // Retain last known progress so the bar doesn't jump to 0
-        if lastPct > 0 {
-            DownloadQueue.shared.queue[idx].progress = lastPct
-        }
-        DownloadQueue.shared.save()
-    }
-}
-
-private struct DependencySetupPanel: View {
-    let gdriveRemoteName: String
-    @State private var checks: [DependencyCheck] = []
-
-    private var actionableChecks: [DependencyCheck] {
-        checks.filter { !$0.isReady }
-    }
-
-    var body: some View {
-        Group {
-            if !actionableChecks.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "wrench.and.screwdriver.fill")
-                            .foregroundStyle(Theme.amber)
-                        Text("Setup")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Theme.textPrimary)
-                        Spacer()
-                        Button {
-                            Task { await refresh() }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Refresh setup checks")
-                    }
-
-                    VStack(spacing: 8) {
-                        ForEach(checks) { check in
-                            DependencyCheckRow(check: check)
-                        }
-                    }
-                }
-                .padding(12)
-                .glassCard(tint: Theme.amber.opacity(0.16), cornerRadius: 12)
-            }
-        }
-        .task {
-            await refresh()
-        }
-    }
-
-    private func refresh() async {
-        let remoteName = gdriveRemoteName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedRemoteName = remoteName.isEmpty ? "gdrive" : remoteName
-        let next = await Task.detached {
-            let ytDlpReady = ScraperEngine.isYTDLPAvailable
-            let ffmpegReady = VideoProcessor.findFFmpeg() != nil
-            let megaReady = MegaManager.isAvailable
-            let megaLoggedIn = megaReady && MegaManager.isLoggedIn
-            let rcloneReady = GDriveManager.isAvailable
-            let gdriveReady = rcloneReady && GDriveManager.isConfigured(remoteName: resolvedRemoteName)
-
-            return [
-                DependencyCheck(
-                    id: "yt-dlp",
-                    title: "yt-dlp",
-                    detail: "Broad site extraction, audio, and subtitles",
-                    status: ytDlpReady ? "Ready" : "Missing",
-                    command: ytDlpReady ? nil : "brew install yt-dlp",
-                    isReady: ytDlpReady
-                ),
-                DependencyCheck(
-                    id: "ffmpeg",
-                    title: "ffmpeg",
-                    detail: "HLS downloads and video processing",
-                    status: ffmpegReady ? "Ready" : "Missing",
-                    command: ffmpegReady ? nil : "brew install ffmpeg",
-                    isReady: ffmpegReady
-                ),
-                DependencyCheck(
-                    id: "mega",
-                    title: "MEGAcmd",
-                    detail: "Mega uploads",
-                    status: megaLoggedIn ? "Connected" : (megaReady ? "Sign in" : "Missing"),
-                    command: megaLoggedIn ? nil : (megaReady ? "mega-login" : "brew install --cask megacmd-app"),
-                    isReady: megaLoggedIn
-                ),
-                DependencyCheck(
-                    id: "gdrive",
-                    title: "Google Drive",
-                    detail: "rclone remote named \(resolvedRemoteName)",
-                    status: gdriveReady ? "Configured" : (rcloneReady ? "Configure" : "Missing"),
-                    command: gdriveReady ? nil : (rcloneReady ? "rclone config" : "brew install rclone"),
-                    isReady: gdriveReady
-                )
-            ]
-        }.value
-        checks = next
-    }
-}
-
-private struct DependencyCheck: Identifiable, Sendable {
-    let id: String
-    let title: String
-    let detail: String
-    let status: String
-    let command: String?
-    let isReady: Bool
-}
-
-private struct DependencyCheckRow: View {
-    let check: DependencyCheck
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: check.isReady ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                .foregroundStyle(check.isReady ? Theme.success : Theme.warning)
-                .frame(width: 18)
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text(check.title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text(check.status.uppercased())
-                        .font(.system(size: 9, weight: .black))
-                        .foregroundStyle(check.isReady ? Theme.success : Theme.warning)
-                    Spacer()
-                }
-
-                Text(check.detail)
-                    .font(.caption2)
-                    .foregroundStyle(Theme.textSecondary)
-
-                if let command = check.command {
-                    HStack(spacing: 6) {
-                        Text(command)
-                            .font(.system(size: 10, design: .monospaced).weight(.medium))
-                            .foregroundStyle(Theme.textPrimary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Button {
-                            copy(command)
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                        }
-                        .buttonStyle(.borderless)
-                        .help("Copy command")
-                    }
-                }
-            }
-        }
-        .padding(8)
-        .background(Theme.surface2.opacity(check.isReady ? 0.18 : 0.32), in: RoundedRectangle(cornerRadius: 8))
-    }
-
-    private func copy(_ command: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(command, forType: .string)
-    }
-}
-
-struct VideoResultRow: View {
-    let result: ExtractResult
-    let localState: UploadState?
-    let megaState: UploadState?
-    let gdriveState: UploadState?
-    let onLocal: (String) -> Void
-    let onMega: (String) -> Void
-    let onGDrive: (String) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: result.error == nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(result.error == nil ? Theme.success : Theme.error)
-                    .font(.title3)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(displayTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Theme.textPrimary)
-                        .lineLimit(2)
-
-                    Text(result.source?.displaySiteName ?? "Video Site")
-                        .font(.caption)
-                        .foregroundStyle(Theme.textSecondary)
-
-                    if let error = result.error {
-                        Text(displayError(error))
-                            .font(.caption)
-                            .foregroundStyle(Theme.error)
-                    }
-                }
-
-                Spacer(minLength: 0)
-            }
-
-            if let source = result.source {
-                sourceButtons(for: source)
-            }
-
-            statusSummary
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-    }
-
-    private func copyToClipboard(_ text: String) {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-    }
-
-    private var displayTitle: String {
-        guard let source = result.source else { return "Video URL" }
-        let title = source.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return title.isEmpty ? "Untitled Video" : title
-    }
-
-    private func displayError(_ error: String) -> String {
-        if error.localizedCaseInsensitiveContains("invalid url") {
-            return error
-        }
-        return "Could not extract video sources from this page."
-    }
-
-    @ViewBuilder
-    private func sourceButtons(for source: VideoSource) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let mp4 = source.mp4 {
-                HStack(spacing: 8) {
-                    Text("MP4")
-                        .font(.caption.weight(.semibold))
-                        .frame(width: 42, alignment: .leading)
-                    Button("Local") { onLocal(mp4) }
-                        .buttonStyle(.borderedProminent)
-                    Button("Mega") { onMega(mp4) }
-                        .buttonStyle(.bordered)
-                    Button("GDrive") { onGDrive(mp4) }
-                        .buttonStyle(.bordered)
-                    Button("Copy") { copyToClipboard(mp4) }
-                        .buttonStyle(.bordered)
-                }
-            }
-
-            if !source.hls.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(source.hls, id: \.url) { quality in
-                        HStack(spacing: 8) {
-                            Text(quality.label)
-                                .font(.caption.weight(.semibold))
-                                .frame(width: 92, alignment: .leading)
-                            Button("Local") { onLocal(quality.url) }
-                                .buttonStyle(.borderedProminent)
-                            Button("Mega") { onMega(quality.url) }
-                                .buttonStyle(.bordered)
-                            Button("GDrive") { onGDrive(quality.url) }
-                                .buttonStyle(.bordered)
-                            Button("Copy") { copyToClipboard(quality.url) }
-                                .buttonStyle(.bordered)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var statusSummary: some View {
-        if let localState {
-            stateLine(label: "Local", state: localState)
-        }
-        if let megaState {
-            stateLine(label: "Mega", state: megaState)
-        }
-        if let gdriveState {
-            stateLine(label: "GDrive", state: gdriveState)
-        }
-    }
-
-    @ViewBuilder
-    private func stateLine(label: String, state: UploadState) -> some View {
-        switch state {
-        case .uploading(let msg):
-            Text("\(label): \(msg)")
-                .font(.caption)
-                .foregroundStyle(Theme.textSecondary)
-        case .done(let msg):
-            Text("\(label): \(msg)")
-                .font(.caption)
-                .foregroundStyle(Theme.success)
-        case .failed(let msg):
-            Text("\(label): \(msg)")
-                .font(.caption)
-                .foregroundStyle(Theme.error)
+    private func state(for url: String, target: CloudTarget) -> UploadState? {
+        switch target {
+        case .local:
+            return tracker.localDownloads[url]
+        case .mega:
+            return tracker.megaUploads[url]
+        case .gdrive:
+            return tracker.gdriveUploads[url]
+        case .seedbox:
+            return tracker.seedboxUploads[url]
         }
     }
 }

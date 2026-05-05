@@ -49,6 +49,11 @@ class CloudKitManager: ObservableObject {
             settings["megaRemotePath"] = UserDefaults.standard.string(forKey: "megaRemotePath")
             settings["gdriveRemoteName"] = UserDefaults.standard.string(forKey: "gdriveRemoteName")
             settings["gdriveRemotePath"] = UserDefaults.standard.string(forKey: "gdriveRemotePath")
+            settings["seedboxTransferMode"] = UserDefaults.standard.string(forKey: "seedboxTransferMode")
+            settings["seedboxRemoteName"] = UserDefaults.standard.string(forKey: "seedboxRemoteName")
+            settings["seedboxRemotePath"] = UserDefaults.standard.string(forKey: "seedboxRemotePath")
+            settings["seedboxWebdavURL"] = UserDefaults.standard.string(forKey: "seedboxWebdavURL")
+            settings["seedboxWebdavUser"] = UserDefaults.standard.string(forKey: "seedboxWebdavUser")
             settings["license_pro_active"] = LicenseManager.shared.isPro as CKRecordValue
             settings["modifiedAt"] = Date() as CKRecordValue
             try await database.save(settings)
@@ -61,6 +66,7 @@ class CloudKitManager: ObservableObject {
                 record["title"] = item.title
                 record["url"] = item.url
                 record["mp4Url"] = item.mp4Url
+                record["thumbnailURL"] = item.thumbnailURL
                 record["extractedAt"] = item.extractedAt
                 record["modifiedAt"] = Date() as CKRecordValue
                 try await database.save(record)
@@ -70,7 +76,7 @@ class CloudKitManager: ObservableObject {
             syncStatus = .success
         } catch {
             // Graceful fallback — CloudKit not critical
-            print("[VidDL] CloudKit push failed: \(error.localizedDescription)")
+            Log.cloudKit.error("CloudKit push failed: \(error.localizedDescription, privacy: .public)")
             syncStatus = .error
         }
     }
@@ -93,6 +99,21 @@ class CloudKitManager: ObservableObject {
                 if let v = settings["gdriveRemotePath"] as? String {
                     UserDefaults.standard.set(v, forKey: "gdriveRemotePath")
                 }
+                if let v = settings["seedboxTransferMode"] as? String {
+                    UserDefaults.standard.set(v, forKey: "seedboxTransferMode")
+                }
+                if let v = settings["seedboxRemoteName"] as? String {
+                    UserDefaults.standard.set(v, forKey: "seedboxRemoteName")
+                }
+                if let v = settings["seedboxRemotePath"] as? String {
+                    UserDefaults.standard.set(v, forKey: "seedboxRemotePath")
+                }
+                if let v = settings["seedboxWebdavURL"] as? String {
+                    UserDefaults.standard.set(v, forKey: "seedboxWebdavURL")
+                }
+                if let v = settings["seedboxWebdavUser"] as? String {
+                    UserDefaults.standard.set(v, forKey: "seedboxWebdavUser")
+                }
             }
 
             // Fetch library items (last 100)
@@ -107,14 +128,19 @@ class CloudKitManager: ObservableObject {
                     let title = record["title"] as? String ?? "Unknown"
                     let url = record["url"] as? String ?? ""
                     let mp4Url = record["mp4Url"] as? String
+                    let thumbnailURL = record["thumbnailURL"] as? String
                     let date = record["extractedAt"] as? Date ?? Date()
                     if let id = id {
-                        let item = LibraryItem(id: id, url: url, title: title,
-                                               mp4Url: mp4Url, hlsUrls: [])
-                        // Only add if not already present
-                        if !VideoLibrary.shared.items.contains(where: { $0.url == item.url }) {
-                            VideoLibrary.shared.addIfNew(item)
-                        }
+                        let item = LibraryItem(
+                            id: id,
+                            url: url,
+                            title: title,
+                            mp4Url: mp4Url,
+                            hlsUrls: [],
+                            extractedAt: date,
+                            thumbnailURL: thumbnailURL
+                        )
+                        VideoLibrary.shared.addIfNew(item)
                     }
                 }
             }
@@ -122,7 +148,7 @@ class CloudKitManager: ObservableObject {
             lastSyncDate = Date()
             syncStatus = .success
         } catch {
-            print("[VidDL] CloudKit fetch failed: \(error.localizedDescription)")
+            Log.cloudKit.error("CloudKit fetch failed: \(error.localizedDescription, privacy: .public)")
             syncStatus = .error
         }
     }

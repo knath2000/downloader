@@ -7,6 +7,12 @@
 PMVDL/build/
 PMVDL/DerivedData/
 PMVDL/PMVDL.xcodeproj/project.xcworkspace/
+!PMVDL/PMVDL.xcodeproj/project.xcworkspace/
+PMVDL/PMVDL.xcodeproj/project.xcworkspace/*
+!PMVDL/PMVDL.xcodeproj/project.xcworkspace/xcshareddata/
+PMVDL/PMVDL.xcodeproj/project.xcworkspace/xcshareddata/*
+!PMVDL/PMVDL.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+!PMVDL/PMVDL.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 PMVDL/PMVDL.xcodeproj/xcuserdata/
 *.pbxproj.backup
 *.pbxuser
@@ -52,3 +58,6 @@ pmvdl.py.backup
 
 # Local Claude worktrees
 .claude/
+
+# Local Hermes agent plans
+.hermes/

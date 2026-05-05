@@ -9,6 +9,7 @@ class ActiveWorkTracker: ObservableObject {
 
     @Published var megaUploads: [String: UploadState] = [:]
     @Published var gdriveUploads: [String: UploadState] = [:]
+    @Published var seedboxUploads: [String: UploadState] = [:]
     @Published var localDownloads: [String: UploadState] = [:]
     /// Maps video source URL → remote Mega path (e.g. "/Cloud/VidDL/viddl_abc12345.mp4")
     /// for auto-deletion after successful GDrive upload.
@@ -22,6 +23,7 @@ class ActiveWorkTracker: ObservableObject {
     func clear(except urls: Set<String>) {
         megaUploads = megaUploads.filter { urls.contains($0.key) }
         gdriveUploads = gdriveUploads.filter { urls.contains($0.key) }
+        seedboxUploads = seedboxUploads.filter { urls.contains($0.key) }
         localDownloads = localDownloads.filter { urls.contains($0.key) }
         megaFilenames = megaFilenames.filter { urls.contains($0.key) }
     }
@@ -29,6 +31,7 @@ class ActiveWorkTracker: ObservableObject {
     func reset() {
         megaUploads = [:]
         gdriveUploads = [:]
+        seedboxUploads = [:]
         localDownloads = [:]
         megaFilenames = [:]
         isBatchDownloading = false
@@ -40,6 +43,48 @@ class ActiveWorkTracker: ObservableObject {
             if case .uploading = $0 { return true }; return false
         }.count + gdriveUploads.values.filter {
             if case .uploading = $0 { return true }; return false
+        }.count + seedboxUploads.values.filter {
+            if case .uploading = $0 { return true }; return false
         }.count
+    }
+
+    func project(_ item: DownloadQueueItem) {
+        guard let state = DownloadQueue.shared.projectedState(for: item) else { return }
+        switch item.targetCloud {
+        case .local:
+            localDownloads[item.url] = state
+        case .mega:
+            megaUploads[item.url] = state
+            if item.status == .completed, let finalPath = item.finalPath {
+                megaFilenames[item.url] = finalPath
+            }
+        case .gdrive:
+            gdriveUploads[item.url] = state
+        case .seedbox:
+            seedboxUploads[item.url] = state
+        }
+    }
+
+    func project(queueId: UUID) {
+        guard let item = DownloadQueue.shared.item(id: queueId) else { return }
+        project(item)
+    }
+
+    func removeMegaFilename(for url: String) {
+        megaFilenames.removeValue(forKey: url)
+    }
+
+    func projectFailure(url: String, target: CloudTarget, message: String) {
+        let state = UploadState.failed(message)
+        switch target {
+        case .local:
+            localDownloads[url] = state
+        case .mega:
+            megaUploads[url] = state
+        case .gdrive:
+            gdriveUploads[url] = state
+        case .seedbox:
+            seedboxUploads[url] = state
+        }
     }
 }

@@ -1,30 +1,45 @@
+import Combine
 import Foundation
+import Sparkle
 import SwiftUI
 
-/// Wraps Sparkle auto-update integration.
-/// When Sparkle is not yet added to the project, this acts as a no-op placeholder.
 @MainActor
-class UpdateManager: ObservableObject {
+final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
     static let shared = UpdateManager()
 
     @Published var isChecking = false
     @Published var latestVersion: String?
+    @Published var lastError: String?
+    @Published var statusMessage: String?
 
-    /// Call this to check for updates. Becomes functional when Sparkle is linked.
-    func checkForUpdates() {
-        // TODO: When Sparkle is added to the project via SPM:
-        //   import Sparkle
-        //   updater?.checkForUpdates()
-        // For now, just show the user their current version.
-        isChecking = true
-        latestVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
-        isChecking = false
+    private var controller: SPUStandardUpdaterController!
+    private var queueCancellable: AnyCancellable?
+    private var pendingInstallHandler: (() -> Void)?
+
+    private override init() {
+        super.init()
+        controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: nil)
+        queueCancellable = DownloadQueue.shared.$queue.sink { [weak self] _ in
+            self?.resumePendingInstallIfPossible()
+        }
     }
 
-    /// Whether auto-update checking feature is available (Sparkle linked).
+    func checkForUpdates() {
+        guard !hasActiveQueueWork else {
+            statusMessage = "Finish or pause active downloads before updating."
+            lastError = statusMessage
+            return
+        }
+
+        isChecking = true
+        latestVersion = nil
+        lastError = nil
+        statusMessage = "Checking..."
+        controller.checkForUpdates(nil)
+    }
+
     var isAvailable: Bool {
-        // Change to `true` once Sparkle framework is added to the project.
-        false
+        controller.updater.canCheckForUpdates && !hasActiveQueueWork
     }
 
     var currentVersion: String {
@@ -32,22 +47,67 @@ class UpdateManager: ObservableObject {
         let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
         return "\(v) (\(b))"
     }
-}
 
-// Sparkle appcast feed — host this on GitHub Pages or similar:
-// <?xml version="1.0" encoding="utf-8"?>
-// <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
-//   <channel>
-//     <title>VidDL Updates</title>
-//     <item>
-//       <title>Version 2.0.0</title>
-//       <sparkle:releaseNotesLink>https://viddl.com/releasenotes/2.0.0.html</sparkle:releaseNotesLink>
-//       <pubDate>Mon, 21 Apr 2026 00:00:00 +0000</pubDate>
-//       <enclosure url="https://github.com/knath2000/downloader/releases/download/v2.0.0/VidDL-2.0.0.zip"
-//                  sparkle:version="2" sparkle:shortVersionString="2.0.0"
-//                  type="application/octet-stream"
-//                  sparkle:edSignature="YOUR_ED25519_SIGNATURE_HERE"
-//                  length="YOUR_FILE_SIZE_IN_BYTES"/>
-//     </item>
-//   </channel>
-// </rss>
+    func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
+        guard !hasActiveQueueWork else { throw activeWorkError }
+    }
+
+    func updater(_ updater: SPUUpdater, shouldProceedWithUpdate updateItem: SUAppcastItem, updateCheck: SPUUpdateCheck) throws {
+        guard !hasActiveQueueWork else { throw activeWorkError }
+    }
+
+    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        latestVersion = item.displayVersionString
+        statusMessage = "Version \(item.displayVersionString) available."
+    }
+
+    func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: any Error) {
+        latestVersion = nil
+        statusMessage = "Up to date."
+    }
+
+    func updater(_ updater: SPUUpdater, didAbortWithError error: any Error) {
+        lastError = error.localizedDescription
+        statusMessage = nil
+        isChecking = false
+    }
+
+    func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: (any Error)?) {
+        if let error {
+            lastError = error.localizedDescription
+        }
+        isChecking = false
+    }
+
+    func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
+        guard hasActiveQueueWork else { return false }
+        pendingInstallHandler = installHandler
+        statusMessage = "Update will install after active downloads finish."
+        return true
+    }
+
+    private var hasActiveQueueWork: Bool {
+        DownloadQueue.shared.queue.contains { item in
+            switch item.status {
+            case .downloading, .verifying, .uploading:
+                return true
+            case .pending, .completed, .paused, .failed:
+                return false
+            }
+        }
+    }
+
+    private var activeWorkError: NSError {
+        NSError(
+            domain: "com.pmvdl.app.updater",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Finish or pause active downloads before checking for updates."]
+        )
+    }
+
+    private func resumePendingInstallIfPossible() {
+        guard let pendingInstallHandler, !hasActiveQueueWork else { return }
+        self.pendingInstallHandler = nil
+        pendingInstallHandler()
+    }
+}
