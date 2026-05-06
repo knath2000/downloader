@@ -3,16 +3,36 @@ import Foundation
 /// Enum-based feature gating. Pro features require a verified Stripe license.
 @MainActor
 struct ProFeatureGate {
-    static var isPro: Bool { LicenseManager.shared.isPro }
+    static let freeBatchLimit = 5
+    static let freeConcurrentDownloadLimit = 2
+    static let proConcurrentDownloadLimit = 5
 
-    /// Batch operations > 5 items require Pro.
+    static var isPro: Bool { LicenseManager.shared.isPro }
+    nonisolated static var storedIsPro: Bool { LicenseManager.storedIsPro }
+
+    /// Batch operations above the free batch limit require Pro.
     static func canBatchDownload(count: Int) -> Bool {
-        isPro || count <= 5
+        isPro || count <= freeBatchLimit
     }
 
     /// Upload to multiple cloud providers simultaneously requires Pro.
     static var canMultiUpload: Bool { isPro }
 
-    /// More than 5 free downloads require Pro.
+    /// Higher concurrent download limits require Pro.
+    static var canDownloadConcurrent: Bool { isPro }
+
+    static var canUseVideoProcessing: Bool { isPro }
+    static var canUseUploadRules: Bool { isPro }
+    static var canDownloadAudio: Bool { isPro }
+    static var canDownloadSubtitles: Bool { isPro }
+
+    nonisolated static var canDownloadAudioInBackground: Bool { storedIsPro }
+    nonisolated static var canDownloadSubtitlesInBackground: Bool { storedIsPro }
+
+    static var concurrentDownloadLimit: Int {
+        canDownloadConcurrent ? proConcurrentDownloadLimit : freeConcurrentDownloadLimit
+    }
+
+    /// Free downloads after the trial allotment require Pro.
     static var trialNotExhausted: Bool { LicenseManager.shared.freeDownloadsRemaining > 0 }
 }

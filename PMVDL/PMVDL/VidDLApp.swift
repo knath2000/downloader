@@ -4,6 +4,7 @@ import SwiftUI
 struct VidDLApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var appState = AppStateManager.shared
+    @StateObject private var favorites = FeedFavoritesStore.shared
 
     var body: some Scene {
         WindowGroup {
@@ -17,8 +18,13 @@ struct VidDLApp: App {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Navigate") {
                 Button("Home") { appState.select(.home) }.keyboardShortcut("1", modifiers: .command)
-                Button("Library") { appState.select(.library) }.keyboardShortcut("2", modifiers: .command)
-                Button("Downloads") { appState.select(.downloads) }.keyboardShortcut("3", modifiers: .command)
+                Button("History") { appState.select(.history) }.keyboardShortcut("2", modifiers: .command)
+                Button("Feed") { appState.select(.feed) }.keyboardShortcut("3", modifiers: .command)
+                if favorites.hasFavorites {
+                    Button("Favorites") { appState.select(.favorites) }
+                }
+                Button("Library") { appState.select(.library) }.keyboardShortcut("4", modifiers: .command)
+                Button("Downloads") { appState.select(.downloads) }.keyboardShortcut("5", modifiers: .command)
                 Button("Settings") { appState.select(.settings) }.keyboardShortcut(",", modifiers: .command)
             }
             CommandMenu("Downloads") {
@@ -30,11 +36,6 @@ struct VidDLApp: App {
                     .disabled(!UpdateManager.shared.isAvailable)
             }
         }
-
-        MenuBarExtra("VidDL", image: "menubarIcon") {
-            MenuBarQuickView()
-        }
-
     }
 }
 
@@ -69,6 +70,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         MegaManager.cleanupTempFiles()
         NotificationManager.shared.requestAuthorization()
         Task { await LicenseManager.shared.bootstrap() }
+        Task { @MainActor in
+            let seedboxWebdavPassword = UserDefaults.standard.string(forKey: "seedboxWebdavPassword") ?? ""
+            DownloadQueue.shared.resumeInterruptedOnLaunch(seedboxWebdavPassword: seedboxWebdavPassword)
+        }
 
         // Register app for NSAppleEventsDescriptor-based URL scheme
         NSAppleEventManager.shared().setEventHandler(self,
@@ -105,32 +110,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         MegaManager.cleanupTempFiles()
         DownloadQueue.shared.save()
         VideoLibrary.shared.save()
+        FeedFavoritesStore.shared.save()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        false
-    }
-}
-
-// ===== MENU BAR QUICK VIEW =====
-struct MenuBarQuickView: View {
-    @StateObject private var appState = AppStateManager.shared
-
-    var body: some View {
-        Button("Open VidDL") { appState.showMainWindow() }
-
-        Divider()
-
-        if let clip = ClipboardManager.currentURL,
-           ClipboardManager.isLikelyVideoURL(clip) {
-            Button("Extract: " + (clip as NSString).lastPathComponent) {
-                appState.showMainWindow()
-            }
-            Divider()
-        }
-
-        Button("Settings...") { appState.showMainWindow(); appState.select(.settings) }
-        Button("About") { showAboutWindow() }
-        Button("Quit") { NSApplication.shared.terminate(nil) }
+        true
     }
 }

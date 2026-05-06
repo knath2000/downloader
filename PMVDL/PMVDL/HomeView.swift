@@ -115,8 +115,7 @@ struct HomeView: View {
         }
         .onAppear {
             if let pending = appState.pendingExtractURL {
-                urlText = pending
-                appState.pendingExtractURL = nil
+                consumePendingExtractURL(pending)
             } else if let clip = ClipboardManager.currentURL,
                       ClipboardManager.isLikelyVideoURL(clip) {
                 urlText = clip
@@ -124,8 +123,19 @@ struct HomeView: View {
         }
         .onChange(of: appState.pendingExtractURL) { _, newValue in
             if let url = newValue {
-                urlText = url
-                appState.pendingExtractURL = nil
+                consumePendingExtractURL(url)
+            }
+        }
+    }
+
+    private func consumePendingExtractURL(_ url: String) {
+        let shouldStart = appState.pendingExtractShouldStart
+        urlText = url
+        appState.pendingExtractURL = nil
+        appState.pendingExtractShouldStart = false
+        if shouldStart {
+            DispatchQueue.main.async {
+                extractAll()
             }
         }
     }
@@ -325,6 +335,11 @@ struct HomeView: View {
         let selectedTarget = batchTarget
 
         Task {
+            guard ProFeatureGate.canBatchDownload(count: jobs.count) else {
+                onUpgradeRequired()
+                return
+            }
+
             guard await LicenseManager.shared.preflight(count: jobs.count) else {
                 onUpgradeRequired()
                 return
@@ -342,9 +357,17 @@ struct HomeView: View {
                 }
             }
 
+            guard ProFeatureGate.canDownloadAudio || !resolutions.contains(where: \.isAudio) else {
+                onUpgradeRequired()
+                tracker.isBatchDownloading = false
+                loadProgress = ""
+                return
+            }
+
             let context = downloadJobContext
             var nextIndex = 0
             var done = jobs.count - resolutions.count
+            let concurrencyLimit = DownloadQueue.shared.concurrentLimit
 
             await withTaskGroup(of: Bool.self) { group in
                 func addNext() {
@@ -356,7 +379,7 @@ struct HomeView: View {
                     }
                 }
 
-                for _ in 0..<min(3, resolutions.count) {
+                for _ in 0..<min(concurrencyLimit, resolutions.count) {
                     addNext()
                 }
 
@@ -378,6 +401,10 @@ struct HomeView: View {
         }
         do {
             let resolution = try await DownloadResolver.resolve(requestedUrl: url, in: results)
+            guard ProFeatureGate.canDownloadAudio || !resolution.isAudio else {
+                onUpgradeRequired()
+                return
+            }
             DownloadJobRunner.shared.start(resolution: resolution, target: cloud, context: downloadJobContext)
         } catch {
             tracker.projectFailure(url: url, target: cloud, message: error.localizedDescription)

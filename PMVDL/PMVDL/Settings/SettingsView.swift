@@ -11,17 +11,29 @@ struct SettingsView: View {
     @Binding var seedboxWebdavURL: String
     @Binding var seedboxWebdavUser: String
     @Binding var seedboxWebdavPassword: String
+    let onUpgradeRequired: () -> Void
+
     @AppStorage("downloadSubtitles") private var downloadSubtitles = false
     @AppStorage("embeddedSubsMode") private var embeddedSubsMode = false
+
     @StateObject private var license = LicenseManager.shared
     @StateObject private var updater = UpdateManager.shared
     @StateObject private var dependencyStore = SettingsDependencyStore.shared
+    @StateObject private var cloudHub = CloudHub.shared
+
+    @State private var activeSection: SettingsSection = .cloud
     @State private var activateEmail = ""
     @State private var activationResult = ""
     @State private var isActivating = false
     @State private var seedboxTestResult = ""
     @State private var seedboxTestSucceeded: Bool?
     @State private var isTestingSeedboxConnection = false
+    @State private var uploadRuleName = ""
+    @State private var uploadRuleQuality = "Any"
+    @State private var uploadRulePattern = ""
+    @State private var uploadRuleMega = true
+    @State private var uploadRuleGDrive = false
+    @State private var uploadRuleSeedbox = false
 
     private var trimmedActivationEmail: String {
         activateEmail.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -50,23 +62,48 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.groupSpacing) {
-                SettingsPageHeader(
+        ScrollViewReader { proxy in
+            VStack(spacing: 12) {
+                SettingsJumpToolbar(
+                    activeSection: activeSection,
                     isRefreshing: dependencyStore.isRefreshing,
-                    refreshAction: {
-                        Task { await dependencyStore.refresh(input: dependencyInput, force: true) }
+                    refreshAction: refreshDependencyChecks,
+                    jumpAction: { section in
+                        activeSection = section
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                            proxy.scrollTo(section.id, anchor: .top)
+                        }
                     }
                 )
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
 
-                cloudDestinationsGroup
-                appPreferencesGroup
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 24) {
+                        settingsSection(.cloud) {
+                            cloudSection
+                        }
+
+                        settingsSection(.preferences) {
+                            preferencesSection
+                        }
+
+                        settingsSection(.pro) {
+                            proSection
+                        }
+
+                        settingsSection(.info) {
+                            infoSection
+                        }
+                    }
+                    .frame(maxWidth: SettingsLayoutMetrics.contentMaxWidth, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 2)
+                    .padding(.bottom, 28)
+                }
             }
-            .frame(maxWidth: SettingsLayoutMetrics.contentMaxWidth, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.horizontal, SettingsLayoutMetrics.pageHorizontalPadding)
-            .padding(.top, SettingsLayoutMetrics.pageTopPadding)
-            .padding(.bottom, SettingsLayoutMetrics.pageBottomPadding)
+            .background(keyboardShortcuts(proxy: proxy))
         }
         .task(id: dependencyInput) {
             try? await Task.sleep(nanoseconds: 200_000_000)
@@ -79,91 +116,143 @@ struct SettingsView: View {
         }
     }
 
-    private var cloudDestinationsGroup: some View {
-        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.cardSpacing) {
-            SettingsGroupHeader(
-                "Cloud Destinations",
-                subtitle: "Configure where completed downloads are uploaded."
-            )
+    private func refreshDependencyChecks() {
+        Task { await dependencyStore.refresh(input: dependencyInput, force: true) }
+    }
 
-            megaUploadSection
-            googleDriveUploadSection
-            seedboxTransferSection
+    @ViewBuilder
+    private func settingsSection<Content: View>(
+        _ section: SettingsSection,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SettingsSectionHeader(section: section)
+            content()
+        }
+        .id(section.id)
+        .onAppear { activeSection = section }
+    }
+
+    private func keyboardShortcuts(proxy: ScrollViewProxy) -> some View {
+        Group {
+            Button("") {
+                jump(to: .cloud, proxy: proxy)
+            }
+            .keyboardShortcut("1", modifiers: .command)
+
+            Button("") {
+                jump(to: .preferences, proxy: proxy)
+            }
+            .keyboardShortcut("2", modifiers: .command)
+
+            Button("") {
+                jump(to: .pro, proxy: proxy)
+            }
+            .keyboardShortcut("3", modifiers: .command)
+
+            Button("") {
+                jump(to: .info, proxy: proxy)
+            }
+            .keyboardShortcut("4", modifiers: .command)
+
+            Button("") {
+                refreshDependencyChecks()
+            }
+            .keyboardShortcut("r", modifiers: .command)
+        }
+        .opacity(0)
+        .frame(width: 0, height: 0)
+    }
+
+    private func jump(to section: SettingsSection, proxy: ScrollViewProxy) {
+        activeSection = section
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            proxy.scrollTo(section.id, anchor: .top)
         }
     }
 
-    private var appPreferencesGroup: some View {
-        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.cardSpacing) {
-            SettingsGroupHeader(
-                "App Preferences",
-                subtitle: "Notifications, download helpers, updates, extensions, and license information."
-            )
-
-            notificationsSection
-            downloadOptionsSection
-            updatesSection
-            extensionsSection
-            licenseSection
-            aboutSection
-        }
-    }
-
-    private var megaUploadSection: some View {
-        SettingsSectionCard(
-            title: "Mega Upload",
-            subtitle: "Upload completed Mega transfers into a MEGAcmd folder.",
-            systemImage: "cloud.fill",
-            tint: Theme.success
-        ) {
-            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
-                megaSetupCard
-
-                SettingsFieldRow(
-                    "Remote path",
+    private var cloudSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            cloudDestinationCard(
+                title: "Mega Upload",
+                subtitle: "Upload completed Mega transfers into a MEGAcmd folder.",
+                systemImage: "cloud.fill",
+                model: dependencyModel.mega,
+                accent: color(for: dependencyModel.mega.tone)
+            ) {
+                GlassTextField(
+                    label: "Remote path",
+                    placeholder: "/Cloud/VidDL/",
+                    text: $megaRemotePath,
                     help: "VidDL uploads completed Mega transfers into this folder after MEGAcmd is installed and signed in."
-                ) {
-                    TextField("/Cloud/VidDL/", text: $megaRemotePath)
-                        .textFieldStyle(.roundedBorder)
-                }
+                )
             }
-        }
-    }
 
-    private var googleDriveUploadSection: some View {
-        SettingsSectionCard(
-            title: "Google Drive Upload",
-            subtitle: "Use rclone to upload completed files to a Google Drive remote.",
-            systemImage: "externaldrive.fill.badge.checkmark",
-            tint: Theme.skyBlue
-        ) {
-            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
-                gdriveSetupCard
-
-                SettingsFieldRow(
-                    "Remote name",
+            cloudDestinationCard(
+                title: "Google Drive Upload",
+                subtitle: "Use rclone to upload completed files to a Google Drive remote.",
+                systemImage: "externaldrive.fill.badge.checkmark",
+                model: dependencyModel.gdrive,
+                accent: color(for: dependencyModel.gdrive.tone)
+            ) {
+                GlassTextField(
+                    label: "Remote name",
+                    placeholder: "gdrive",
+                    text: $gdriveRemoteName,
                     help: "The remote name must match the Google Drive remote created in rclone."
-                ) {
-                    TextField("gdrive", text: $gdriveRemoteName)
-                        .textFieldStyle(.roundedBorder)
-                }
+                )
+                GlassTextField(
+                    label: "Remote path",
+                    placeholder: "VidDL/",
+                    text: $gdriveRemotePath
+                )
+            }
 
-                SettingsFieldRow("Remote path") {
-                    TextField("VidDL/", text: $gdriveRemotePath)
-                        .textFieldStyle(.roundedBorder)
-                }
+            seedboxTransferCard
+            uploadRulesCard
+        }
+    }
+
+    private func cloudDestinationCard<Content: View>(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        model: SettingsDependencyCardModel,
+        accent: Color,
+        @ViewBuilder fields: () -> Content
+    ) -> some View {
+        SettingsCard(tint: accent) {
+            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
+                SettingsCardTitle(
+                    title: title,
+                    subtitle: subtitle,
+                    systemImage: systemImage,
+                    tint: accent,
+                    status: model.status
+                )
+
+                SettingsDependencySummary(model: model, color: accent)
+
+                fields()
             }
         }
     }
 
-    private var seedboxTransferSection: some View {
-        SettingsSectionCard(
-            title: "Seedbox Transfer",
-            subtitle: "Stream direct downloads to a seedbox via rclone or WebDAV.",
-            systemImage: "server.rack",
-            tint: Theme.lavender
-        ) {
+    private var seedboxTransferCard: some View {
+        SettingsCard(tint: color(for: dependencyModel.seedbox.tone)) {
             VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
-                seedboxSetupCard
+                SettingsCardTitle(
+                    title: "Seedbox Transfer",
+                    subtitle: "Stream direct downloads to a seedbox via rclone or WebDAV.",
+                    systemImage: "server.rack",
+                    tint: color(for: dependencyModel.seedbox.tone),
+                    status: dependencyModel.seedbox.status
+                )
+
+                SettingsDependencySummary(
+                    model: dependencyModel.seedbox,
+                    color: color(for: dependencyModel.seedbox.tone)
+                )
 
                 SettingsFieldRow("Transfer mode") {
                     Picker("Transfer Mode", selection: $seedboxTransferMode) {
@@ -172,6 +261,7 @@ struct SettingsView: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
+                    .frame(maxWidth: 320)
                 }
 
                 seedboxModeFields
@@ -183,52 +273,30 @@ struct SettingsView: View {
     @ViewBuilder
     private var seedboxModeFields: some View {
         if seedboxTransferMode == "webdav" {
-            SettingsFieldRow("WebDAV URL") {
-                TextField("https://example.com/webdav", text: $seedboxWebdavURL)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            SettingsFieldRow("Username") {
-                TextField("Username", text: $seedboxWebdavUser)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            SettingsFieldRow("Password") {
-                SecureField("Password", text: $seedboxWebdavPassword)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            SettingsFieldRow(
-                "Remote path",
+            GlassTextField(label: "WebDAV URL", placeholder: "https://example.com/webdav", text: $seedboxWebdavURL)
+            GlassTextField(label: "Username", placeholder: "Username", text: $seedboxWebdavUser)
+            GlassSecureField(label: "Password", placeholder: "Password", text: $seedboxWebdavPassword)
+            GlassTextField(
+                label: "Remote path",
+                placeholder: "/",
+                text: $seedboxRemotePath,
                 help: "Direct video URLs upload with native WebDAV PUT. HLS, yt-dlp, and audio fall back to local assembly and need the rclone remote below."
-            ) {
-                TextField("/", text: $seedboxRemotePath)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            SettingsFieldRow("Fallback remote") {
-                TextField("seedbox", text: $seedboxRemoteName)
-                    .textFieldStyle(.roundedBorder)
-            }
+            )
+            GlassTextField(label: "Fallback remote", placeholder: "seedbox", text: $seedboxRemoteName)
         } else {
-            SettingsFieldRow("Remote name") {
-                TextField("seedbox", text: $seedboxRemoteName)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            SettingsFieldRow(
-                "Remote path",
+            GlassTextField(label: "Remote name", placeholder: "seedbox", text: $seedboxRemoteName)
+            GlassTextField(
+                label: "Remote path",
+                placeholder: "/",
+                text: $seedboxRemotePath,
                 help: "The remote name must match any rclone remote for your seedbox, such as SFTP, FTP, WebDAV, or S3."
-            ) {
-                TextField("/", text: $seedboxRemotePath)
-                    .textFieldStyle(.roundedBorder)
-            }
+            )
         }
     }
 
     private var seedboxTestConnectionRow: some View {
         SettingsFieldRow("Connection") {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 7) {
                 HStack(spacing: 8) {
                     Button {
                         Task { await testSeedboxConnection() }
@@ -247,267 +315,519 @@ struct SettingsView: View {
                 }
 
                 if !seedboxTestResult.isEmpty {
-                    Text(seedboxTestResult)
-                        .font(.caption)
-                        .foregroundStyle(seedboxTestSucceeded == true ? Theme.success : Theme.error)
-                        .fixedSize(horizontal: false, vertical: true)
+                    SettingsInlineAlert(
+                        text: seedboxTestResult,
+                        tint: seedboxTestSucceeded == true ? Theme.success : Theme.error
+                    )
                 }
             }
         }
     }
 
-    private var notificationsSection: some View {
-        SettingsSectionCard(
-            title: "Notifications",
-            subtitle: "Choose which VidDL events should notify you.",
-            systemImage: "bell.badge.fill",
-            tint: Theme.amber
-        ) {
-            VStack(alignment: .leading, spacing: 8) {
-                Toggle("Upload complete", isOn: Binding(
-                    get: { NotificationManager.shared.isEnabled(.uploadComplete) },
-                    set: { NotificationManager.shared.setEnabled(.uploadComplete, enabled: $0) }
-                ))
-                Toggle("Upload failed", isOn: Binding(
-                    get: { NotificationManager.shared.isEnabled(.uploadFailed) },
-                    set: { NotificationManager.shared.setEnabled(.uploadFailed, enabled: $0) }
-                ))
-                Toggle("Extraction complete", isOn: Binding(
-                    get: { NotificationManager.shared.isEnabled(.scrapeComplete) },
-                    set: { NotificationManager.shared.setEnabled(.scrapeComplete, enabled: $0) }
-                ))
+    private var uploadRulesCard: some View {
+        SettingsCard(tint: ProFeatureGate.canUseUploadRules ? Theme.lavender : Theme.coral) {
+            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
+                SettingsCardTitle(
+                    title: "Smart Upload Rules",
+                    subtitle: "Route completed downloads by quality or filename.",
+                    systemImage: "wand.and.stars",
+                    tint: ProFeatureGate.canUseUploadRules ? Theme.lavender : Theme.coral,
+                    status: ProFeatureGate.canUseUploadRules ? "Pro" : "Locked"
+                )
+
+                if ProFeatureGate.canUseUploadRules {
+                    uploadRulesEditor
+                } else {
+                    SettingsHelpText("Upload rules are Pro-only. Free downloads still use the default Mega target.")
+                    Button {
+                        onUpgradeRequired()
+                    } label: {
+                        Label("Upgrade to Pro", systemImage: "crown.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.coral)
+                    .controlSize(.small)
+                }
             }
-            .toggleStyle(.checkbox)
         }
     }
 
-    private var downloadOptionsSection: some View {
-        SettingsSectionCard(
-            title: "Download Options",
-            subtitle: "Configure download behavior and helper tools.",
-            systemImage: "arrow.down.circle.fill",
-            tint: Theme.coral
-        ) {
-            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
-                Toggle("Auto-download subtitles", isOn: $downloadSubtitles)
-                    .toggleStyle(.checkbox)
-
-                if downloadSubtitles {
-                    SettingsFieldRow("Subtitle mode") {
-                        Picker("Subtitle mode", selection: Binding(
-                            get: { embeddedSubsMode ? 1 : 0 },
-                            set: { embeddedSubsMode = $0 == 1 }
-                        )) {
-                            Text("Sidecar files").tag(0)
-                            Text("Embedded").tag(1)
+    private var uploadRulesEditor: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if cloudHub.rules.isEmpty {
+                SettingsHelpText("No rules yet. VidDL uses Mega by default until a matching Pro rule is added.")
+            } else {
+                VStack(spacing: 7) {
+                    ForEach(cloudHub.rules) { rule in
+                        SettingsUploadRuleRow(rule: rule) {
+                            cloudHub.removeRule(rule)
                         }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
                     }
                 }
+            }
 
-                SettingsDependencyInlineRow(
-                    model: dependencyModel.ytDlp,
-                    color: color(for: dependencyModel.ytDlp.tone)
-                )
+            SettingsDivider()
 
-                SettingsDependencyInlineRow(
-                    model: dependencyModel.ffmpeg,
-                    color: color(for: dependencyModel.ffmpeg.tone)
-                )
+            GlassTextField(label: "Name", placeholder: "4K to Mega", text: $uploadRuleName)
 
-                Button("Open Downloads Folder") {
-                    DownloadPaths.ensureDownloadDir()
-                    NSWorkspace.shared.open(DownloadPaths.downloadDir)
+            SettingsFieldRow("Quality") {
+                Picker("Quality", selection: $uploadRuleQuality) {
+                    Text("Any").tag("Any")
+                    Text(">= 2160p").tag(">=2160p")
+                    Text(">= 1080p").tag(">=1080p")
+                    Text(">= 720p").tag(">=720p")
+                    Text("<= 720p").tag("<=720p")
                 }
-                .buttonStyle(.bordered)
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(maxWidth: 420)
+            }
+
+            GlassTextField(
+                label: "Filename",
+                placeholder: "optional regex",
+                text: $uploadRulePattern,
+                help: "Leave blank to match only by quality."
+            )
+
+            SettingsFieldRow("Targets") {
+                HStack(spacing: 10) {
+                    Toggle("Mega", isOn: $uploadRuleMega)
+                    Toggle("Drive", isOn: $uploadRuleGDrive)
+                    Toggle("Seedbox", isOn: $uploadRuleSeedbox)
+                }
+                .toggleStyle(.checkbox)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Theme.textSecondary)
+            }
+
+            HStack {
+                Spacer()
+                Button {
+                    addUploadRule()
+                } label: {
+                    Label("Add Rule", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.lavender)
                 .controlSize(.small)
+                .disabled(selectedUploadRuleTargets.isEmpty)
             }
         }
     }
 
-    private var updatesSection: some View {
-        SettingsSectionCard(
-            title: "Updates",
-            subtitle: "Check the installed VidDL version.",
-            systemImage: "arrow.triangle.2.circlepath",
-            tint: Theme.skyBlue
-        ) {
-            HStack(spacing: 12) {
-                Text("Current: \(updater.currentVersion)")
-                    .font(.caption)
-                    .foregroundStyle(Theme.textSecondary)
-                Spacer(minLength: 12)
-                Button("Check for Updates") {
-                    updater.checkForUpdates()
+    private var subtitleBinding: Binding<Bool> {
+        Binding(
+            get: { downloadSubtitles && ProFeatureGate.canDownloadSubtitles },
+            set: { newValue in
+                if newValue {
+                    guard ProFeatureGate.canDownloadSubtitles else {
+                        downloadSubtitles = false
+                        onUpgradeRequired()
+                        return
+                    }
+                    downloadSubtitles = true
+                } else {
+                    downloadSubtitles = false
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+            }
+        )
+    }
+
+    private var selectedUploadRuleTargets: [CloudProviderID] {
+        var targets: [CloudProviderID] = []
+        if uploadRuleMega { targets.append(.mega) }
+        if uploadRuleGDrive { targets.append(.gdrive) }
+        if uploadRuleSeedbox { targets.append(.seedbox) }
+        return targets
+    }
+
+    private func addUploadRule() {
+        let trimmedName = uploadRuleName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPattern = uploadRulePattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rule = UploadRule(
+            name: trimmedName.isEmpty ? "Upload Rule \(cloudHub.rules.count + 1)" : trimmedName,
+            qualityCondition: uploadRuleQuality == "Any" ? nil : uploadRuleQuality,
+            filenamePattern: trimmedPattern.isEmpty ? nil : trimmedPattern,
+            targets: selectedUploadRuleTargets
+        )
+        cloudHub.addRule(rule)
+        uploadRuleName = ""
+        uploadRuleQuality = "Any"
+        uploadRulePattern = ""
+        uploadRuleMega = true
+        uploadRuleGDrive = false
+        uploadRuleSeedbox = false
+    }
+
+    private var preferencesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            notificationsCard
+            downloadBehaviorCard
+        }
+    }
+
+    private var notificationsCard: some View {
+        SettingsCard(tint: Theme.amber) {
+            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
+                SettingsCardTitle(
+                    title: "Notifications",
+                    subtitle: "Choose which VidDL events should notify you.",
+                    systemImage: "bell.badge.fill",
+                    tint: Theme.amber
+                )
+
+                VStack(spacing: 0) {
+                    SettingsToggleRow(
+                        title: "Upload complete",
+                        subtitle: "Notify when a cloud upload finishes.",
+                        systemImage: "checkmark.icloud.fill",
+                        tint: Theme.success,
+                        isOn: Binding(
+                            get: { NotificationManager.shared.isEnabled(.uploadComplete) },
+                            set: { NotificationManager.shared.setEnabled(.uploadComplete, enabled: $0) }
+                        )
+                    )
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: "Upload failed",
+                        subtitle: "Notify when an upload or transfer fails.",
+                        systemImage: "exclamationmark.triangle.fill",
+                        tint: Theme.error,
+                        isOn: Binding(
+                            get: { NotificationManager.shared.isEnabled(.uploadFailed) },
+                            set: { NotificationManager.shared.setEnabled(.uploadFailed, enabled: $0) }
+                        )
+                    )
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: "Extraction complete",
+                        subtitle: "Notify when link extraction completes.",
+                        systemImage: "link.badge.plus",
+                        tint: Theme.skyBlue,
+                        isOn: Binding(
+                            get: { NotificationManager.shared.isEnabled(.scrapeComplete) },
+                            set: { NotificationManager.shared.setEnabled(.scrapeComplete, enabled: $0) }
+                        )
+                    )
+                }
+                .background(Theme.surface2.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
             }
         }
     }
 
-    private var extensionsSection: some View {
-        SettingsSectionCard(
-            title: "Extensions",
-            subtitle: "Browser and share-sheet integrations.",
-            systemImage: "safari.fill",
-            tint: Theme.lavender
-        ) {
-            VStack(alignment: .leading, spacing: 8) {
-                LabeledContent("Safari Extension", value: "Install via Safari > Extensions")
-                LabeledContent("Share Extension", value: "Available in Share menu")
+    private var downloadBehaviorCard: some View {
+        SettingsCard(tint: Theme.gold) {
+            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
+                SettingsCardTitle(
+                    title: "Download Options",
+                    subtitle: "Download behavior and required helper tools.",
+                    systemImage: "arrow.down.circle.fill",
+                    tint: Theme.gold
+                )
+
+                VStack(alignment: .leading, spacing: 10) {
+                    SettingsToggleRow(
+                        title: "Auto-download subtitles",
+                        subtitle: ProFeatureGate.canDownloadSubtitles ? "Ask yt-dlp to fetch subtitles when they are available." : "Pro unlocks automatic subtitle sidecars or embedding.",
+                        systemImage: "captions.bubble.fill",
+                        tint: Theme.skyBlue,
+                        isOn: subtitleBinding
+                    )
+
+                    if downloadSubtitles && ProFeatureGate.canDownloadSubtitles {
+                        SettingsFieldRow("Subtitle mode") {
+                            Picker("Subtitle mode", selection: Binding(
+                                get: { embeddedSubsMode ? 1 : 0 },
+                                set: { embeddedSubsMode = $0 == 1 }
+                            )) {
+                                Text("Sidecar files").tag(0)
+                                Text("Embedded").tag(1)
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .frame(maxWidth: 320)
+                        }
+                    }
+
+                    Button {
+                        DownloadPaths.ensureDownloadDir()
+                        NSWorkspace.shared.open(DownloadPaths.downloadDir)
+                    } label: {
+                        Label("Open Downloads Folder", systemImage: "folder")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+
+                SettingsDivider()
+
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Required CLI Tools")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(Theme.textPrimary)
+                            Text("VidDL uses these helpers for broad extraction, HLS, audio, and verification.")
+                                .font(.caption2)
+                                .foregroundStyle(Theme.textSecondary)
+                        }
+                        Spacer()
+                        Button {
+                            refreshDependencyChecks()
+                        } label: {
+                            Label("Refresh", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(dependencyStore.isRefreshing)
+                    }
+
+                    SettingsDependencyInlineRow(
+                        model: dependencyModel.ytDlp,
+                        color: color(for: dependencyModel.ytDlp.tone)
+                    )
+
+                    SettingsDependencyInlineRow(
+                        model: dependencyModel.ffmpeg,
+                        color: color(for: dependencyModel.ffmpeg.tone)
+                    )
+                }
             }
-            .font(.caption)
-            .frame(maxWidth: SettingsLayoutMetrics.fieldMaxWidth, alignment: .leading)
         }
     }
 
     @ViewBuilder
-    private var licenseSection: some View {
-        if !ProFeatureGate.isPro {
-            SettingsSectionCard(
-                title: "Upgrade to Pro",
-                subtitle: "Unlock VidDL Pro features with a one-time purchase.",
-                systemImage: "crown.fill",
-                tint: Theme.gold
-            ) {
-                upgradeToProContent
-            }
+    private var proSection: some View {
+        if ProFeatureGate.isPro {
+            proActiveCard
         } else {
-            SettingsSectionCard(
-                title: "Pro License",
-                subtitle: "Your local Pro activation state.",
-                systemImage: "checkmark.seal.fill",
-                tint: Theme.success
-            ) {
-                proLicenseContent
+            proUpgradeCard
+        }
+    }
+
+    private var proActiveCard: some View {
+        SettingsCard(tint: Theme.success) {
+            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
+                SettingsCardTitle(
+                    title: "VidDL Pro",
+                    subtitle: "Activated for \(license.activationEmail.isEmpty ? "this Mac" : license.activationEmail)",
+                    systemImage: "crown.fill",
+                    tint: Theme.success,
+                    status: "Active"
+                )
+
+                VStack(alignment: .leading, spacing: 7) {
+                    SettingsFeatureLine("Unlimited total downloads", tint: Theme.success)
+                    SettingsFeatureLine("\(ProFeatureGate.proConcurrentDownloadLimit) concurrent downloads", tint: Theme.success)
+                    SettingsFeatureLine("Batch download more than \(ProFeatureGate.freeBatchLimit) items", tint: Theme.success)
+                    SettingsFeatureLine("Multi-cloud simultaneous upload", tint: Theme.success)
+                    SettingsFeatureLine("Video processing tools", tint: Theme.success)
+                    SettingsFeatureLine("Smart upload rules, audio, and subtitles", tint: Theme.success)
+                }
+
+                HStack {
+                    Spacer()
+                    Button("Deactivate") {
+                        license.deactivateLocalLicense()
+                        activationResult = "License deactivated."
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
             }
         }
     }
 
-    private var upgradeToProContent: some View {
-        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
-            HStack(spacing: 8) {
-                Image(systemName: "crown.fill").foregroundStyle(Theme.gold)
-                Text("VidDL Pro - $0.99 one-time")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(Theme.textPrimary)
-            }
+    private var proUpgradeCard: some View {
+        SettingsCard(tint: Theme.coral) {
+            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
+                SettingsCardTitle(
+                    title: "Upgrade to Pro",
+                    subtitle: "Unlock VidDL Pro features with a one-time purchase.",
+                    systemImage: "crown.fill",
+                    tint: Theme.coral
+                )
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text("- Unlimited batch downloads")
-                Text("- Multi-cloud simultaneous upload")
-                Text("- Priority support")
-            }
-            .font(.caption)
-            .foregroundStyle(Theme.textSecondary)
+                HStack(spacing: 9) {
+                    Text("VidDL Pro")
+                        .font(.subheadline.weight(.black))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("$0.99 one-time")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Theme.gold)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Theme.gold.opacity(0.14), in: Capsule())
+                }
 
-            SettingsFieldRow(
-                "Email",
-                help: "Enter the email to use for your Pro license."
-            ) {
-                TextField("Email", text: $activateEmail)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.caption)
-            }
+                VStack(alignment: .leading, spacing: 7) {
+                    SettingsFeatureLine("\(LicenseManager.freeDownloadLimit) → unlimited total downloads", tint: Theme.gold)
+                    SettingsFeatureLine("\(ProFeatureGate.freeConcurrentDownloadLimit) → \(ProFeatureGate.proConcurrentDownloadLimit) concurrent downloads", tint: Theme.electricLime)
+                    SettingsFeatureLine("Batch download more than \(ProFeatureGate.freeBatchLimit) items", tint: Theme.gold)
+                    SettingsFeatureLine("Multi-cloud simultaneous upload", tint: Theme.skyBlue)
+                    SettingsFeatureLine("Video processing tools", tint: Theme.coral)
+                    SettingsFeatureLine("Smart upload rules, audio, and subtitles", tint: Theme.lavender)
+                }
 
-            if !activationResult.isEmpty {
-                Text(activationResult)
-                    .font(.caption)
-                    .foregroundStyle(activationResult.hasPrefix("OK") ? Theme.success : Theme.error)
-            }
+                freeDownloadsMeter
 
-            if !license.lastError.isEmpty {
-                Text(license.lastError)
-                    .font(.caption)
-                    .foregroundStyle(Theme.error)
-            }
+                GlassTextField(
+                    label: "Email",
+                    placeholder: "you@example.com",
+                    text: $activateEmail,
+                    help: "Enter the email to use for your Pro license."
+                )
 
-            Text("Free downloads remaining: \(license.freeDownloadsRemaining)")
-                .font(.caption2)
-                .foregroundStyle(Theme.textSecondary)
+                if !activationResult.isEmpty {
+                    SettingsInlineAlert(
+                        text: activationResult,
+                        tint: activationResult.hasPrefix("OK") || activationResult.localizedCaseInsensitiveContains("checkout opened") ? Theme.success : Theme.error
+                    )
+                }
 
-            HStack(spacing: 8) {
-                Button("Buy Pro") {
-                    Task {
-                        isActivating = true
-                        let ok = await license.startCheckout(email: trimmedActivationEmail)
-                        activationResult = ok ? "Checkout opened. After payment, return here or click Open VidDL on the success page." : "Checkout failed."
-                        isActivating = false
+                if !license.lastError.isEmpty {
+                    SettingsInlineAlert(text: license.lastError, tint: Theme.error)
+                }
+
+                HStack(spacing: 8) {
+                    MarketplaceButton(title: "Buy Pro", icon: "crown.fill") {
+                        Task {
+                            isActivating = true
+                            let ok = await license.startCheckout(email: trimmedActivationEmail)
+                            activationResult = ok ? "Checkout opened. After payment, return here or click Open VidDL on the success page." : "Checkout failed."
+                            isActivating = false
+                        }
+                    }
+                    .frame(width: 180)
+                    .disabled(isActivating || trimmedActivationEmail.isEmpty)
+
+                    Button("Activate Pro") {
+                        Task {
+                            isActivating = true
+                            let ok = await license.activate(email: trimmedActivationEmail)
+                            activationResult = ok ? "OK - Pro activated." : "No active Pro license found."
+                            isActivating = false
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(isActivating || trimmedActivationEmail.isEmpty)
+
+                    if isActivating {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .controlSize(.small)
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(isActivating || trimmedActivationEmail.isEmpty)
-
-                Button("Activate Pro") {
-                    Task {
-                        isActivating = true
-                        let ok = await license.activate(email: trimmedActivationEmail)
-                        activationResult = ok ? "OK - Pro activated." : "No active Pro license found."
-                        isActivating = false
-                    }
+            }
+            .onAppear {
+                if activateEmail.isEmpty {
+                    activateEmail = license.activationEmail
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(isActivating || trimmedActivationEmail.isEmpty)
+            }
+            .onChange(of: activateEmail) { _, _ in
+                activationResult = ""
+                license.lastError = ""
             }
         }
-        .frame(maxWidth: SettingsLayoutMetrics.fieldMaxWidth, alignment: .leading)
-        .onAppear {
-            if activateEmail.isEmpty {
-                activateEmail = license.activationEmail
+    }
+
+    private var freeDownloadsMeter: some View {
+        let limit = LicenseManager.freeDownloadLimit
+        let remaining = max(0, min(limit, license.freeDownloadsRemaining))
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text("Free downloads remaining")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Text("\(remaining) / \(limit)")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Theme.gold)
+            }
+
+            GeometryReader { geo in
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Theme.accentDim.opacity(0.55))
+                    .overlay(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(LinearGradient(colors: [Theme.gold, Theme.coral], startPoint: .leading, endPoint: .trailing))
+                            .frame(width: geo.size.width * CGFloat(remaining) / CGFloat(limit))
+                    }
+            }
+            .frame(height: 8)
+        }
+    }
+
+    private var infoSection: some View {
+        SettingsCard(tint: Theme.skyBlue) {
+            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
+                SettingsCardTitle(
+                    title: "Info",
+                    subtitle: "Updates, extensions, and about VidDL.",
+                    systemImage: "info.circle.fill",
+                    tint: Theme.skyBlue
+                )
+
+                SettingsInfoRow(
+                    title: "Version",
+                    detail: updater.currentVersion,
+                    systemImage: "arrow.triangle.2.circlepath",
+                    tint: Theme.skyBlue
+                ) {
+                    Button("Check for Updates") {
+                        updater.checkForUpdates()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(!updater.isAvailable)
+                }
+
+                SettingsDivider()
+
+                SettingsInfoRow(
+                    title: "Safari Extension",
+                    detail: "Install via Safari Extensions.",
+                    systemImage: "safari.fill",
+                    tint: Theme.lavender
+                ) {
+                    Button("Open") {
+                        openExtensionsPreferences()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+
+                SettingsInfoRow(
+                    title: "Share Extension",
+                    detail: "Available in the macOS Share menu.",
+                    systemImage: "square.and.arrow.up.fill",
+                    tint: Theme.gold
+                )
+
+                SettingsDivider()
+
+                HStack {
+                    Spacer()
+                    Button("About VidDL") {
+                        showAboutWindow()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
             }
         }
-        .onChange(of: activateEmail) { _, _ in
-            activationResult = ""
-            license.lastError = ""
+    }
+
+    private func openExtensionsPreferences() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preferences.extensions") {
+            NSWorkspace.shared.open(url)
         }
-    }
-
-    private var proLicenseContent: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "checkmark.seal.fill")
-                .foregroundStyle(Theme.success)
-            Text("Pro activated for \(license.activationEmail)")
-                .font(.caption)
-                .foregroundStyle(Theme.textPrimary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: 12)
-            Button("Deactivate") {
-                license.deactivateLocalLicense()
-                activationResult = "License deactivated."
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-        }
-        .frame(maxWidth: SettingsLayoutMetrics.fieldMaxWidth, alignment: .leading)
-    }
-
-    private var aboutSection: some View {
-        SettingsSectionCard(
-            title: "About",
-            systemImage: "info.circle.fill",
-            tint: Theme.textSecondary
-        ) {
-            Button("About VidDL") { showAboutWindow() }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-        }
-    }
-
-    private var megaSetupCard: some View {
-        SettingsDependencyCard(model: dependencyModel.mega, color: color(for: dependencyModel.mega.tone))
-    }
-
-    private var gdriveSetupCard: some View {
-        SettingsDependencyCard(model: dependencyModel.gdrive, color: color(for: dependencyModel.gdrive.tone))
-    }
-
-    private var seedboxSetupCard: some View {
-        SettingsDependencyCard(model: dependencyModel.seedbox, color: color(for: dependencyModel.seedbox.tone))
     }
 
     private func testSeedboxConnection() async {
@@ -538,225 +858,321 @@ struct SettingsView: View {
 }
 
 private enum SettingsLayoutMetrics {
-    static let contentMaxWidth: CGFloat = 1080
-    static let pageHorizontalPadding: CGFloat = 28
-    static let pageTopPadding: CGFloat = 24
-    static let pageBottomPadding: CGFloat = 36
-    static let groupSpacing: CGFloat = 22
-    static let cardSpacing: CGFloat = 14
-    static let rowSpacing: CGFloat = 10
+    static let contentMaxWidth: CGFloat = 720
+    static let rowSpacing: CGFloat = 12
     static let innerPadding: CGFloat = 16
-    static let labelWidth: CGFloat = 138
-    static let fieldMaxWidth: CGFloat = 720
-    static let cardCornerRadius: CGFloat = 16
-    static let controlCornerRadius: CGFloat = 10
+    static let labelWidth: CGFloat = 118
+    static let cardCornerRadius: CGFloat = 14
+    static let controlCornerRadius: CGFloat = 9
     static let iconBoxSize: CGFloat = 34
 }
 
-private struct SettingsPageHeader: View {
+private enum SettingsSection: String, CaseIterable, Identifiable {
+    case cloud
+    case preferences
+    case pro
+    case info
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .cloud: return "Cloud"
+        case .preferences: return "Preferences"
+        case .pro: return "Pro"
+        case .info: return "Info"
+        }
+    }
+
+    var fullTitle: String {
+        switch self {
+        case .cloud: return "Cloud Destinations"
+        case .preferences: return "Preferences"
+        case .pro: return "Pro"
+        case .info: return "Info"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .cloud: return "Configure where completed downloads are uploaded."
+        case .preferences: return "Notifications, download behavior, and helper tools."
+        case .pro: return "Your VidDL Pro license."
+        case .info: return "Updates, extensions, and about VidDL."
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .cloud: return "cloud.fill"
+        case .preferences: return "slider.horizontal.3"
+        case .pro: return "crown.fill"
+        case .info: return "info.circle.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .cloud: return Theme.electricLime
+        case .preferences: return Theme.gold
+        case .pro: return Theme.coral
+        case .info: return Theme.skyBlue
+        }
+    }
+}
+
+private struct SettingsJumpToolbar: View {
+    let activeSection: SettingsSection
     let isRefreshing: Bool
     let refreshAction: () -> Void
+    let jumpAction: (SettingsSection) -> Void
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            horizontalContent
-            verticalContent
+            horizontal
+            vertical
         }
-        .padding(SettingsLayoutMetrics.innerPadding)
-        .glassCard(tint: Theme.accent.opacity(0.18), cornerRadius: SettingsLayoutMetrics.cardCornerRadius)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .glassCard(tint: Theme.lavender.opacity(0.15), cornerRadius: SettingsLayoutMetrics.cardCornerRadius)
     }
 
-    private var horizontalContent: some View {
-        HStack(alignment: .center, spacing: 16) {
-            headerIcon
-            headerText
-            Spacer(minLength: 16)
-            refreshButton
+    private var horizontal: some View {
+        HStack(spacing: 8) {
+            sectionButtons
+            Spacer(minLength: 10)
+            refreshControl
         }
     }
 
-    private var verticalContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 12) {
-                headerIcon
-                headerText
+    private var vertical: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                sectionButtons
+                Spacer(minLength: 0)
             }
-            refreshButton
+            refreshControl
         }
     }
 
-    private var headerIcon: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Theme.accent.opacity(0.18))
-                .frame(width: 42, height: 42)
-            Image(systemName: "gearshape.fill")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(Theme.accent)
+    private var sectionButtons: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(SettingsSection.allCases) { section in
+                    Button {
+                        jumpAction(section)
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: section.icon)
+                                .font(.system(size: 10, weight: .bold))
+                            Text(section.title)
+                                .font(.caption.weight(.semibold))
+                        }
+                        .foregroundStyle(activeSection == section ? .white : Theme.textSecondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(activeSection == section ? section.color.opacity(0.85) : Theme.accentDim.opacity(0.30), in: Capsule())
+                        .overlay(Capsule().strokeBorder(section.color.opacity(activeSection == section ? 0.25 : 0.16), lineWidth: 0.5))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
+        .frame(maxWidth: 470)
     }
 
-    private var headerText: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Cloud & App Settings")
-                .font(.title3.weight(.bold))
-                .foregroundStyle(Theme.textPrimary)
-            Text("Configure upload destinations, download helpers, notifications, and app options.")
-                .font(.caption)
-                .foregroundStyle(Theme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var refreshButton: some View {
+    private var refreshControl: some View {
         HStack(spacing: 8) {
             if isRefreshing {
                 ProgressView()
-                    .scaleEffect(0.7)
+                    .scaleEffect(0.65)
                     .controlSize(.small)
             }
 
             Button(action: refreshAction) {
-                Label("Refresh Checks", systemImage: "arrow.clockwise")
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 12, weight: .bold))
+                    .frame(width: 24, height: 22)
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
+            .help("Refresh dependency and cloud status checks")
             .disabled(isRefreshing)
         }
     }
 }
 
-private struct SettingsGroupHeader: View {
-    let title: String
-    let subtitle: String?
-
-    init(_ title: String, subtitle: String? = nil) {
-        self.title = title
-        self.subtitle = subtitle
-    }
+private struct SettingsSectionHeader: View {
+    let section: SettingsSection
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.headline.weight(.bold))
-                .foregroundStyle(Theme.textPrimary)
-            if let subtitle {
-                Text(subtitle)
-                    .font(.caption)
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(section.color.opacity(0.18))
+                    .frame(width: 32, height: 32)
+                Image(systemName: section.icon)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(section.color)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(section.fullTitle)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(section.subtitle)
+                    .font(.caption2)
                     .foregroundStyle(Theme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            Spacer()
         }
-        .padding(.top, 2)
     }
 }
 
-private struct SettingsSectionCard<Content: View>: View {
-    let title: String
-    let subtitle: String?
-    let systemImage: String
+private struct SettingsCard<Content: View>: View {
     let tint: Color
     let content: Content
 
-    init(
-        title: String,
-        subtitle: String? = nil,
-        systemImage: String,
-        tint: Color,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.title = title
-        self.subtitle = subtitle
-        self.systemImage = systemImage
+    init(tint: Color, @ViewBuilder content: () -> Content) {
         self.tint = tint
         self.content = content()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing + 2) {
-            HStack(alignment: .center, spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(tint.opacity(0.18))
-                        .frame(width: 32, height: 32)
-                    Image(systemName: systemImage)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(tint)
-                }
+        content
+            .padding(SettingsLayoutMetrics.innerPadding)
+            .glassCard(tint: tint.opacity(0.12), cornerRadius: SettingsLayoutMetrics.cardCornerRadius)
+    }
+}
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(Theme.textPrimary)
-                    if let subtitle {
-                        Text(subtitle)
-                            .font(.caption2)
-                            .foregroundStyle(Theme.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+private struct SettingsCardTitle: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let tint: Color
+    var status: String?
 
-                Spacer(minLength: 12)
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(tint.opacity(0.18))
+                    .frame(width: 32, height: 32)
+                Image(systemName: systemImage)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(tint)
             }
 
-            content
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 8)
+
+            if let status {
+                Text(status.uppercased())
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundStyle(tint)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(tint.opacity(0.16), in: Capsule())
+            }
         }
-        .padding(SettingsLayoutMetrics.innerPadding)
-        .glassCard(tint: tint.opacity(0.12), cornerRadius: SettingsLayoutMetrics.cardCornerRadius)
     }
 }
 
 private struct SettingsFieldRow<Content: View>: View {
     let title: String
-    let help: String?
     let content: Content
 
-    init(
-        _ title: String,
-        help: String? = nil,
-        @ViewBuilder content: () -> Content
-    ) {
+    init(_ title: String, @ViewBuilder content: () -> Content) {
         self.title = title
-        self.help = help
         self.content = content()
     }
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            horizontalLayout
-            verticalLayout
+            HStack(alignment: .center, spacing: 14) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: SettingsLayoutMetrics.labelWidth, alignment: .trailing)
+                content
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                content
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
+}
 
-    private var horizontalLayout: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 14) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.textPrimary)
-                .frame(width: SettingsLayoutMetrics.labelWidth, alignment: .trailing)
+private struct GlassTextField: View {
+    let label: String
+    let placeholder: String
+    @Binding var text: String
+    var help: String?
 
-            VStack(alignment: .leading, spacing: 5) {
-                content
-                    .frame(maxWidth: SettingsLayoutMetrics.fieldMaxWidth, alignment: .leading)
+    var body: some View {
+        SettingsFieldRow(label) {
+            VStack(alignment: .leading, spacing: 4) {
+                TextField(placeholder, text: $text)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, design: .monospaced))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(Theme.accentDim.opacity(0.25), in: RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius)
+                            .strokeBorder(Theme.border, lineWidth: 0.5)
+                    )
+                    .frame(maxWidth: .infinity)
+
                 if let help {
                     SettingsHelpText(help)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
+}
 
-    private var verticalLayout: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.textPrimary)
+private struct GlassSecureField: View {
+    let label: String
+    let placeholder: String
+    @Binding var text: String
+    var help: String?
 
-            content
-                .frame(maxWidth: .infinity, alignment: .leading)
+    var body: some View {
+        SettingsFieldRow(label) {
+            VStack(alignment: .leading, spacing: 4) {
+                SecureField(placeholder, text: $text)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, design: .monospaced))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(Theme.accentDim.opacity(0.25), in: RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius)
+                            .strokeBorder(Theme.border, lineWidth: 0.5)
+                    )
+                    .frame(maxWidth: .infinity)
 
-            if let help {
-                SettingsHelpText(help)
+                if let help {
+                    SettingsHelpText(help)
+                }
             }
         }
     }
@@ -772,61 +1188,44 @@ private struct SettingsHelpText: View {
     var body: some View {
         Text(text)
             .font(.caption2)
-            .foregroundStyle(Theme.textSecondary)
+            .foregroundStyle(Theme.textSecondary.opacity(0.78))
             .fixedSize(horizontal: false, vertical: true)
     }
 }
 
-private struct SettingsDependencyCard: View {
+private struct SettingsDependencySummary: View {
     let icon: String
     let title: String
-    let status: String
     let detail: String
     let command: String?
     let footnote: String
     let color: Color
-    let isReady: Bool
 
     init(model: SettingsDependencyCardModel, color: Color) {
         self.icon = model.icon
         self.title = model.title
-        self.status = model.status
         self.detail = model.detail
         self.command = model.command
         self.footnote = model.footnote
         self.color = color
-        self.isReady = model.isReady
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(color.opacity(isReady ? 0.16 : 0.22))
-                        .frame(width: SettingsLayoutMetrics.iconBoxSize, height: SettingsLayoutMetrics.iconBoxSize)
-                    Image(systemName: icon)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(color)
-                }
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .top, spacing: 9) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(color)
+                    .frame(width: 20, height: 20)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(title)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Theme.textPrimary)
-                            .lineLimit(2)
-
-                        Text(status.uppercased())
-                            .font(.system(size: 9, weight: .black))
-                            .foregroundStyle(color)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(color.opacity(0.16), in: Capsule())
-                    }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
 
                     Text(detail)
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(Theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -838,13 +1237,8 @@ private struct SettingsDependencyCard: View {
 
             SettingsHelpText(footnote)
         }
-        .padding(12)
-        .background(Theme.surface2.opacity(0.20), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(color.opacity(isReady ? 0.25 : 0.45), lineWidth: 1)
-        )
-        .frame(maxWidth: SettingsLayoutMetrics.fieldMaxWidth, alignment: .leading)
+        .padding(10)
+        .background(Theme.surface2.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
@@ -881,6 +1275,7 @@ private struct SettingsDependencyInlineRow: View {
             HStack(spacing: 8) {
                 Image(systemName: statusIcon)
                     .foregroundStyle(statusColor)
+                    .frame(width: 16)
                 Text(title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.textPrimary)
@@ -900,12 +1295,7 @@ private struct SettingsDependencyInlineRow: View {
             }
         }
         .padding(10)
-        .background(Theme.surface2.opacity(0.20), in: RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius)
-                .stroke((isReady ? Theme.success : color).opacity(0.25), lineWidth: 1)
-        )
-        .frame(maxWidth: SettingsLayoutMetrics.fieldMaxWidth, alignment: .leading)
+        .background(Theme.surface2.opacity(0.14), in: RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius))
     }
 }
 
@@ -939,6 +1329,186 @@ private struct SettingsCommandRow: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
-        .frame(maxWidth: SettingsLayoutMetrics.fieldMaxWidth, alignment: .leading)
+    }
+}
+
+private struct SettingsToggleRow: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let tint: Color
+    @Binding var isOn: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(tint)
+                .frame(width: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 10)
+
+            Toggle("", isOn: $isOn)
+                .toggleStyle(.switch)
+                .labelsHidden()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+    }
+}
+
+private struct SettingsUploadRuleRow: View {
+    let rule: UploadRule
+    let remove: () -> Void
+
+    private var conditionText: String {
+        let quality = rule.qualityCondition ?? "Any quality"
+        let pattern = rule.filenamePattern.map { " · \($0)" } ?? ""
+        return quality + pattern
+    }
+
+    private var targetsText: String {
+        rule.targets.map(\.displayName).joined(separator: ", ")
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: "arrow.triangle.branch")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Theme.lavender)
+                .frame(width: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(rule.name)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text("\(conditionText) -> \(targetsText)")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 8)
+
+            Button(role: .destructive, action: remove) {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(10)
+        .background(Theme.surface2.opacity(0.14), in: RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius))
+    }
+}
+
+private struct SettingsInfoRow<Action: View>: View {
+    let title: String
+    let detail: String
+    let systemImage: String
+    let tint: Color
+    let action: Action
+
+    init(
+        title: String,
+        detail: String,
+        systemImage: String,
+        tint: Color,
+        @ViewBuilder action: () -> Action
+    ) {
+        self.title = title
+        self.detail = detail
+        self.systemImage = systemImage
+        self.tint = tint
+        self.action = action()
+    }
+
+    init(
+        title: String,
+        detail: String,
+        systemImage: String,
+        tint: Color
+    ) where Action == EmptyView {
+        self.title = title
+        self.detail = detail
+        self.systemImage = systemImage
+        self.tint = tint
+        self.action = EmptyView()
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(tint)
+                .frame(width: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+
+            Spacer(minLength: 10)
+            action
+        }
+        .padding(.vertical, 3)
+    }
+}
+
+private struct SettingsFeatureLine: View {
+    let text: String
+    let tint: Color
+
+    init(_ text: String, tint: Color) {
+        self.text = text
+        self.tint = tint
+    }
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(tint)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary)
+        }
+    }
+}
+
+private struct SettingsInlineAlert: View {
+    let text: String
+    let tint: Color
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(tint)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct SettingsDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(Theme.border.opacity(0.55))
+            .frame(height: 0.5)
     }
 }

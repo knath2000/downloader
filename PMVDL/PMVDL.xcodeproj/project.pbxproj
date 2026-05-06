@@ -71,6 +71,16 @@
 	A10095 /* BatchDownloadBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20095 /* BatchDownloadBar.swift */; };
 	A10096 /* HomeStatusRail.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20096 /* HomeStatusRail.swift */; };
 	A10097 /* VideoResultCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20097 /* VideoResultCard.swift */; };
+	A10098 /* FeedItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20098 /* FeedItem.swift */; };
+	A10099 /* FeedScraper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20099 /* FeedScraper.swift */; };
+	A10100 /* FeedViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20100 /* FeedViewModel.swift */; };
+	A10101 /* FeedCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20101 /* FeedCardView.swift */; };
+	A10102 /* FeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20102 /* FeedView.swift */; };
+	A10103 /* FeedFavoriteItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20103 /* FeedFavoriteItem.swift */; };
+	A10104 /* FeedFavoritesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20104 /* FeedFavoritesStore.swift */; };
+	A10105 /* FavoritesDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20105 /* FavoritesDisplay.swift */; };
+	A10106 /* FavoritesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20106 /* FavoritesView.swift */; };
+	A10107 /* FavoriteCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20107 /* FavoriteCardView.swift */; };
 	A10074 /* String+Parsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20074 /* String+Parsing.swift */; };
 	A10075 /* NetworkConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20075 /* NetworkConstants.swift */; };
 	A10076 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20076 /* Logging.swift */; };
@@ -93,6 +103,10 @@
 	T10008 /* HomeURLInputModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20008 /* HomeURLInputModelTests.swift */; };
 	T10009 /* VideoResultPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20009 /* VideoResultPresentationTests.swift */; };
 	T10010 /* HomeBatchTargetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20010 /* HomeBatchTargetTests.swift */; };
+	T10011 /* FeedFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20011 /* FeedFilterTests.swift */; };
+	T10012 /* HQPornerFeedScraperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20012 /* HQPornerFeedScraperTests.swift */; };
+	T10013 /* DownloadQueueResumeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20013 /* DownloadQueueResumeTests.swift */; };
+	T10014 /* FeedFavoritesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20014 /* FeedFavoritesTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -170,6 +184,16 @@
 	A20095 /* BatchDownloadBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchDownloadBar.swift; sourceTree = "<group>"; };
 	A20096 /* HomeStatusRail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeStatusRail.swift; sourceTree = "<group>"; };
 	A20097 /* VideoResultCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoResultCard.swift; sourceTree = "<group>"; };
+	A20098 /* FeedItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedItem.swift; sourceTree = "<group>"; };
+	A20099 /* FeedScraper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedScraper.swift; sourceTree = "<group>"; };
+	A20100 /* FeedViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedViewModel.swift; sourceTree = "<group>"; };
+	A20101 /* FeedCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedCardView.swift; sourceTree = "<group>"; };
+	A20102 /* FeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedView.swift; sourceTree = "<group>"; };
+	A20103 /* FeedFavoriteItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedFavoriteItem.swift; sourceTree = "<group>"; };
+	A20104 /* FeedFavoritesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedFavoritesStore.swift; sourceTree = "<group>"; };
+	A20105 /* FavoritesDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesDisplay.swift; sourceTree = "<group>"; };
+	A20106 /* FavoritesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesView.swift; sourceTree = "<group>"; };
+	A20107 /* FavoriteCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoriteCardView.swift; sourceTree = "<group>"; };
 	A20074 /* String+Parsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Parsing.swift"; sourceTree = "<group>"; };
 	A20075 /* NetworkConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkConstants.swift; sourceTree = "<group>"; };
 	A20076 /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
@@ -193,6 +217,10 @@
 	T20008 /* HomeURLInputModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeURLInputModelTests.swift; sourceTree = "<group>"; };
 	T20009 /* VideoResultPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoResultPresentationTests.swift; sourceTree = "<group>"; };
 	T20010 /* HomeBatchTargetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeBatchTargetTests.swift; sourceTree = "<group>"; };
+	T20011 /* FeedFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedFilterTests.swift; sourceTree = "<group>"; };
+	T20012 /* HQPornerFeedScraperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HQPornerFeedScraperTests.swift; sourceTree = "<group>"; };
+	T20013 /* DownloadQueueResumeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadQueueResumeTests.swift; sourceTree = "<group>"; };
+	T20014 /* FeedFavoritesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedFavoritesTests.swift; sourceTree = "<group>"; };
 	T30001 /* VidDLTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VidDLTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -232,6 +260,8 @@
 			A20004 /* VidDLApp.swift */,
 			A20005 /* ContentView.swift */,
 			A50011 /* History */,
+			A50019 /* Feed */,
+			A50020 /* Favorites */,
 			A50012 /* Mega */,
 			A50014 /* Settings */,
 			A50015 /* Home */,
@@ -289,6 +319,30 @@
 			A20068 /* HistoryView.swift */,
 		);
 		path = History;
+		sourceTree = "<group>";
+	};
+	A50019 /* Feed */ = {
+		isa = PBXGroup;
+		children = (
+			A20098 /* FeedItem.swift */,
+			A20099 /* FeedScraper.swift */,
+			A20100 /* FeedViewModel.swift */,
+			A20101 /* FeedCardView.swift */,
+			A20102 /* FeedView.swift */,
+		);
+		path = Feed;
+		sourceTree = "<group>";
+	};
+	A50020 /* Favorites */ = {
+		isa = PBXGroup;
+		children = (
+			A20103 /* FeedFavoriteItem.swift */,
+			A20104 /* FeedFavoritesStore.swift */,
+			A20105 /* FavoritesDisplay.swift */,
+			A20106 /* FavoritesView.swift */,
+			A20107 /* FavoriteCardView.swift */,
+		);
+		path = Favorites;
 		sourceTree = "<group>";
 	};
 	A50012 /* Mega */ = {
@@ -379,6 +433,10 @@
 			T20008 /* HomeURLInputModelTests.swift */,
 			T20009 /* VideoResultPresentationTests.swift */,
 			T20010 /* HomeBatchTargetTests.swift */,
+			T20011 /* FeedFilterTests.swift */,
+			T20012 /* HQPornerFeedScraperTests.swift */,
+			T20013 /* DownloadQueueResumeTests.swift */,
+			T20014 /* FeedFavoritesTests.swift */,
 		);
 		path = PMVDLTests;
 		sourceTree = "<group>";
@@ -613,6 +671,16 @@
 			A10095 /* BatchDownloadBar.swift in Sources */,
 			A10096 /* HomeStatusRail.swift in Sources */,
 			A10097 /* VideoResultCard.swift in Sources */,
+			A10098 /* FeedItem.swift in Sources */,
+			A10099 /* FeedScraper.swift in Sources */,
+			A10100 /* FeedViewModel.swift in Sources */,
+			A10101 /* FeedCardView.swift in Sources */,
+			A10102 /* FeedView.swift in Sources */,
+			A10103 /* FeedFavoriteItem.swift in Sources */,
+			A10104 /* FeedFavoritesStore.swift in Sources */,
+			A10105 /* FavoritesDisplay.swift in Sources */,
+			A10106 /* FavoritesView.swift in Sources */,
+			A10107 /* FavoriteCardView.swift in Sources */,
 			A10074 /* String+Parsing.swift in Sources */,
 			A10075 /* NetworkConstants.swift in Sources */,
 			A10076 /* Logging.swift in Sources */,
@@ -642,6 +710,10 @@
 			T10008 /* HomeURLInputModelTests.swift in Sources */,
 			T10009 /* VideoResultPresentationTests.swift in Sources */,
 			T10010 /* HomeBatchTargetTests.swift in Sources */,
+			T10011 /* FeedFilterTests.swift in Sources */,
+			T10012 /* HQPornerFeedScraperTests.swift in Sources */,
+			T10013 /* DownloadQueueResumeTests.swift in Sources */,
+			T10014 /* FeedFavoritesTests.swift in Sources */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};

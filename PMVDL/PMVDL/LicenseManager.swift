@@ -29,9 +29,9 @@ struct TrialUseResponse: Decodable {
 class LicenseManager: ObservableObject {
     static let shared = LicenseManager()
 
-    static let freeDownloadLimit = 5
+    nonisolated static let freeDownloadLimit = 3
     private static let baseURLKey = "licenseBackendBaseURL"
-    private static let userDefaultsIsProKey = "licenseIsPro"
+    private nonisolated static let userDefaultsIsProKey = "licenseIsPro"
     private static let userDefaultsFreeUsedKey = "licenseFreeUsed"
     private static let userDefaultsActivationEmailKey = "licenseActivationEmail"
     private static let userDefaultsRedeemedHwidKey = "licenseRedeemedHwid"
@@ -46,6 +46,10 @@ class LicenseManager: ObservableObject {
     @Published private(set) var trialSynced: Bool
 
     private let hwid = HardwareID.current
+
+    nonisolated static var storedIsPro: Bool {
+        UserDefaults.standard.bool(forKey: userDefaultsIsProKey)
+    }
 
     private init() {
         isPro = UserDefaults.standard.bool(forKey: Self.userDefaultsIsProKey)

@@ -276,6 +276,54 @@ final class SeedboxManager {
         try await preflight(filename: ".viddl_connection_test")
     }
 
+    func remoteSize(filename: String) async throws -> Int64? {
+        switch mode {
+        case .rclone(let remoteName, let remotePath):
+            let trimmed = remoteName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { throw SeedboxError.notConfigured }
+            guard let rclone = Self.findRclone() else { throw SeedboxError.notInstalled }
+            let destination = Self.rcloneDestination(remoteName: trimmed, remotePath: remotePath, filename: filename)
+            let result = try await SubprocessRunner.run(
+                executable: rclone,
+                arguments: ["size", "--json", destination],
+                timeout: 15
+            )
+            guard result.exitStatus == 0,
+                  let data = result.stdout.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return nil
+            }
+            if let bytes = object["bytes"] as? Int64 { return bytes }
+            if let bytes = object["bytes"] as? Int { return Int64(bytes) }
+            if let bytes = object["bytes"] as? Double { return Int64(bytes) }
+            return nil
+
+        case .webdav(let baseURL, let user, let password, let remotePath):
+            let destinationURL = Self.webDAVFileURL(baseURL: baseURL, remotePath: remotePath, filename: filename)
+            var request = URLRequest(url: destinationURL)
+            request.httpMethod = "HEAD"
+            request.timeoutInterval = 15
+            setBasicAuth(user: user, password: password, request: &request)
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else { return nil }
+            if http.statusCode == 404 { return nil }
+            guard (200..<300).contains(http.statusCode) else { return nil }
+            if let length = http.value(forHTTPHeaderField: "Content-Length"), let bytes = Int64(length) {
+                return bytes
+            }
+            return response.expectedContentLength > 0 ? response.expectedContentLength : nil
+        }
+    }
+
+    static func safeResumedFilename(filename: String, queueId: UUID) -> String {
+        let ns = filename as NSString
+        let ext = ns.pathExtension
+        let base = ns.deletingPathExtension
+        let suffix = String(queueId.uuidString.prefix(8)).lowercased()
+        let value = "\(base) (resumed \(suffix))"
+        return ext.isEmpty ? value : "\(value).\(ext)"
+    }
+
     @discardableResult
     static func uploadLocalFile(
         _ localFile: URL,

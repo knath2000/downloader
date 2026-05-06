@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Wraps ffmpeg CLI for video processing operations.
@@ -192,6 +193,112 @@ enum ProcessorError: LocalizedError {
         case .timedOut: return "Processing timed out (2 hours)"
         case .processFailed(let m): return "Processing failed: \(m)"
         }
+    }
+}
+
+enum ProFeatureError: LocalizedError {
+    case audioRequiresPro
+    case subtitlesRequirePro
+    case videoProcessingRequiresPro
+    case localFileRequired
+
+    var errorDescription: String? {
+        switch self {
+        case .audioRequiresPro: return "Audio-only downloads require VidDL Pro."
+        case .subtitlesRequirePro: return "Subtitle downloads require VidDL Pro."
+        case .videoProcessingRequiresPro: return "Video processing tools require VidDL Pro."
+        case .localFileRequired: return "Download this item locally before using Pro processing tools."
+        }
+    }
+}
+
+enum VideoProcessingPreset: String, CaseIterable, Identifiable {
+    case convertMP4
+    case downscale720
+    case optimizeH265
+    case thumbnail
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .convertMP4: return "Convert to MP4"
+        case .downscale720: return "Downscale to 720p"
+        case .optimizeH265: return "Optimize H.265"
+        case .thumbnail: return "Extract Thumbnail"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .convertMP4: return "film"
+        case .downscale720: return "arrow.down.right.and.arrow.up.left"
+        case .optimizeH265: return "speedometer"
+        case .thumbnail: return "photo"
+        }
+    }
+
+    var operation: VideoProcessor.ProcessOp {
+        switch self {
+        case .convertMP4: return .convert(format: .mp4)
+        case .downscale720: return .downscale(targetHeight: 720)
+        case .optimizeH265: return .optimize
+        case .thumbnail: return .thumbnail
+        }
+    }
+}
+
+@MainActor
+enum VideoProcessingLauncher {
+    static func run(
+        preset: VideoProcessingPreset,
+        inputPath: String?,
+        displayName: String,
+        onUpgradeRequired: () -> Void
+    ) {
+        guard ProFeatureGate.canUseVideoProcessing else {
+            onUpgradeRequired()
+            return
+        }
+
+        guard let input = localInputURL(from: inputPath) else {
+            NotificationManager.shared.notifyUploadFailed(
+                filename: displayName,
+                reason: ProFeatureError.localFileRequired.localizedDescription
+            )
+            return
+        }
+
+        Task {
+            do {
+                let output = try await VideoProcessor.shared.process(input: input, operation: preset.operation) { _ in }
+                NSWorkspace.shared.activateFileViewerSelecting([output])
+                NotificationManager.shared.notifyUploadComplete(
+                    filename: output.lastPathComponent,
+                    destination: "Processed"
+                )
+            } catch {
+                NotificationManager.shared.notifyUploadFailed(filename: displayName, reason: error.localizedDescription)
+            }
+        }
+    }
+
+    static func localInputURL(from rawPath: String?) -> URL? {
+        guard let rawPath = rawPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawPath.isEmpty else { return nil }
+
+        let url: URL
+        if rawPath.hasPrefix("file://"), let parsed = URL(string: rawPath) {
+            url = parsed
+        } else {
+            url = URL(fileURLWithPath: rawPath)
+        }
+
+        guard url.isFileURL,
+              FileManager.default.fileExists(atPath: url.path) else {
+            return nil
+        }
+        return url
     }
 }
 

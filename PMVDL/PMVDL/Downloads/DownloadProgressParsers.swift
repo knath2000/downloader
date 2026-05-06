@@ -69,4 +69,69 @@ enum DownloadProgressParsers {
         }
         return Int(pct)
     }
+
+    static func transferMetrics(from text: String) -> DownloadTransferMetrics? {
+        var metrics = DownloadTransferMetrics()
+
+        if let match = try? NSRegularExpression(
+            pattern: "of\\s+~?([\\d.]+)\\s*([KMGT]?i?B|[KMGT]?B)",
+            options: [.caseInsensitive]
+        ).firstMatch(in: text, range: NSRange(location: 0, length: text.utf16.count)),
+           let amountRange = Range(match.range(at: 1), in: text),
+           let unitRange = Range(match.range(at: 2), in: text),
+           let amount = Double(text[amountRange]) {
+            metrics.totalBytes = bytes(amount, unit: String(text[unitRange]))
+        }
+
+        if let match = try? NSRegularExpression(
+            pattern: "at\\s+([\\d.]+)\\s*([KMGT]?i?B|[KMGT]?B)/s",
+            options: [.caseInsensitive]
+        ).firstMatch(in: text, range: NSRange(location: 0, length: text.utf16.count)),
+           let amountRange = Range(match.range(at: 1), in: text),
+           let unitRange = Range(match.range(at: 2), in: text),
+           let amount = Double(text[amountRange]) {
+            metrics.bytesPerSecond = Double(bytes(amount, unit: String(text[unitRange])))
+        }
+
+        if let pct = percent(from: text),
+           let totalBytes = metrics.totalBytes {
+            metrics.bytesDownloaded = Int64(Double(totalBytes) * pct / 100.0)
+        }
+
+        if metrics.bytesDownloaded == nil,
+           metrics.totalBytes == nil,
+           metrics.bytesPerSecond == nil {
+            return nil
+        }
+        return metrics
+    }
+
+    private static func percent(from text: String) -> Double? {
+        guard let match = try? NSRegularExpression(
+            pattern: "([\\d.]+)%",
+            options: []
+        ).firstMatch(in: text, range: NSRange(location: 0, length: text.utf16.count)),
+              let range = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return Double(text[range])
+    }
+
+    private static func bytes(_ amount: Double, unit: String) -> Int64 {
+        let normalized = unit.lowercased()
+        let multiplier: Double
+        switch normalized {
+        case "kb", "kib":
+            multiplier = 1024
+        case "mb", "mib":
+            multiplier = 1024 * 1024
+        case "gb", "gib":
+            multiplier = 1024 * 1024 * 1024
+        case "tb", "tib":
+            multiplier = 1024 * 1024 * 1024 * 1024
+        default:
+            multiplier = 1
+        }
+        return Int64(amount * multiplier)
+    }
 }

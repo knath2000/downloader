@@ -69,7 +69,7 @@ extension DownloadRetryContext {
 }
 
 enum JobEvent {
-    case progress(QueueStatus, Double, String)
+    case progress(QueueStatus, Double, String, DownloadTransferMetrics? = nil)
 }
 
 struct JobCompletion {
@@ -110,7 +110,7 @@ struct LocalDownloadJob: DownloadJob {
                 headers: resolution.headers,
                 sourcePageUrl: resolution.sourcePageUrl,
                 onProgress: { event in
-                    onEvent(.progress(event.phase.queueStatus, event.percent, event.message))
+                    onEvent(.progress(event.phase.queueStatus, event.percent, event.message, event.metrics))
                 }
             )
         case .audio:
@@ -122,8 +122,17 @@ struct LocalDownloadJob: DownloadJob {
             )
         case .direct:
             onEvent(.progress(.downloading, 0, "Downloading…"))
-            let delegate = QueueDownloadProgressDelegate(queueId: queueId) { pct in
-                onEvent(.progress(.downloading, pct, String(format: "Downloading… %d%%", Int(pct))))
+            let delegate = QueueDownloadProgressDelegate(queueId: queueId) { pct, bytesDownloaded, totalBytes, bytesPerSecond in
+                onEvent(.progress(
+                    .downloading,
+                    pct,
+                    String(format: "Downloading… %d%%", Int(pct)),
+                    DownloadTransferMetrics(
+                        bytesDownloaded: bytesDownloaded,
+                        totalBytes: totalBytes,
+                        bytesPerSecond: bytesPerSecond
+                    )
+                ))
             }
             destFile = try await DownloadManager.shared.downloadDirectWithDelegate(
                 url: resolution.finalUrl,
@@ -167,7 +176,7 @@ struct MegaDownloadJob: DownloadJob {
                 headers: resolution.headers,
                 sourcePageUrl: resolution.sourcePageUrl,
                 onProgress: { event in
-                    onEvent(.progress(event.phase.queueStatus, event.percent, event.message))
+                    onEvent(.progress(event.phase.queueStatus, event.percent, event.message, event.metrics))
                 }
             )
             uploadResult = try await MegaManager.uploadLocalFile(
@@ -175,7 +184,7 @@ struct MegaDownloadJob: DownloadJob {
                 remotePath: remotePath,
                 uploadID: queueId,
                 onProgress: { event in
-                    onEvent(.progress(event.phase.queueStatus, event.percent, event.message))
+                    onEvent(.progress(event.phase.queueStatus, event.percent, event.message, event.metrics))
                 }
             )
             uploadedName = uploadResult.remotePath.split(separator: "/").last.map(String.init) ?? mp4File.lastPathComponent
@@ -189,7 +198,7 @@ struct MegaDownloadJob: DownloadJob {
                 headers: resolution.headers,
                 uploadID: queueId,
                 onProgress: { event in
-                    onEvent(.progress(event.phase.queueStatus, event.percent, event.message))
+                    onEvent(.progress(event.phase.queueStatus, event.percent, event.message, event.metrics))
                 }
             )
             uploadedName = VideoFileNaming.mp4FileName(title: resolution.title, fallback: fileName(of: resolution.requestedUrl))
@@ -230,7 +239,7 @@ struct GDriveDownloadJob: DownloadJob {
                 headers: resolution.headers,
                 sourcePageUrl: resolution.sourcePageUrl,
                 onProgress: { event in
-                    onEvent(.progress(event.phase.queueStatus, event.percent, event.message))
+                    onEvent(.progress(event.phase.queueStatus, event.percent, event.message, event.metrics))
                 }
             )
             try await GDriveManager.uploadLocalFile(
@@ -238,7 +247,7 @@ struct GDriveDownloadJob: DownloadJob {
                 remoteName: remoteName,
                 remotePath: remotePath,
                 onProgress: { event in
-                    onEvent(.progress(event.phase.queueStatus, event.percent, event.message))
+                    onEvent(.progress(event.phase.queueStatus, event.percent, event.message, event.metrics))
                 }
             )
             filename = mp4File.lastPathComponent
@@ -290,7 +299,7 @@ struct SeedboxDownloadJob: DownloadJob {
     let context: DownloadJobContext
 
     func run(onEvent: @escaping (JobEvent) -> Void) async throws -> JobCompletion {
-        let filename = VideoFileNaming.mp4FileName(title: resolution.title, fallback: fileName(of: resolution.requestedUrl))
+        var filename = VideoFileNaming.mp4FileName(title: resolution.title, fallback: fileName(of: resolution.requestedUrl))
         let manager = SeedboxManager(mode: try transferMode())
         onEvent(.progress(.downloading, 0, "Connecting to seedbox…"))
         try await manager.preflight(filename: filename)
@@ -298,6 +307,17 @@ struct SeedboxDownloadJob: DownloadJob {
         let finalPath: String
 
         if resolution.mediaKind == .direct {
+            let isRestartResume = await MainActor.run {
+                DownloadQueue.shared.item(id: queueId)?.resumeStrategy == .remoteSafeNewFile
+            }
+            let existingSize = try? await manager.remoteSize(filename: filename)
+            if let existingSize, existingSize > 0 {
+                filename = SeedboxManager.safeResumedFilename(filename: filename, queueId: queueId)
+                onEvent(.progress(.uploading, 0, "Existing seedbox partial found; continuing to a safe new file…"))
+            } else if isRestartResume && existingSize == nil {
+                filename = SeedboxManager.safeResumedFilename(filename: filename, queueId: queueId)
+                onEvent(.progress(.uploading, 0, "Cannot safely append; restarting without overwriting existing partial."))
+            }
             guard let sourceURL = URL(string: resolution.finalUrl) else { throw SeedboxError.invalidSourceURL }
             onEvent(.progress(.uploading, 0, "Transferring to seedbox… 0%"))
             finalPath = try await manager.upload(
@@ -352,7 +372,7 @@ struct SeedboxDownloadJob: DownloadJob {
                 headers: resolution.headers,
                 sourcePageUrl: resolution.sourcePageUrl,
                 onProgress: { event in
-                    onEvent(.progress(event.phase.queueStatus, event.percent, event.message))
+                    onEvent(.progress(event.phase.queueStatus, event.percent, event.message, event.metrics))
                 }
             )
         case .ytDlp:
@@ -419,6 +439,11 @@ struct SeedboxDownloadJob: DownloadJob {
 final class DownloadJobRunner {
     static let shared = DownloadJobRunner()
 
+    private var runningTasks: [UUID: Task<Bool, Never>] = [:]
+    private var runningTokens: [UUID: UUID] = [:]
+    private var pausedQueueIDs: Set<UUID> = []
+    private var cancelledQueueIDs: Set<UUID> = []
+
     private init() {}
 
     // MARK: - Public entry points
@@ -438,7 +463,7 @@ final class DownloadJobRunner {
             displayTitle: resolution.title,
             retryPayload: payload
         )
-        return await runExisting(
+        return await runRegistered(
             queueId: queueId,
             payload: payload,
             seedboxWebdavPassword: context.seedboxWebdavPassword
@@ -452,20 +477,80 @@ final class DownloadJobRunner {
         }
     }
 
+    func startResume(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) {
+        Task {
+            _ = await resume(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
+        }
+    }
+
+    func startInterruptedResume(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) {
+        Task {
+            _ = await runRegistered(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
+        }
+    }
+
+    func pause(queueId: UUID) {
+        pausedQueueIDs.insert(queueId)
+        cancelledQueueIDs.remove(queueId)
+        runningTasks[queueId]?.cancel()
+    }
+
+    func cancel(queueId: UUID) {
+        cancelledQueueIDs.insert(queueId)
+        pausedQueueIDs.remove(queueId)
+        runningTasks[queueId]?.cancel()
+    }
+
     /// Resets the existing queue row and reruns the job with the original payload.
     @discardableResult
     func retry(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) async -> Bool {
         guard DownloadQueue.shared.resetForRetry(id: queueId) else { return false }
-        return await runExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
+        return await runRegistered(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
+    }
+
+    @discardableResult
+    func resume(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) async -> Bool {
+        guard DownloadQueue.shared.resetForResume(id: queueId) else { return false }
+        return await runRegistered(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
     }
 
     // MARK: - Shared execution core
+
+    private func runRegistered(
+        queueId: UUID,
+        payload: DownloadRetryPayload,
+        seedboxWebdavPassword: String
+    ) async -> Bool {
+        pausedQueueIDs.remove(queueId)
+        cancelledQueueIDs.remove(queueId)
+
+        let token = UUID()
+        let task = Task { @MainActor in
+            await self.runExisting(
+                queueId: queueId,
+                payload: payload,
+                seedboxWebdavPassword: seedboxWebdavPassword
+            )
+        }
+        runningTokens[queueId] = token
+        runningTasks[queueId] = task
+
+        let result = await task.value
+        if runningTokens[queueId] == token {
+            runningTokens[queueId] = nil
+            runningTasks[queueId] = nil
+            cancelledQueueIDs.remove(queueId)
+        }
+        return result
+    }
 
     private func runExisting(
         queueId: UUID,
         payload: DownloadRetryPayload,
         seedboxWebdavPassword: String
     ) async -> Bool {
+        guard !shouldStop(queueId: queueId) else { return false }
+
         let resolution = payload.resolution
         let target = payload.target
         let context = payload.context.materialize(seedboxWebdavPassword: seedboxWebdavPassword)
@@ -478,8 +563,11 @@ final class DownloadJobRunner {
         )
         ActiveWorkTracker.shared.project(queueId: queueId)
 
+        guard !shouldStop(queueId: queueId) else { return false }
+
         do {
             try validate(target: target, context: context)
+            try validateProFeatures(for: resolution)
         } catch {
             fail(queueId: queueId, title: resolution.title, error: error)
             return false
@@ -492,9 +580,13 @@ final class DownloadJobRunner {
                     self.apply(event, queueId: queueId)
                 }
             }
+            guard !shouldStop(queueId: queueId) else { return false }
             complete(queueId: queueId, resolution: resolution, completion: completion)
             return true
         } catch {
+            if isCancellation(error, queueId: queueId) {
+                return false
+            }
             fail(queueId: queueId, title: resolution.title, error: error)
             return false
         }
@@ -516,6 +608,12 @@ final class DownloadJobRunner {
                 guard SeedboxManager.isRcloneAvailable else { throw SeedboxError.notInstalled }
                 guard !context.seedboxRemoteName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw SeedboxError.notConfigured }
             }
+        }
+    }
+
+    private func validateProFeatures(for resolution: DownloadResolution) throws {
+        if resolution.isAudio && !ProFeatureGate.canDownloadAudio {
+            throw ProFeatureError.audioRequiresPro
         }
     }
 
@@ -562,9 +660,11 @@ final class DownloadJobRunner {
     }
 
     private func apply(_ event: JobEvent, queueId: UUID) {
+        guard !shouldStop(queueId: queueId),
+              DownloadQueue.shared.item(id: queueId)?.status != .paused else { return }
         switch event {
-        case .progress(let status, let progress, let message):
-            DownloadQueue.shared.update(id: queueId, status: status, progress: progress, message: message)
+        case .progress(let status, let progress, let message, let metrics):
+            DownloadQueue.shared.update(id: queueId, status: status, progress: progress, message: message, metrics: metrics)
             ActiveWorkTracker.shared.project(queueId: queueId)
         }
     }
@@ -626,6 +726,17 @@ final class DownloadJobRunner {
         DownloadQueue.shared.fail(id: queueId, error: error)
         ActiveWorkTracker.shared.project(queueId: queueId)
         NotificationManager.shared.notifyUploadFailed(filename: title, reason: error.localizedDescription)
+    }
+
+    private func shouldStop(queueId: UUID) -> Bool {
+        Task.isCancelled || pausedQueueIDs.contains(queueId) || cancelledQueueIDs.contains(queueId)
+    }
+
+    private func isCancellation(_ error: Error, queueId: UUID) -> Bool {
+        if error is CancellationError { return true }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return true }
+        if shouldStop(queueId: queueId) { return true }
+        return DownloadQueue.shared.item(id: queueId)?.status == .paused
     }
 
     private func queueQuality(for resolution: DownloadResolution, target: CloudTarget) -> String {

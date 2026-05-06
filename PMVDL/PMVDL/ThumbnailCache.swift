@@ -23,6 +23,10 @@ actor ThumbnailCache {
         return "viddl_thumb_\(hex).jpg"
     }
 
+    static func cacheKey(for libraryItem: LibraryItem) -> String {
+        cacheKey(for: libraryItem.mp4Url ?? libraryItem.url)
+    }
+
     static func legacyCacheKey(for identity: String) -> String {
         "viddl_thumb_\(identity.hashValue).jpg"
     }

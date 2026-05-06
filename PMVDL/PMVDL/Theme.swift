@@ -47,6 +47,8 @@ enum Theme {
         switch dest {
         case .home:       return coral
         case .history:    return gold
+        case .feed:       return lavender
+        case .favorites:  return hotPink
         case .library:    return skyBlue
         case .downloads:  return electricLime
         case .mega:       return hotPink

@@ -5,6 +5,7 @@ struct ContentView: View {
     @StateObject private var downloadQueue = DownloadQueue.shared
     @StateObject private var updateManager = UpdateManager.shared
     @StateObject private var licenseManager = LicenseManager.shared
+    @StateObject private var favorites = FeedFavoritesStore.shared
     @AppStorage("megaRemotePath") var megaRemotePath = "/Cloud/VidDL/"
     @AppStorage("gdriveRemoteName") var gdriveRemoteName = "gdrive"
     @AppStorage("gdriveRemotePath") var gdriveRemotePath = "VidDL/"
@@ -31,6 +32,16 @@ struct ContentView: View {
                     .zIndex(1)
             }
         }
+        .onAppear {
+            if !favorites.hasFavorites && appState.selectedDestination == .favorites {
+                appState.select(.feed)
+            }
+        }
+        .onChange(of: favorites.hasFavorites) { _, hasFavorites in
+            if !hasFavorites && appState.selectedDestination == .favorites {
+                appState.select(.feed)
+            }
+        }
     }
 
     @ViewBuilder
@@ -47,7 +58,7 @@ struct ContentView: View {
         NavigationSplitView {
             // SIDEBAR — marketplace-style with colored icon bubbles
             VStack(spacing: 2) {
-                ForEach(Array(NavDestination.allCases.enumerated()), id: \.element) { idx, dest in
+                ForEach(Array(sidebarDestinations.enumerated()), id: \.element) { idx, dest in
                     SidebarNavItem(
                         dest: dest,
                         isSelected: appState.selectedDestination == dest,
@@ -67,6 +78,7 @@ struct ContentView: View {
             .padding(.top, 8)
             .navigationSplitViewColumnWidth(min: 160, ideal: 180)
         } detail: {
+            Group {
                 switch appState.selectedDestination {
                 case .home:
                     HomeView(appState: appState,
@@ -82,10 +94,16 @@ struct ContentView: View {
                              onUpgradeRequired: { showUpgradeOverlay = true })
                         .padding()
                 case .library:
-                    LibraryView()
+                    LibraryView(onUpgradeRequired: { showUpgradeOverlay = true })
                         .padding()
                 case .history:
                     HistoryView()
+                        .padding()
+                case .feed:
+                    FeedView()
+                        .padding()
+                case .favorites:
+                    FavoritesView()
                         .padding()
                 case .downloads:
                     DownloadQueueViewNew(onUpgradeRequired: { showUpgradeOverlay = true })
@@ -102,7 +120,8 @@ struct ContentView: View {
                                  seedboxRemotePath: $seedboxRemotePath,
                                  seedboxWebdavURL: $seedboxWebdavURL,
                                  seedboxWebdavUser: $seedboxWebdavUser,
-                                 seedboxWebdavPassword: $seedboxWebdavPassword)
+                                 seedboxWebdavPassword: $seedboxWebdavPassword,
+                                 onUpgradeRequired: { showUpgradeOverlay = true })
                 }
             }
             .navigationTitle(appState.selectedDestination.rawValue)
@@ -123,12 +142,33 @@ struct ContentView: View {
                 NotificationManager.shared.requestAuthorization()
             }
         }
+    }
+
+    private var sidebarDestinations: [NavDestination] {
+        NavDestination.allCases.filter { destination in
+            switch destination {
+            case .favorites:
+                return favorites.hasFavorites
+            default:
+                return true
+            }
+        }
+    }
 
     private func navBadge(for dest: NavDestination) -> Int? {
         switch dest {
         case .downloads:
-            let q = downloadQueue.queue.filter { $0.isVisibleInDownloads && !$0.status.isTerminal }
+            let q = downloadQueue.queue.filter {
+                switch $0.status {
+                case .downloading, .verifying, .uploading:
+                    return true
+                default:
+                    return false
+                }
+            }
             return q.isEmpty ? nil : q.count
+        case .favorites:
+            return favorites.count == 0 ? nil : favorites.count
         default:
             return nil
         }

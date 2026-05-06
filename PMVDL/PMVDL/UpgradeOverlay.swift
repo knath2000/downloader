@@ -18,16 +18,18 @@ struct UpgradeOverlay: View {
                 Text("Upgrade to Pro")
                     .font(.title2.bold())
                     .foregroundStyle(Theme.textPrimary)
-                Text("You have 5 free downloads.\nUpgrade for unlimited downloads and Pro features.")
+                Text("You have \(LicenseManager.freeDownloadLimit) free downloads.\nUpgrade for unlimited downloads and higher Pro limits.")
                     .font(.subheadline)
                     .foregroundStyle(Theme.textSecondary)
                     .multilineTextAlignment(.center)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    FeatureRow(icon: "checkmark.seal.fill", text: "Unlimited batch downloads")
-                    FeatureRow(icon: "checkmark.seal.fill", text: "Schedule downloads")
-                    FeatureRow(icon: "checkmark.seal.fill", text: "Multi-cloud simultaneous upload")
-                    FeatureRow(icon: "checkmark.seal.fill", text: "Priority support")
+                    FeatureRow(icon: "checkmark.seal.fill", text: "\(LicenseManager.freeDownloadLimit) → unlimited total downloads")
+                    FeatureRow(icon: "checkmark.seal.fill", text: "\(ProFeatureGate.freeConcurrentDownloadLimit) → \(ProFeatureGate.proConcurrentDownloadLimit) concurrent downloads")
+                    FeatureRow(icon: "checkmark.seal.fill", text: "Batch download more than \(ProFeatureGate.freeBatchLimit) items")
+                    FeatureRow(icon: "checkmark.seal.fill", text: "Upload to multiple clouds at once")
+                    FeatureRow(icon: "checkmark.seal.fill", text: "Video processing tools")
+                    FeatureRow(icon: "checkmark.seal.fill", text: "Smart upload rules, audio, and subtitles")
                 }
                 .padding()
 

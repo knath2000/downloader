@@ -94,6 +94,17 @@ struct CloudUploadResult: Identifiable {
     }
 }
 
+private enum CloudHubError: LocalizedError {
+    case multiCloudRequiresPro
+
+    var errorDescription: String? {
+        switch self {
+        case .multiCloudRequiresPro:
+            return "Multi-cloud upload requires VidDL Pro."
+        }
+    }
+}
+
 // MARK: - CloudHub
 
 @MainActor
@@ -133,6 +144,10 @@ class CloudHub: ObservableObject {
 
     /// Determine which clouds to upload to based on rules.
     func resolveTargets(quality: String?, filename: String) -> [CloudProviderID] {
+        guard ProFeatureGate.canUseUploadRules else {
+            return [.mega]
+        }
+
         for rule in rules {
             if rule.matches(quality: quality, filename: filename) {
                 return rule.targets.filter { $0.isAvailable }
@@ -148,6 +163,11 @@ class CloudHub: ObservableObject {
                      onProgress: @escaping (CloudProviderID, String) -> Void) async -> [CloudUploadResult] {
         let targets = resolveTargets(quality: quality, filename: URL(string: videoUrl)?.lastPathComponent ?? "video")
         guard !targets.isEmpty else { return [] }
+        guard targets.count == 1 || ProFeatureGate.canMultiUpload else {
+            let results = [CloudUploadResult.failure(targets[0], error: CloudHubError.multiCloudRequiresPro)]
+            lastResults = results
+            return results
+        }
 
         isUploading = true
         var results: [CloudUploadResult] = []

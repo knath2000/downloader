@@ -51,12 +51,18 @@ actor DownloadManager {
     func downloadAudio(pageUrl: String, title: String? = nil,
                        format: String = "mp3",
                        onProgress: @escaping (String) -> Void) async throws -> URL {
-        try await ytDlpRunner.downloadAudio(pageUrl: pageUrl, title: title, format: format, onProgress: onProgress)
+        guard ProFeatureGate.canDownloadAudioInBackground else {
+            throw ProFeatureError.audioRequiresPro
+        }
+        return try await ytDlpRunner.downloadAudio(pageUrl: pageUrl, title: title, format: format, onProgress: onProgress)
     }
 
     func downloadWithSubtitles(pageUrl: String, title: String? = nil,
                                onProgress: @escaping (String) -> Void) async throws -> URL {
-        try await ytDlpRunner.downloadWithSubtitles(pageUrl: pageUrl, title: title, onProgress: onProgress)
+        guard ProFeatureGate.canDownloadSubtitlesInBackground else {
+            throw ProFeatureError.subtitlesRequirePro
+        }
+        return try await ytDlpRunner.downloadWithSubtitles(pageUrl: pageUrl, title: title, onProgress: onProgress)
     }
 
     static func revealInFinder(_ url: URL) {

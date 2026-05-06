@@ -5,20 +5,16 @@ class DownloadQueue: ObservableObject {
     static let shared = DownloadQueue()
 
     @Published var queue: [DownloadQueueItem] = []
-    private var maxConcurrent = 3
-    private var runningTasks: [UUID: Task<Void, Never>] = [:]
+    private var maxConcurrent: Int { ProFeatureGate.concurrentDownloadLimit }
 
     private let userDefaultsKey = "downloadQueue"
+    private let restartMessage = "Resuming after app restart…"
+
+    var concurrentLimit: Int { maxConcurrent }
 
     private init() {
         load()
-        // Resume pending/failed items as pending
-        for i in queue.indices {
-            if case .downloading = queue[i].status { queue[i].status = .pending }
-            if case .verifying = queue[i].status { queue[i].status = .pending }
-            if case .uploading = queue[i].status { queue[i].uploadStarted = true }
-            if case .paused = queue[i].status { /* keep paused */ }
-        }
+        normalizeInterruptedItemsForLaunch()
         save()
     }
 
@@ -32,6 +28,35 @@ class DownloadQueue: ObservableObject {
     func save() {
         if let encoded = try? JSONEncoder().encode(queue) {
             UserDefaults.standard.set(encoded, forKey: userDefaultsKey)
+        }
+    }
+
+    func normalizeInterruptedItemsForLaunch() {
+        for i in queue.indices {
+            switch queue[i].status {
+            case .downloading, .verifying, .uploading:
+                let wasUploading = queue[i].status == .uploading
+                if queue[i].retryPayload != nil {
+                    queue[i].status = .pending
+                    queue[i].progress = 0
+                    queue[i].bytesPerSecond = nil
+                    queue[i].statusMessage = restartMessage
+                    if wasUploading {
+                        queue[i].uploadStarted = true
+                    }
+                    if queue[i].targetCloud == .seedbox {
+                        queue[i].resumeStrategy = .remoteSafeNewFile
+                    }
+                } else {
+                    let message = "Interrupted and cannot resume because retry metadata is missing."
+                    queue[i].status = .failed(message)
+                    queue[i].progress = 0
+                    queue[i].bytesPerSecond = nil
+                    queue[i].statusMessage = message
+                }
+            case .paused, .pending, .completed, .failed:
+                break
+            }
         }
     }
 
@@ -66,20 +91,49 @@ class DownloadQueue: ObservableObject {
         queue[idx].finalPath = nil
         queue[idx].uploadStarted = nil
         queue[idx].statusMessage = "Retrying…"
+        queue[idx].bytesDownloaded = nil
+        queue[idx].totalBytes = nil
+        queue[idx].bytesPerSecond = nil
+        queue[idx].expectedTotalBytes = nil
+        queue[idx].megatag = nil
+        save()
+        return true
+    }
+
+    @discardableResult
+    func resetForResume(id: UUID) -> Bool {
+        guard let idx = queue.firstIndex(where: { $0.id == id }),
+              queue[idx].status == .paused,
+              queue[idx].retryPayload != nil else { return false }
+        queue[idx].status = .pending
+        queue[idx].progress = 0
+        queue[idx].finalPath = nil
+        queue[idx].uploadStarted = nil
+        queue[idx].statusMessage = "Resuming..."
+        queue[idx].bytesDownloaded = nil
+        queue[idx].totalBytes = nil
+        queue[idx].bytesPerSecond = nil
+        queue[idx].expectedTotalBytes = nil
         queue[idx].megatag = nil
         save()
         return true
     }
 
     func remove(_ item: DownloadQueueItem) {
+        if let current = queue.first(where: { $0.id == item.id }),
+           !current.status.isTerminal {
+            DownloadJobRunner.shared.cancel(queueId: item.id)
+        }
         queue.removeAll { $0.id == item.id }
-        cancelTask(for: item.id)
         save()
     }
 
     func remove(id: UUID) {
+        if let current = queue.first(where: { $0.id == id }),
+           !current.status.isTerminal {
+            DownloadJobRunner.shared.cancel(queueId: id)
+        }
         queue.removeAll { $0.id == id }
-        cancelTask(for: id)
         save()
     }
 
@@ -89,10 +143,12 @@ class DownloadQueue: ObservableObject {
         switch queue[idx].status {
         case .downloading, .verifying, .uploading, .pending:
             queue[idx].status = .paused
+            queue[idx].bytesPerSecond = nil
+            queue[idx].statusMessage = "Paused"
         default:
             break
         }
-        cancelTask(for: item.id)
+        DownloadJobRunner.shared.pause(queueId: item.id)
         save()
     }
 
@@ -119,9 +175,10 @@ class DownloadQueue: ObservableObject {
     func pauseAll() {
         for i in queue.indices where !queue[i].status.isTerminal {
             queue[i].status = .paused
+            queue[i].bytesPerSecond = nil
+            queue[i].statusMessage = "Paused"
+            DownloadJobRunner.shared.pause(queueId: queue[i].id)
         }
-        for task in runningTasks.values { task.cancel() }
-        runningTasks.removeAll()
         save()
     }
 
@@ -130,6 +187,8 @@ class DownloadQueue: ObservableObject {
         for i in queue.indices where queue[i].status == .paused {
             queue[i].status = .pending
             queue[i].progress = 0
+            queue[i].bytesDownloaded = nil
+            queue[i].bytesPerSecond = nil
         }
         save()
         processNextIfNeeded()
@@ -144,18 +203,42 @@ class DownloadQueue: ObservableObject {
         update(id: id, status: status, progress: progress, message: nil)
     }
 
-    func update(id: UUID, status: QueueStatus, progress: Double, message: String? = nil) {
+    func update(
+        id: UUID,
+        status: QueueStatus,
+        progress: Double,
+        message: String? = nil,
+        metrics: DownloadTransferMetrics? = nil
+    ) {
         guard let idx = queue.firstIndex(where: { $0.id == id }) else { return }
         let previousStatus = queue[idx].status
         let previousUploadStarted = queue[idx].uploadStarted
         let previousMessage = queue[idx].statusMessage
+        let previousBytesDownloaded = queue[idx].bytesDownloaded
+        let previousTotalBytes = queue[idx].totalBytes
+        let parsedMetrics = metrics ?? message.flatMap { DownloadProgressParsers.transferMetrics(from: $0) }
         if status == .uploading {
             queue[idx].uploadStarted = true
         }
         queue[idx].status = status
         queue[idx].progress = progress
         queue[idx].statusMessage = message
-        if previousStatus != status || previousUploadStarted != queue[idx].uploadStarted || previousMessage != message || status.isTerminal {
+        if let bytesDownloaded = parsedMetrics?.bytesDownloaded {
+            queue[idx].bytesDownloaded = bytesDownloaded
+        }
+        if let totalBytes = parsedMetrics?.totalBytes {
+            queue[idx].totalBytes = totalBytes
+            queue[idx].expectedTotalBytes = totalBytes
+        }
+        if let bytesPerSecond = parsedMetrics?.bytesPerSecond {
+            queue[idx].bytesPerSecond = bytesPerSecond
+        }
+        if previousStatus != status ||
+            previousUploadStarted != queue[idx].uploadStarted ||
+            previousMessage != message ||
+            previousBytesDownloaded != queue[idx].bytesDownloaded ||
+            previousTotalBytes != queue[idx].totalBytes ||
+            status.isTerminal {
             save()
         }
     }
@@ -165,6 +248,7 @@ class DownloadQueue: ObservableObject {
         queue[idx].status = .completed
         queue[idx].progress = 100
         queue[idx].statusMessage = message
+        queue[idx].bytesPerSecond = nil
         queue[idx].finalPath = finalPath
         save()
     }
@@ -178,11 +262,44 @@ class DownloadQueue: ObservableObject {
         queue[idx].status = .failed(message)
         queue[idx].progress = 0
         queue[idx].statusMessage = message
+        queue[idx].bytesPerSecond = nil
         save()
     }
 
     func item(id: UUID) -> DownloadQueueItem? {
         queue.first { $0.id == id }
+    }
+
+    func updateResumeState(
+        id: UUID,
+        partialLocalPath: String? = nil,
+        expectedTotalBytes: Int64? = nil,
+        supportsByteRange: Bool? = nil,
+        resumeStrategy: DownloadResumeStrategy? = nil
+    ) {
+        guard let idx = queue.firstIndex(where: { $0.id == id }) else { return }
+        if let partialLocalPath { queue[idx].partialLocalPath = partialLocalPath }
+        if let expectedTotalBytes { queue[idx].expectedTotalBytes = expectedTotalBytes }
+        if let supportsByteRange { queue[idx].supportsByteRange = supportsByteRange }
+        if let resumeStrategy { queue[idx].resumeStrategy = resumeStrategy }
+        save()
+    }
+
+    func resumeInterruptedOnLaunch(seedboxWebdavPassword: String = "") {
+        let resumable = queue.filter { item in
+            item.status == .pending &&
+            item.retryPayload != nil &&
+            item.statusMessage == restartMessage
+        }
+        guard !resumable.isEmpty else { return }
+        for item in resumable {
+            guard let payload = item.retryPayload else { continue }
+            DownloadJobRunner.shared.startInterruptedResume(
+                queueId: item.id,
+                payload: payload,
+                seedboxWebdavPassword: seedboxWebdavPassword
+            )
+        }
     }
 
     func latestFinalPath(for url: String, target: CloudTarget) -> String? {
@@ -220,11 +337,6 @@ class DownloadQueue: ObservableObject {
         default:
             return item.statusMessage ?? ""
         }
-    }
-
-    private func cancelTask(for id: UUID) {
-        runningTasks[id]?.cancel()
-        runningTasks[id] = nil
     }
 
     private var activeCount: Int {

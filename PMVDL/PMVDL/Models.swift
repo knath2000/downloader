@@ -91,18 +91,19 @@ struct ProgressEvent {
     let phase: Phase
     let percent: Double       // 0...100
     let message: String       // human-readable
+    let metrics: DownloadTransferMetrics?
 
-    static func downloading(msg: String, pct: Double) -> Self {
-        .init(phase: .downloading, percent: min(pct, 99), message: msg)
+    static func downloading(msg: String, pct: Double, metrics: DownloadTransferMetrics? = nil) -> Self {
+        .init(phase: .downloading, percent: min(pct, 99), message: msg, metrics: metrics)
     }
-    static func uploading(msg: String, pct: Double) -> Self {
-        .init(phase: .uploading, percent: min(pct, 99), message: msg)
+    static func uploading(msg: String, pct: Double, metrics: DownloadTransferMetrics? = nil) -> Self {
+        .init(phase: .uploading, percent: min(pct, 99), message: msg, metrics: metrics)
     }
-    static func verifying(msg: String, pct: Double = 99) -> Self {
-        .init(phase: .verifying, percent: min(pct, 99), message: msg)
+    static func verifying(msg: String, pct: Double = 99, metrics: DownloadTransferMetrics? = nil) -> Self {
+        .init(phase: .verifying, percent: min(pct, 99), message: msg, metrics: metrics)
     }
     static func completed(msg: String) -> Self {
-        .init(phase: .completing, percent: 100, message: msg)
+        .init(phase: .completing, percent: 100, message: msg, metrics: nil)
     }
 }
 
@@ -220,6 +221,19 @@ enum QueueStatus: Codable, Equatable {
     }
 }
 
+enum DownloadResumeStrategy: String, Codable, Equatable {
+    case restartSafeNewFile
+    case appendLocalRange
+    case appendSeedboxRange
+    case remoteSafeNewFile
+}
+
+struct DownloadTransferMetrics: Codable, Equatable {
+    var bytesDownloaded: Int64?
+    var totalBytes: Int64?
+    var bytesPerSecond: Double?
+}
+
 struct DownloadQueueItem: Identifiable, Codable {
     let id: UUID
     let url: String
@@ -234,9 +248,16 @@ struct DownloadQueueItem: Identifiable, Codable {
     var finalPath: String? // local file path or remote destination when done
     var uploadStarted: Bool?
     var statusMessage: String?
+    var bytesDownloaded: Int64?
+    var totalBytes: Int64?
+    var bytesPerSecond: Double?
     /// Snapshot of the original resolution + destination settings used for one-click Retry.
     /// Nil on items created before this feature was added — their Retry button is disabled.
     var retryPayload: DownloadRetryPayload?
+    var partialLocalPath: String?
+    var expectedTotalBytes: Int64?
+    var supportsByteRange: Bool?
+    var resumeStrategy: DownloadResumeStrategy?
 
     init(
         id: UUID = UUID(),
@@ -257,7 +278,14 @@ struct DownloadQueueItem: Identifiable, Codable {
         self.displayTitle = displayTitle
         self.uploadStarted = nil
         self.statusMessage = nil
+        self.bytesDownloaded = nil
+        self.totalBytes = nil
+        self.bytesPerSecond = nil
         self.retryPayload = retryPayload
+        self.partialLocalPath = nil
+        self.expectedTotalBytes = nil
+        self.supportsByteRange = nil
+        self.resumeStrategy = nil
     }
 
     var isPaused: Bool { status == .paused }
@@ -274,7 +302,7 @@ struct DownloadQueueItem: Identifiable, Codable {
     }
 
     var isVisibleInDownloads: Bool {
-        !(targetCloud == .mega && hasEnteredUpload)
+        true
     }
 }
 
@@ -339,6 +367,8 @@ enum CloudTarget: String, Codable, CaseIterable {
 enum NavDestination: String, Codable, CaseIterable {
     case home = "Home"
     case history = "History"
+    case feed = "Feed"
+    case favorites = "Favorites"
     case library = "Library"
     case downloads = "Downloads"
     case mega = "Mega"
@@ -348,6 +378,8 @@ enum NavDestination: String, Codable, CaseIterable {
         switch self {
         case .home: return "house.fill"
         case .history: return "clock.arrow.circlepath"
+        case .feed: return "antenna.radiowaves.left.and.right"
+        case .favorites: return "heart.fill"
         case .library: return "books.vertical.fill"
         case .downloads: return "arrow.down.circle.fill"
         case .mega: return "cloud.fill"

@@ -18,7 +18,7 @@ struct YtDlpRunner {
 
         var args = ["--no-playlist", "--merge-output-format", preferredFormat, "-o", outPattern]
 
-        if DownloadPreferences.subtitlesEnabled {
+        if DownloadPreferences.subtitlesEnabled && ProFeatureGate.canDownloadSubtitlesInBackground {
             if DownloadPreferences.embeddedSubsMode {
                 args.append("--embed-subs")
             } else {
@@ -107,7 +107,7 @@ struct YtDlpRunner {
         let outPattern = DownloadPaths.downloadDir.appendingPathComponent("\(baseName)_\(uniqueTag).%(ext)s").path
 
         var args = ["--no-playlist", "--merge-output-format", "mp4", "-o", outPattern]
-        if DownloadPreferences.subtitlesEnabled {
+        if DownloadPreferences.subtitlesEnabled && ProFeatureGate.canDownloadSubtitlesInBackground {
             if DownloadPreferences.embeddedSubsMode {
                 args.append("--embed-subs")
             } else {
