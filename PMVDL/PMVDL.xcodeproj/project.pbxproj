@@ -57,7 +57,6 @@
 	A10066 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A30002 /* Sparkle */; };
 	A10067 /* HistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20067 /* HistoryManager.swift */; };
 	A10068 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20068 /* HistoryView.swift */; };
-	A10069 /* MegaView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20069 /* MegaView.swift */; };
 	A10071 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20071 /* SettingsView.swift */; };
 	A10087 /* SettingsDependencyState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20087 /* SettingsDependencyState.swift */; };
 	A10088 /* SettingsDependencyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20088 /* SettingsDependencyStore.swift */; };
@@ -81,6 +80,17 @@
 	A10105 /* FavoritesDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20105 /* FavoritesDisplay.swift */; };
 	A10106 /* FavoritesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20106 /* FavoritesView.swift */; };
 	A10107 /* FavoriteCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20107 /* FavoriteCardView.swift */; };
+	A10108 /* RemoteFileModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20108 /* RemoteFileModels.swift */; };
+	A10109 /* RemotePath.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20109 /* RemotePath.swift */; };
+	A10110 /* RemoteFileClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20110 /* RemoteFileClient.swift */; };
+	A10111 /* RemoteFileTextPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20111 /* RemoteFileTextPolicy.swift */; };
+	A10112 /* RcloneRemoteFileClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20112 /* RcloneRemoteFileClient.swift */; };
+	A10113 /* WebDAVRemoteFileClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20113 /* WebDAVRemoteFileClient.swift */; };
+	A10114 /* SeedboxRemoteFileClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20114 /* SeedboxRemoteFileClient.swift */; };
+	A10115 /* RemoteFilesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20115 /* RemoteFilesViewModel.swift */; };
+	A10116 /* RemoteFilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20116 /* RemoteFilesView.swift */; };
+	A10117 /* RemoteFileEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20117 /* RemoteFileEditorView.swift */; };
+	A10118 /* RemoteFilesDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20118 /* RemoteFilesDisplay.swift */; };
 	A10074 /* String+Parsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20074 /* String+Parsing.swift */; };
 	A10075 /* NetworkConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20075 /* NetworkConstants.swift */; };
 	A10076 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20076 /* Logging.swift */; };
@@ -107,6 +117,11 @@
 	T10012 /* HQPornerFeedScraperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20012 /* HQPornerFeedScraperTests.swift */; };
 	T10013 /* DownloadQueueResumeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20013 /* DownloadQueueResumeTests.swift */; };
 	T10014 /* FeedFavoritesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20014 /* FeedFavoritesTests.swift */; };
+	T10015 /* RemotePathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20015 /* RemotePathTests.swift */; };
+	T10016 /* RcloneRemoteFileParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20016 /* RcloneRemoteFileParserTests.swift */; };
+	T10017 /* WebDAVRemoteFileParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20017 /* WebDAVRemoteFileParserTests.swift */; };
+	T10018 /* RemoteFileTextPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20018 /* RemoteFileTextPolicyTests.swift */; };
+	T10019 /* RemoteFilesDisplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20019 /* RemoteFilesDisplayTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -170,7 +185,6 @@
 		A20063 /* GlassComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassComponents.swift; sourceTree = "<group>"; };
 	A20067 /* HistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryManager.swift; sourceTree = "<group>"; };
 	A20068 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
-	A20069 /* MegaView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MegaView.swift; sourceTree = "<group>"; };
 	A20071 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 	A20087 /* SettingsDependencyState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDependencyState.swift; sourceTree = "<group>"; };
 	A20088 /* SettingsDependencyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDependencyStore.swift; sourceTree = "<group>"; };
@@ -194,6 +208,17 @@
 	A20105 /* FavoritesDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesDisplay.swift; sourceTree = "<group>"; };
 	A20106 /* FavoritesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesView.swift; sourceTree = "<group>"; };
 	A20107 /* FavoriteCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoriteCardView.swift; sourceTree = "<group>"; };
+	A20108 /* RemoteFileModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileModels.swift; sourceTree = "<group>"; };
+	A20109 /* RemotePath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePath.swift; sourceTree = "<group>"; };
+	A20110 /* RemoteFileClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileClient.swift; sourceTree = "<group>"; };
+	A20111 /* RemoteFileTextPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileTextPolicy.swift; sourceTree = "<group>"; };
+	A20112 /* RcloneRemoteFileClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RcloneRemoteFileClient.swift; sourceTree = "<group>"; };
+	A20113 /* WebDAVRemoteFileClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebDAVRemoteFileClient.swift; sourceTree = "<group>"; };
+	A20114 /* SeedboxRemoteFileClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeedboxRemoteFileClient.swift; sourceTree = "<group>"; };
+	A20115 /* RemoteFilesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesViewModel.swift; sourceTree = "<group>"; };
+	A20116 /* RemoteFilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesView.swift; sourceTree = "<group>"; };
+	A20117 /* RemoteFileEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileEditorView.swift; sourceTree = "<group>"; };
+	A20118 /* RemoteFilesDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesDisplay.swift; sourceTree = "<group>"; };
 	A20074 /* String+Parsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Parsing.swift"; sourceTree = "<group>"; };
 	A20075 /* NetworkConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkConstants.swift; sourceTree = "<group>"; };
 	A20076 /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
@@ -221,6 +246,11 @@
 	T20012 /* HQPornerFeedScraperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HQPornerFeedScraperTests.swift; sourceTree = "<group>"; };
 	T20013 /* DownloadQueueResumeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadQueueResumeTests.swift; sourceTree = "<group>"; };
 	T20014 /* FeedFavoritesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedFavoritesTests.swift; sourceTree = "<group>"; };
+	T20015 /* RemotePathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePathTests.swift; sourceTree = "<group>"; };
+	T20016 /* RcloneRemoteFileParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RcloneRemoteFileParserTests.swift; sourceTree = "<group>"; };
+	T20017 /* WebDAVRemoteFileParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebDAVRemoteFileParserTests.swift; sourceTree = "<group>"; };
+	T20018 /* RemoteFileTextPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileTextPolicyTests.swift; sourceTree = "<group>"; };
+	T20019 /* RemoteFilesDisplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesDisplayTests.swift; sourceTree = "<group>"; };
 	T30001 /* VidDLTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VidDLTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -262,7 +292,7 @@
 			A50011 /* History */,
 			A50019 /* Feed */,
 			A50020 /* Favorites */,
-			A50012 /* Mega */,
+			A50021 /* RemoteFiles */,
 			A50014 /* Settings */,
 			A50015 /* Home */,
 			A50016 /* Extensions */,
@@ -345,12 +375,22 @@
 		path = Favorites;
 		sourceTree = "<group>";
 	};
-	A50012 /* Mega */ = {
+	A50021 /* RemoteFiles */ = {
 		isa = PBXGroup;
 		children = (
-			A20069 /* MegaView.swift */,
+			A20108 /* RemoteFileModels.swift */,
+			A20109 /* RemotePath.swift */,
+			A20110 /* RemoteFileClient.swift */,
+			A20111 /* RemoteFileTextPolicy.swift */,
+			A20112 /* RcloneRemoteFileClient.swift */,
+			A20113 /* WebDAVRemoteFileClient.swift */,
+			A20114 /* SeedboxRemoteFileClient.swift */,
+			A20115 /* RemoteFilesViewModel.swift */,
+			A20116 /* RemoteFilesView.swift */,
+			A20117 /* RemoteFileEditorView.swift */,
+			A20118 /* RemoteFilesDisplay.swift */,
 		);
-		path = Mega;
+		path = RemoteFiles;
 		sourceTree = "<group>";
 	};
 	A50014 /* Settings */ = {
@@ -437,6 +477,11 @@
 			T20012 /* HQPornerFeedScraperTests.swift */,
 			T20013 /* DownloadQueueResumeTests.swift */,
 			T20014 /* FeedFavoritesTests.swift */,
+			T20015 /* RemotePathTests.swift */,
+			T20016 /* RcloneRemoteFileParserTests.swift */,
+			T20017 /* WebDAVRemoteFileParserTests.swift */,
+			T20018 /* RemoteFileTextPolicyTests.swift */,
+			T20019 /* RemoteFilesDisplayTests.swift */,
 		);
 		path = PMVDLTests;
 		sourceTree = "<group>";
@@ -657,7 +702,6 @@
 				A10063 /* GlassComponents.swift in Sources */,
 			A10067 /* HistoryManager.swift in Sources */,
 			A10068 /* HistoryView.swift in Sources */,
-			A10069 /* MegaView.swift in Sources */,
 			A10071 /* SettingsView.swift in Sources */,
 			A10087 /* SettingsDependencyState.swift in Sources */,
 			A10088 /* SettingsDependencyStore.swift in Sources */,
@@ -681,6 +725,17 @@
 			A10105 /* FavoritesDisplay.swift in Sources */,
 			A10106 /* FavoritesView.swift in Sources */,
 			A10107 /* FavoriteCardView.swift in Sources */,
+			A10108 /* RemoteFileModels.swift in Sources */,
+			A10109 /* RemotePath.swift in Sources */,
+			A10110 /* RemoteFileClient.swift in Sources */,
+			A10111 /* RemoteFileTextPolicy.swift in Sources */,
+			A10112 /* RcloneRemoteFileClient.swift in Sources */,
+			A10113 /* WebDAVRemoteFileClient.swift in Sources */,
+			A10114 /* SeedboxRemoteFileClient.swift in Sources */,
+			A10115 /* RemoteFilesViewModel.swift in Sources */,
+			A10116 /* RemoteFilesView.swift in Sources */,
+			A10117 /* RemoteFileEditorView.swift in Sources */,
+			A10118 /* RemoteFilesDisplay.swift in Sources */,
 			A10074 /* String+Parsing.swift in Sources */,
 			A10075 /* NetworkConstants.swift in Sources */,
 			A10076 /* Logging.swift in Sources */,
@@ -714,6 +769,11 @@
 			T10012 /* HQPornerFeedScraperTests.swift in Sources */,
 			T10013 /* DownloadQueueResumeTests.swift in Sources */,
 			T10014 /* FeedFavoritesTests.swift in Sources */,
+			T10015 /* RemotePathTests.swift in Sources */,
+			T10016 /* RcloneRemoteFileParserTests.swift in Sources */,
+			T10017 /* WebDAVRemoteFileParserTests.swift in Sources */,
+			T10018 /* RemoteFileTextPolicyTests.swift in Sources */,
+			T10019 /* RemoteFilesDisplayTests.swift in Sources */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};

@@ -170,7 +170,7 @@ struct FeedActiveFilterChip: Identifiable, Equatable {
 }
 
 struct FeedFilterState: Equatable {
-    var date: FeedDateFilter = .today
+    var date: FeedDateFilter = .all
     var query = ""
     var minViews: Int?
     var minDurationSeconds: Int?
@@ -188,7 +188,7 @@ struct FeedFilterState: Equatable {
 
     var activeCount: Int {
         var count = 0
-        if date != .today { count += 1 }
+        if date != .all { count += 1 }
         if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { count += 1 }
         if minViews != nil { count += 1 }
         if minDurationSeconds != nil || maxDurationSeconds != nil { count += 1 }
@@ -202,7 +202,7 @@ struct FeedFilterState: Equatable {
 
     var activeChips: [FeedActiveFilterChip] {
         var chips: [FeedActiveFilterChip] = []
-        if date != .today {
+        if date != .all {
             chips.append(FeedActiveFilterChip(id: "date", title: date.title))
         }
 
@@ -237,7 +237,7 @@ struct FeedFilterState: Equatable {
     mutating func removeActiveChip(id: String) {
         switch id {
         case "date":
-            date = .today
+            date = .all
         case "query":
             query = ""
         case "views":

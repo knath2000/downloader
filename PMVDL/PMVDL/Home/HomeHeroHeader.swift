@@ -1,8 +1,12 @@
 import SwiftUI
 
 struct HomeHeroHeader: View {
+    let inputModel: HomeURLInputModel
+    let resultCount: Int
+    let queuedCount: Int
     let isYtDlpReady: Bool
     let isPro: Bool
+    @Binding var showingStatusPopover: Bool
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
@@ -36,9 +40,60 @@ struct HomeHeroHeader: View {
             }
 
             Spacer(minLength: 0)
+
+            statusButton
         }
         .padding(16)
         .glassCard(tint: Theme.skyBlue.opacity(0.10), cornerRadius: HomeLayoutMetrics.cardCornerRadius)
+    }
+
+    private var statusButton: some View {
+        Button {
+            showingStatusPopover.toggle()
+        } label: {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    Label("Status", systemImage: "checklist")
+                    Text(statusSummaryText)
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                Label("Status", systemImage: "checklist")
+                Image(systemName: "checklist")
+            }
+            .font(.caption.weight(.bold))
+            .foregroundStyle(statusAccent)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(statusAccent.opacity(0.12), in: Capsule())
+            .overlay(Capsule().strokeBorder(statusAccent.opacity(0.24), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .help("Show Home status")
+        .popover(isPresented: $showingStatusPopover, arrowEdge: .bottom) {
+            HomeStatusRail(
+                inputModel: inputModel,
+                resultCount: resultCount,
+                queuedCount: queuedCount,
+                isYtDlpReady: isYtDlpReady,
+                isPro: isPro,
+                width: HomeLayoutMetrics.statusPopoverWidth
+            )
+            .padding(12)
+        }
+    }
+
+    private var statusSummaryText: String {
+        if inputModel.invalidLines.isEmpty {
+            return "\(inputModel.readyCount) ready · \(resultCount) results"
+        }
+        return "\(inputModel.invalidLines.count) needs attention"
+    }
+
+    private var statusAccent: Color {
+        if !inputModel.invalidLines.isEmpty || !isYtDlpReady {
+            return Theme.warning
+        }
+        return Theme.skyBlue
     }
 }
 

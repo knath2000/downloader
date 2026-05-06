@@ -6,6 +6,7 @@ struct HomeStatusRail: View {
     let queuedCount: Int
     let isYtDlpReady: Bool
     let isPro: Bool
+    var width: CGFloat = HomeLayoutMetrics.statusRailWidth
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -32,7 +33,7 @@ struct HomeStatusRail: View {
                 }
             }
         }
-        .frame(width: HomeLayoutMetrics.statusRailWidth, alignment: .topLeading)
+        .frame(width: width, alignment: .topLeading)
     }
 
     private func railCard<Content: View>(

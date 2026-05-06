@@ -108,8 +108,15 @@ struct ContentView: View {
                 case .downloads:
                     DownloadQueueViewNew(onUpgradeRequired: { showUpgradeOverlay = true })
                         .padding()
-                case .mega:
-                    MegaView(megaRemotePath: $megaRemotePath)
+                case .files:
+                    RemoteFilesView(
+                        seedboxTransferMode: seedboxTransferMode,
+                        seedboxRemoteName: seedboxRemoteName,
+                        seedboxRemotePath: seedboxRemotePath,
+                        seedboxWebdavURL: seedboxWebdavURL,
+                        seedboxWebdavUser: seedboxWebdavUser,
+                        seedboxWebdavPassword: seedboxWebdavPassword
+                    )
                         .padding()
                 case .settings:
                     SettingsView(gdriveRemoteName: $gdriveRemoteName,

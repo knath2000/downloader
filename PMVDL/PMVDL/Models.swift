@@ -371,7 +371,7 @@ enum NavDestination: String, Codable, CaseIterable {
     case favorites = "Favorites"
     case library = "Library"
     case downloads = "Downloads"
-    case mega = "Mega"
+    case files = "Files"
     case settings = "Settings"
 
     var icon: String {
@@ -382,7 +382,7 @@ enum NavDestination: String, Codable, CaseIterable {
         case .favorites: return "heart.fill"
         case .library: return "books.vertical.fill"
         case .downloads: return "arrow.down.circle.fill"
-        case .mega: return "cloud.fill"
+        case .files: return "folder.fill"
         case .settings: return "gearshape.fill"
         }
     }

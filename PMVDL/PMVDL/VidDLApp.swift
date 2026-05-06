@@ -25,6 +25,7 @@ struct VidDLApp: App {
                 }
                 Button("Library") { appState.select(.library) }.keyboardShortcut("4", modifiers: .command)
                 Button("Downloads") { appState.select(.downloads) }.keyboardShortcut("5", modifiers: .command)
+                Button("Files") { appState.select(.files) }
                 Button("Settings") { appState.select(.settings) }.keyboardShortcut(",", modifiers: .command)
             }
             CommandMenu("Downloads") {

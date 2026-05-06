@@ -8,6 +8,7 @@ struct HomeView: View {
     @State private var results: [ExtractResult] = []
     @State private var isLoading = false
     @State private var loadProgress = ""
+    @State private var showingStatusPopover = false
     var megaRemotePath: String
     var gdriveRemoteName: String
     var gdriveRemotePath: String
@@ -85,30 +86,7 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: HomeLayoutMetrics.cardSpacing) {
-                    mainColumn
-                        .frame(maxWidth: HomeLayoutMetrics.mainColumnMaxWidth)
-                    HomeStatusRail(
-                        inputModel: inputModel,
-                        resultCount: results.count,
-                        queuedCount: batchTargetLinks.count,
-                        isYtDlpReady: ScraperEngine.isYTDLPAvailable,
-                        isPro: ProFeatureGate.isPro
-                    )
-                }
-
-                VStack(alignment: .leading, spacing: HomeLayoutMetrics.cardSpacing) {
-                    mainColumn
-                    HomeStatusRail(
-                        inputModel: inputModel,
-                        resultCount: results.count,
-                        queuedCount: batchTargetLinks.count,
-                        isYtDlpReady: ScraperEngine.isYTDLPAvailable,
-                        isPro: ProFeatureGate.isPro
-                    )
-                }
-            }
+            mainColumn
             .frame(maxWidth: HomeLayoutMetrics.pageMaxWidth, alignment: .top)
             .frame(maxWidth: .infinity, alignment: .top)
             .padding(HomeLayoutMetrics.pagePadding)
@@ -142,7 +120,14 @@ struct HomeView: View {
 
     private var mainColumn: some View {
         VStack(alignment: .leading, spacing: HomeLayoutMetrics.cardSpacing) {
-            HomeHeroHeader(isYtDlpReady: ScraperEngine.isYTDLPAvailable, isPro: ProFeatureGate.isPro)
+            HomeHeroHeader(
+                inputModel: inputModel,
+                resultCount: results.count,
+                queuedCount: batchTargetLinks.count,
+                isYtDlpReady: ScraperEngine.isYTDLPAvailable,
+                isPro: ProFeatureGate.isPro,
+                showingStatusPopover: $showingStatusPopover
+            )
 
             HomeURLInputCard(
                 text: $urlText,

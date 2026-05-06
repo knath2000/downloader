@@ -56,7 +56,6 @@ final class FeedFilterTests: XCTestCase {
     func testTagAnyAndAllModes() {
         let item = feedItem(tags: ["one", "two"])
         var filters = FeedFilterState()
-        filters.date = .all
         filters.selectedTags = ["one", "missing"]
         filters.requireAllTags = false
         XCTAssertTrue(filters.matches(item, calendar: calendar, now: Date()))
@@ -66,6 +65,17 @@ final class FeedFilterTests: XCTestCase {
 
         filters.selectedTags = ["one", "two"]
         XCTAssertTrue(filters.matches(item, calendar: calendar, now: Date()))
+    }
+
+    func testDefaultFilterShowsLoadedItemsAcrossDates() throws {
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 6, hour: 12)))
+        let yesterday = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 5, day: 5, hour: 20)))
+        let olderItem = feedItem(uploadDate: yesterday)
+        let filters = FeedFilterState()
+
+        XCTAssertEqual(filters.date, .all)
+        XCTAssertTrue(filters.isDefault)
+        XCTAssertTrue(filters.matches(olderItem, calendar: calendar, now: now))
     }
 
     func testDateFiltersUseCalendarWindows() throws {
@@ -112,6 +122,9 @@ final class FeedFilterTests: XCTestCase {
 
         filters.removeActiveChip(id: "query")
         XCTAssertEqual(filters.query, "")
+
+        filters.removeActiveChip(id: "date")
+        XCTAssertEqual(filters.date, .all)
     }
 
     func testFeedGridLayoutUsesWiderCardsOnLargeScreens() {
@@ -124,6 +137,7 @@ final class FeedFilterTests: XCTestCase {
 
     private func feedItem(
         title: String = "Fixture",
+        uploadDate: Date = Date(),
         viewCount: Int = 0,
         duration: Int? = nil,
         studio: String? = nil,
@@ -137,7 +151,7 @@ final class FeedFilterTests: XCTestCase {
             title: title,
             url: "https://example.test/\(UUID().uuidString)",
             thumbnailURL: nil,
-            uploadDate: Date(),
+            uploadDate: uploadDate,
             viewCount: viewCount,
             siteName: "example.test",
             studio: studio,
