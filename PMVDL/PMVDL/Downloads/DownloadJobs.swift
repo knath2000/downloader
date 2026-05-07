@@ -298,6 +298,11 @@ struct SeedboxDownloadJob: DownloadJob {
     let resolution: DownloadResolution
     let context: DownloadJobContext
 
+    enum HLSUploadStrategy: Equatable {
+        case materializeLocally
+        case streamToRclone
+    }
+
     func run(onEvent: @escaping (JobEvent) -> Void) async throws -> JobCompletion {
         var filename = VideoFileNaming.mp4FileName(title: resolution.title, fallback: fileName(of: resolution.requestedUrl))
         let manager = SeedboxManager(mode: try transferMode())
@@ -330,7 +335,7 @@ struct SeedboxDownloadJob: DownloadJob {
                 }
             )
         } else if resolution.mediaKind == .hls,
-                  !shouldMaterializeHLSLocally,
+                  hlsUploadStrategy == .streamToRclone,
                   let m3u8URL = URL(string: resolution.finalUrl) {
             onEvent(.progress(.downloading, 0, "Streaming HLS to seedbox…"))
             finalPath = try await manager.uploadHLS(
@@ -372,7 +377,8 @@ struct SeedboxDownloadJob: DownloadJob {
                 headers: resolution.headers,
                 sourcePageUrl: resolution.sourcePageUrl,
                 onProgress: { event in
-                    onEvent(.progress(event.phase.queueStatus, event.percent, event.message, event.metrics))
+                    let projection = event.seedboxMaterializationProjection
+                    onEvent(.progress(projection.status, projection.progress, projection.message, projection.metrics))
                 }
             )
         case .ytDlp:
@@ -394,6 +400,9 @@ struct SeedboxDownloadJob: DownloadJob {
         }
 
         defer { try? FileManager.default.removeItem(at: localFile) }
+        if resolution.mediaKind == .hls {
+            onEvent(.progress(.uploading, 0, "Uploading to seedbox… 0%"))
+        }
         return try await manager.uploadFile(
             at: localFile,
             filename: filename,
@@ -404,12 +413,16 @@ struct SeedboxDownloadJob: DownloadJob {
         )
     }
 
-    private var shouldMaterializeHLSLocally: Bool {
-        guard resolution.mediaKind == .hls else { return false }
-        if resolution.source.siteName?.localizedCaseInsensitiveContains("Lulu") == true {
-            return true
+    var hlsUploadStrategy: HLSUploadStrategy {
+        Self.hlsUploadStrategy(forSiteName: resolution.source.siteName, sourcePageUrl: resolution.sourcePageUrl)
+    }
+
+    static func hlsUploadStrategy(forSiteName siteName: String?, sourcePageUrl: String?) -> HLSUploadStrategy {
+        let values = [siteName, sourcePageUrl].compactMap { $0?.lowercased() }
+        if values.contains(where: { $0.contains("lulu") || $0.contains("vidara") }) {
+            return .materializeLocally
         }
-        return resolution.sourcePageUrl?.localizedCaseInsensitiveContains("lulu") == true
+        return .streamToRclone
     }
 
     private func transferMode() throws -> SeedboxTransferMode {
@@ -781,6 +794,34 @@ final class DownloadJobRunner {
         )
         VideoLibrary.shared.addIfNew(newItem)
         return VideoLibrary.shared.items.first(where: { $0.url == result.url }) ?? newItem
+    }
+}
+
+struct DownloadQueueProgressProjection: Equatable {
+    let status: QueueStatus
+    let progress: Double
+    let message: String
+    let metrics: DownloadTransferMetrics?
+}
+
+extension ProgressEvent {
+    var seedboxMaterializationProjection: DownloadQueueProgressProjection {
+        switch phase {
+        case .completing:
+            return DownloadQueueProgressProjection(
+                status: .verifying,
+                progress: min(percent, 99),
+                message: "Preparing seedbox upload…",
+                metrics: nil
+            )
+        default:
+            return DownloadQueueProgressProjection(
+                status: phase.queueStatus,
+                progress: percent,
+                message: message,
+                metrics: metrics
+            )
+        }
     }
 }
 

@@ -5,6 +5,7 @@ struct FeedFavoriteItem: Identifiable, Codable, Hashable {
     let title: String
     let url: String
     let thumbnailURL: String?
+    let referer: String?
     let uploadDate: Date
     let favoritedAt: Date
     let viewCount: Int
@@ -22,6 +23,7 @@ struct FeedFavoriteItem: Identifiable, Codable, Hashable {
         title: String,
         url: String,
         thumbnailURL: String?,
+        referer: String? = nil,
         uploadDate: Date,
         favoritedAt: Date = Date(),
         viewCount: Int,
@@ -38,6 +40,7 @@ struct FeedFavoriteItem: Identifiable, Codable, Hashable {
         self.title = title
         self.url = url
         self.thumbnailURL = thumbnailURL
+        self.referer = referer
         self.uploadDate = uploadDate
         self.favoritedAt = favoritedAt
         self.viewCount = viewCount
@@ -60,6 +63,7 @@ extension FeedFavoriteItem {
             title: item.title,
             url: normalizedURL,
             thumbnailURL: item.thumbnailURL,
+            referer: item.referer,
             uploadDate: item.uploadDate,
             favoritedAt: favoritedAt,
             viewCount: item.viewCount,

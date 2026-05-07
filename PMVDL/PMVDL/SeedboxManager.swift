@@ -551,6 +551,7 @@ final class SeedboxManager {
         let transferPipe = Pipe()
         ffmpegProcess.standardOutput = transferPipe
         rcloneProcess.standardInput = transferPipe
+        let transferActivity = LockedTransferActivity()
 
         let ffmpegStderrPipe = Pipe()
         ffmpegProcess.standardError = ffmpegStderrPipe
@@ -559,6 +560,9 @@ final class SeedboxManager {
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
             if let event = DownloadProgressParsers.ffmpegProgressEvent(from: text, totalDuration: totalDuration),
                event.phase == .downloading {
+                if event.percent > 0 {
+                    transferActivity.mark()
+                }
                 progressHandler(min(0.99, event.percent / 100.0))
             }
         }
@@ -566,7 +570,11 @@ final class SeedboxManager {
         let rcloneStdoutPipe = Pipe()
         rcloneProcess.standardOutput = rcloneStdoutPipe
         rcloneStdoutPipe.fileHandleForReading.readabilityHandler = { handle in
-            _ = handle.availableData
+            let data = handle.availableData
+            guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
+            if let pct = DownloadProgressParsers.rclonePercent(from: text), pct > 0 {
+                transferActivity.mark()
+            }
         }
 
         let rcloneStderrPipe = Pipe()
@@ -574,7 +582,13 @@ final class SeedboxManager {
         let rcloneErrBuffer = LockedDataBuffer()
         rcloneStderrPipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
-            if !data.isEmpty { rcloneErrBuffer.append(data) }
+            guard !data.isEmpty else { return }
+            rcloneErrBuffer.append(data)
+            if let text = String(data: data, encoding: .utf8),
+               let pct = DownloadProgressParsers.rclonePercent(from: text),
+               pct > 0 {
+                transferActivity.mark()
+            }
         }
 
         do {
@@ -594,6 +608,7 @@ final class SeedboxManager {
         }
 
         let deadline = Date().addingTimeInterval(7200)
+        let startupNoDataDeadline = Date().addingTimeInterval(45)
         while ffmpegProcess.isRunning || rcloneProcess.isRunning {
             if Task.isCancelled {
                 ffmpegProcess.terminate()
@@ -604,6 +619,11 @@ final class SeedboxManager {
                 ffmpegProcess.terminate()
                 rcloneProcess.terminate()
                 throw SeedboxError.transferFailed("HLS transfer timed out.")
+            }
+            if !transferActivity.hasActivity && Date() > startupNoDataDeadline {
+                ffmpegProcess.terminate()
+                rcloneProcess.terminate()
+                throw SeedboxError.transferFailed("HLS stream produced no data for seedbox upload. Try local materialization for this provider.")
             }
             try await Task.sleep(for: .milliseconds(200))
         }
@@ -1025,5 +1045,23 @@ private final class LockedDataBuffer: @unchecked Sendable {
         let snapshot = data
         lock.unlock()
         return String(data: snapshot, encoding: .utf8) ?? ""
+    }
+}
+
+private final class LockedTransferActivity: @unchecked Sendable {
+    private let lock = NSLock()
+    private var lastActivityAt: Date?
+
+    var hasActivity: Bool {
+        lock.lock()
+        let hasActivity = lastActivityAt != nil
+        lock.unlock()
+        return hasActivity
+    }
+
+    func mark() {
+        lock.lock()
+        lastActivityAt = Date()
+        lock.unlock()
     }
 }

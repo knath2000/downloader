@@ -3,6 +3,10 @@ import Foundation
 /// Extracts video sources from vidara.so pages.
 struct VidaraExtractor: VideoSiteExtractor {
     private static let apiURL = URL(string: "https://vidara.so/api/stream")!
+    private static let hlsHeaders = [
+        "User-Agent": NetworkConstants.chromeUserAgent,
+        "Referer": "https://vidara.so/"
+    ]
 
     static func supports(_ url: URL) -> Bool {
         url.host()?.lowercased().contains("vidara.so") ?? false
@@ -22,7 +26,7 @@ struct VidaraExtractor: VideoSiteExtractor {
         }
 
         // Try to parse master playlist for variant labels
-        let hls = try await parseHlsVariants(masterUrl: hlsUrl)
+        let hls = try await parseHlsVariants(masterUrl: hlsUrl, sourcePageUrl: url.absoluteString)
 
         return VideoSource(
             mp4: nil,
@@ -47,21 +51,28 @@ struct VidaraExtractor: VideoSiteExtractor {
         return String(path[range])
     }
 
-    private static func parseHlsVariants(masterUrl: String) async throws -> [VideoSource.Quality] {
+    private static func parseHlsVariants(masterUrl: String, sourcePageUrl: String) async throws -> [VideoSource.Quality] {
         guard let url = URL(string: masterUrl) else {
-            return [VideoSource.Quality(label: "master", url: masterUrl)]
+            return [vidaraQuality(label: "master", url: masterUrl, sourcePageUrl: sourcePageUrl)]
         }
 
         var request = URLRequest(url: url)
-        request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
+        hlsHeaders.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         let (data, _) = try await URLSession.shared.data(for: request)
         guard let playlist = String(data: data, encoding: .utf8) else {
-            return [VideoSource.Quality(label: "master", url: masterUrl)]
+            return [vidaraQuality(label: "master", url: masterUrl, sourcePageUrl: sourcePageUrl)]
+        }
+
+        return parseHlsVariants(playlist: playlist, masterUrl: masterUrl, sourcePageUrl: sourcePageUrl)
+    }
+
+    private static func parseHlsVariants(playlist: String, masterUrl: String, sourcePageUrl: String) -> [VideoSource.Quality] {
+        guard let url = URL(string: masterUrl) else {
+            return [vidaraQuality(label: "master", url: masterUrl, sourcePageUrl: sourcePageUrl)]
         }
 
         var variants: [VideoSource.Quality] = []
         let lines = playlist.split(separator: "\n").map { String($0).trimmingCharacters(in: .whitespaces) }
-        let base = masterUrl.components(separatedBy: "/").dropLast().joined(separator: "/")
 
         for (i, line) in lines.enumerated() {
             guard line.hasPrefix("#EXT-X-STREAM-INF") else { continue }
@@ -78,10 +89,14 @@ struct VidaraExtractor: VideoSiteExtractor {
                 label = "stream"
             }
 
-            variants.append(VideoSource.Quality(label: label, url: variantUrl.absoluteString))
+            variants.append(vidaraQuality(label: label, url: variantUrl.absoluteString, sourcePageUrl: sourcePageUrl))
         }
 
-        return variants.isEmpty ? [VideoSource.Quality(label: "master", url: masterUrl)] : variants
+        return variants.isEmpty ? [vidaraQuality(label: "master", url: masterUrl, sourcePageUrl: sourcePageUrl)] : variants
+    }
+
+    private static func vidaraQuality(label: String, url: String, sourcePageUrl: String) -> VideoSource.Quality {
+        VideoSource.Quality(label: label, url: url, headers: hlsHeaders, sourcePageUrl: sourcePageUrl)
     }
 
     private static func heightToLabel(_ height: Int) -> String {
@@ -101,6 +116,7 @@ struct VidaraExtractor: VideoSiteExtractor {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("https://vidara.so/", forHTTPHeaderField: "Referer")
 
         let body = ["filecode": filecode, "device": "web"]
         request.httpBody = try JSONEncoder().encode(body)
@@ -117,6 +133,16 @@ struct VidaraExtractor: VideoSiteExtractor {
         let decoder = JSONDecoder()
         return try decoder.decode(VidaraStreamInfo.self, from: data)
     }
+
+#if DEBUG
+    static func parseHlsVariantsForTesting(
+        playlist: String,
+        masterUrl: String,
+        sourcePageUrl: String
+    ) -> [VideoSource.Quality] {
+        parseHlsVariants(playlist: playlist, masterUrl: masterUrl, sourcePageUrl: sourcePageUrl)
+    }
+#endif
 }
 
 // MARK: - Regex Helper

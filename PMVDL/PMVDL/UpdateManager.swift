@@ -89,7 +89,7 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
     private var hasActiveQueueWork: Bool {
         DownloadQueue.shared.queue.contains { item in
             switch item.status {
-            case .downloading, .verifying, .uploading:
+            case .downloading, .verifying, .uploading, .processing:
                 return true
             case .pending, .completed, .paused, .failed:
                 return false

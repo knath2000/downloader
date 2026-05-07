@@ -1,5 +1,11 @@
 # VidDL Changelog
 
+## Unreleased
+- Redesigned Library as a hybrid activity timeline plus selected-item detail preview
+- Added video, link, and upload detail actions directly in the Library preview panel
+- Kept video bulk selection separate from timeline preview selection
+- Added Library timeline tests for selected-entry fallback and video-only bulk selection
+
 ## v2.0.0 (Apr 2026)
 - Dual window + menu bar mode (no longer menubar-only)
 - Library view with thumbnail caching

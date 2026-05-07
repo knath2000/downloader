@@ -220,6 +220,30 @@ final class DoodStreamExtractorTests: XCTestCase {
     }
 }
 
+final class VidaraExtractorTests: XCTestCase {
+    func testParsedHLSQualitiesCarryVidaraHeadersAndSourcePageUrl() {
+        let playlist = """
+        #EXTM3U
+        #EXT-X-STREAM-INF:BANDWIDTH=4500000,RESOLUTION=1920x1080
+        video/1080.m3u8
+        """
+        let sourcePageUrl = "https://vidara.so/v/HMyhgZqHhW3Ml"
+
+        let qualities = VidaraExtractor.parseHlsVariantsForTesting(
+            playlist: playlist,
+            masterUrl: "https://cdn.vidara.test/hls/master.m3u8?token=abc",
+            sourcePageUrl: sourcePageUrl
+        )
+
+        XCTAssertEqual(qualities.count, 1)
+        XCTAssertEqual(qualities[0].label, "1080p")
+        XCTAssertEqual(qualities[0].url, "https://cdn.vidara.test/hls/video/1080.m3u8")
+        XCTAssertEqual(qualities[0].headers?["User-Agent"], NetworkConstants.chromeUserAgent)
+        XCTAssertEqual(qualities[0].headers?["Referer"], "https://vidara.so/")
+        XCTAssertEqual(qualities[0].sourcePageUrl, sourcePageUrl)
+    }
+}
+
 final class DownloadResolutionTests: XCTestCase {
     func testDirectMP4UsesSourceLevelHeaders() async throws {
         let headers = ["Referer": "https://pmvhaven.com/"]
@@ -310,6 +334,53 @@ final class DownloadResolutionTests: XCTestCase {
 
         XCTAssertEqual(resolution.mediaKind, .hls)
         XCTAssertEqual(resolution.headers?["Referer"], "https://embed.example.test/")
+    }
+
+    func testVidaraHLSResolutionKeepsHeadersAndSourcePageUrl() async throws {
+        let sourcePageUrl = "https://vidara.so/v/HMyhgZqHhW3Ml"
+        let quality = VideoSource.Quality(
+            label: "1080p",
+            url: "https://cdn.vidara.test/hls/master.m3u8?token=abc",
+            headers: [
+                "User-Agent": NetworkConstants.chromeUserAgent,
+                "Referer": "https://vidara.so/"
+            ],
+            sourcePageUrl: sourcePageUrl
+        )
+        let source = VideoSource(mp4: nil, hls: [quality], title: "Vidara Test", siteName: "Vidara")
+
+        let resolution = try await DownloadResolver.resolve(
+            requestedUrl: quality.url,
+            in: [ExtractResult(url: sourcePageUrl, source: source, error: nil)]
+        )
+
+        XCTAssertEqual(resolution.mediaKind, .hls)
+        XCTAssertEqual(resolution.headers?["User-Agent"], NetworkConstants.chromeUserAgent)
+        XCTAssertEqual(resolution.headers?["Referer"], "https://vidara.so/")
+        XCTAssertEqual(resolution.sourcePageUrl, sourcePageUrl)
+    }
+}
+
+final class SeedboxHLSUploadStrategyTests: XCTestCase {
+    func testVidaraMaterializesHLSLocally() {
+        XCTAssertEqual(
+            SeedboxDownloadJob.hlsUploadStrategy(forSiteName: "Vidara", sourcePageUrl: nil),
+            .materializeLocally
+        )
+    }
+
+    func testLuluStreamMaterializesHLSLocally() {
+        XCTAssertEqual(
+            SeedboxDownloadJob.hlsUploadStrategy(forSiteName: "LuluStream", sourcePageUrl: nil),
+            .materializeLocally
+        )
+    }
+
+    func testGenericHLSStreamsToRclone() {
+        XCTAssertEqual(
+            SeedboxDownloadJob.hlsUploadStrategy(forSiteName: "HLS Stream", sourcePageUrl: nil),
+            .streamToRclone
+        )
     }
 }
 

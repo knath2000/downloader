@@ -5,6 +5,7 @@ struct FeedItem: Identifiable, Hashable {
     let title: String
     let url: String
     let thumbnailURL: String?
+    let referer: String?
     let uploadDate: Date
     let viewCount: Int
     let siteName: String
@@ -21,6 +22,7 @@ struct FeedItem: Identifiable, Hashable {
         title: String,
         url: String,
         thumbnailURL: String?,
+        referer: String? = nil,
         uploadDate: Date,
         viewCount: Int,
         siteName: String,
@@ -36,6 +38,7 @@ struct FeedItem: Identifiable, Hashable {
         self.title = title
         self.url = url
         self.thumbnailURL = thumbnailURL
+        self.referer = referer
         self.uploadDate = uploadDate
         self.viewCount = viewCount
         self.siteName = siteName

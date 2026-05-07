@@ -18,7 +18,6 @@ struct VidDLApp: App {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Navigate") {
                 Button("Home") { appState.select(.home) }.keyboardShortcut("1", modifiers: .command)
-                Button("History") { appState.select(.history) }.keyboardShortcut("2", modifiers: .command)
                 Button("Feed") { appState.select(.feed) }.keyboardShortcut("3", modifiers: .command)
                 if favorites.hasFavorites {
                     Button("Favorites") { appState.select(.favorites) }

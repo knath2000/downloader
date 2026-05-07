@@ -96,9 +96,6 @@ struct ContentView: View {
                 case .library:
                     LibraryView(onUpgradeRequired: { showUpgradeOverlay = true })
                         .padding()
-                case .history:
-                    HistoryView()
-                        .padding()
                 case .feed:
                     FeedView()
                         .padding()
@@ -167,7 +164,7 @@ struct ContentView: View {
         case .downloads:
             let q = downloadQueue.queue.filter {
                 switch $0.status {
-                case .downloading, .verifying, .uploading:
+                case .downloading, .verifying, .uploading, .processing:
                     return true
                 default:
                     return false

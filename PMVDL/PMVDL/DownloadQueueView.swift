@@ -193,7 +193,7 @@ struct DownloadQueueViewNew: View {
 
     private func pauseAll() {
         visibleItems
-            .filter { !$0.status.isTerminal && $0.status != .paused }
+            .filter(canPause(_:))
             .forEach { queue.pause($0) }
     }
 
@@ -222,6 +222,15 @@ struct DownloadQueueViewNew: View {
                 return false
             }
             .forEach { queue.remove($0) }
+    }
+
+    private func canPause(_ item: DownloadQueueItem) -> Bool {
+        switch item.status {
+        case .pending, .downloading, .verifying, .uploading:
+            return true
+        case .processing, .paused, .completed, .failed:
+            return false
+        }
     }
 
     private func retry(_ item: DownloadQueueItem) {
@@ -289,7 +298,7 @@ struct DownloadQueueViewNew: View {
 
     private func pauseSelected() {
         selectedItems
-            .filter { !$0.status.isTerminal && $0.status != .paused }
+            .filter(canPause(_:))
             .forEach { queue.pause($0) }
     }
 
@@ -668,6 +677,9 @@ private struct DownloadQueueRow: View {
             case .downloading, .verifying, .uploading:
                 DownloadRowButton("Pause", systemImage: "pause.fill", tint: Theme.textSecondary, action: onPause)
                 DownloadRowButton("Open Folder", systemImage: "folder", tint: Theme.textSecondary, action: onShowInFinder)
+            case .processing:
+                DownloadRowButton("Cancel", systemImage: "xmark", tint: Theme.textSecondary, action: onRemove)
+                DownloadRowButton("Open Folder", systemImage: "folder", tint: Theme.textSecondary, action: onShowInFinder)
             case .paused:
                 DownloadRowButton("Resume", systemImage: "play.fill", tint: Theme.electricLime, action: onResume)
                     .disabled(item.retryPayload == nil)
@@ -707,7 +719,7 @@ private struct DownloadQueueRow: View {
         if item.status == .completed {
             processingMenuItems
         }
-        if !item.status.isTerminal {
+        if !item.status.isTerminal && item.status != .processing {
             Button("Move to Front") { onMoveToFront() }
         }
         Divider()
@@ -734,13 +746,7 @@ private struct DownloadQueueRow: View {
     }
 
     private var processingMenuItems: some View {
-        ForEach(VideoProcessingPreset.allCases) { preset in
-            Button {
-                onProcess(preset)
-            } label: {
-                Label(preset.title, systemImage: preset.systemImage)
-            }
-        }
+        VideoProcessingMenuItems(process: onProcess)
     }
 }
 
@@ -751,7 +757,7 @@ private struct DownloadPrimaryMetric: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            if item.status == .verifying {
+            if item.status == .verifying || (item.status == .processing && item.progress <= 0) {
                 ProgressView()
                     .controlSize(.small)
                     .scaleEffect(0.62)
@@ -771,6 +777,8 @@ private struct DownloadPrimaryMetric: View {
             return "Verifying"
         case .uploading:
             return "cloud \(DownloadStatusFormatting.eta(for: item) ?? String(format: "%.1f%%", item.progress))"
+        case .processing:
+            return String(format: "%.1f%%", item.progress)
         case .completed:
             return "Done"
         case .failed:
@@ -852,7 +860,13 @@ private struct DownloadPipelineBar: View {
     let item: DownloadQueueItem
 
     private var phases: [DownloadPipelinePhase] {
-        item.targetCloud == .local ? [.download, .verify] : [.download, .verify, .upload]
+        if item.isProcessingJob {
+            return [.process]
+        }
+        if item.targetCloud == .local {
+            return [.download, .verify]
+        }
+        return [.download, .verify, .upload]
     }
 
     var body: some View {
@@ -887,6 +901,8 @@ private struct DownloadPipelineBar: View {
 
     private var activePhase: DownloadPipelinePhase? {
         switch item.status {
+        case .processing:
+            return .process
         case .downloading, .pending, .paused:
             return .download
         case .verifying:
@@ -899,6 +915,18 @@ private struct DownloadPipelineBar: View {
     }
 
     private func fill(for phase: DownloadPipelinePhase) -> Double {
+        if item.isProcessingJob {
+            switch item.status {
+            case .processing:
+                return phase == .process ? item.progress / 100 : 0
+            case .completed:
+                return 1
+            case .failed:
+                return phase == .process ? max(item.progress / 100, 0.08) : 0
+            default:
+                return 0
+            }
+        }
         switch item.status {
         case .pending:
             return 0
@@ -909,6 +937,8 @@ private struct DownloadPipelineBar: View {
         case .uploading:
             if phase == .download || phase == .verify { return 1 }
             return phase == .upload ? item.progress / 100 : 0
+        case .processing:
+            return 0
         case .completed:
             return 1
         case .paused:
@@ -923,6 +953,7 @@ private struct DownloadPipelineBar: View {
         case .download: return Theme.gold
         case .verify: return Theme.skyBlue
         case .upload: return Theme.electricLime
+        case .process: return Theme.coral
         }
     }
 }
@@ -1208,7 +1239,7 @@ private enum DownloadSectionKind: String, CaseIterable, Identifiable {
         switch self {
         case .active:
             switch item.status {
-            case .downloading, .verifying, .uploading:
+            case .downloading, .verifying, .uploading, .processing:
                 return true
             default:
                 return false
@@ -1237,6 +1268,7 @@ private enum DownloadPipelinePhase: String, Identifiable {
     case download
     case verify
     case upload
+    case process
 
     var id: Self { self }
 
@@ -1245,16 +1277,18 @@ private enum DownloadPipelinePhase: String, Identifiable {
         case .download: return "Download"
         case .verify: return "Verify"
         case .upload: return "Upload"
+        case .process: return "Process"
         }
     }
 }
 
-private enum DownloadStatusFormatting {
+enum DownloadStatusFormatting {
     static func statusTint(_ item: DownloadQueueItem) -> Color {
         switch item.status {
         case .downloading: return Theme.gold
         case .verifying: return Theme.skyBlue
         case .uploading: return Theme.electricLime
+        case .processing: return Theme.coral
         case .completed: return Theme.success
         case .paused: return Theme.textSecondary
         case .pending: return Theme.lavender
@@ -1268,6 +1302,7 @@ private enum DownloadStatusFormatting {
         case .downloading: return "arrow.down.circle.fill"
         case .verifying: return "checkmark.shield.fill"
         case .uploading: return "arrow.up.circle.fill"
+        case .processing: return "wand.and.stars"
         case .completed: return "checkmark.circle.fill"
         case .paused: return "pause.circle.fill"
         case .failed: return "xmark.circle.fill"
@@ -1280,6 +1315,7 @@ private enum DownloadStatusFormatting {
         case .downloading: return "Downloading"
         case .verifying: return "Verifying"
         case .uploading: return "Uploading"
+        case .processing: return "Processing"
         case .completed: return "Completed"
         case .paused: return "Paused"
         case .failed: return "Failed"
@@ -1287,6 +1323,14 @@ private enum DownloadStatusFormatting {
     }
 
     static func phaseLabel(for item: DownloadQueueItem) -> String {
+        if item.isProcessingJob {
+            switch item.status {
+            case .completed:
+                return "Done"
+            default:
+                return "Process"
+            }
+        }
         switch item.status {
         case .pending, .downloading, .paused:
             return "Download"
@@ -1294,6 +1338,8 @@ private enum DownloadStatusFormatting {
             return "Verify"
         case .uploading:
             return "Upload"
+        case .processing:
+            return "Process"
         case .completed:
             return "Done"
         case .failed:
@@ -1304,6 +1350,9 @@ private enum DownloadStatusFormatting {
     }
 
     static func sourceLabel(for item: DownloadQueueItem) -> String {
+        if item.isProcessingJob {
+            return "Local File"
+        }
         guard let host = URL(string: item.url)?.host?.replacingOccurrences(of: "www.", with: "") else {
             return item.quality
         }

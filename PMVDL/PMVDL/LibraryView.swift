@@ -4,12 +4,13 @@ import SwiftUI
 @MainActor
 struct LibraryView: View {
     @StateObject private var library = VideoLibrary.shared
+    @StateObject private var history = HistoryManager.shared
     @StateObject private var thumbnailStore = LibraryThumbnailStore()
     let onUpgradeRequired: () -> Void
 
     @State private var searchText = ""
-    @State private var kindFilter: LibraryKindFilter = .all
-    @State private var sortMode: LibrarySortMode = .newest
+    @State private var timelineFilter: LibraryTimelineFilter = .all
+    @State private var selectedEntryID: String?
     @State private var selection: Set<UUID> = []
     @State private var showingBulkDeleteConfirmation = false
     @State private var pendingDeleteItem: LibraryItem?
@@ -19,53 +20,61 @@ struct LibraryView: View {
         self.onUpgradeRequired = onUpgradeRequired
     }
 
-    private var filteredItems: [LibraryItem] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let filtered = library.items.filter { item in
-            let queryMatches = query.isEmpty || LibraryDisplay.searchText(for: item).contains(query)
-            return queryMatches && kindFilter.matches(item)
-        }
-
-        switch sortMode {
-        case .newest:
-            return filtered.sorted { $0.extractedAt > $1.extractedAt }
-        case .oldest:
-            return filtered.sorted { $0.extractedAt < $1.extractedAt }
-        case .titleAscending:
-            return filtered.sorted {
-                LibraryDisplay.title(for: $0).localizedCaseInsensitiveCompare(LibraryDisplay.title(for: $1)) == .orderedAscending
-            }
-        case .titleDescending:
-            return filtered.sorted {
-                LibraryDisplay.title(for: $0).localizedCaseInsensitiveCompare(LibraryDisplay.title(for: $1)) == .orderedDescending
-            }
-        }
+    private var timelineEntries: [LibraryTimelineEntry] {
+        LibraryTimelineBuilder.entries(
+            libraryItems: library.items,
+            historyItems: history.items,
+            completedUploads: history.completedUploads
+        )
     }
 
-    private var dayBuckets: [LibraryDayBucket] {
-        Dictionary(grouping: filteredItems) { item in
-            Calendar.current.startOfDay(for: item.extractedAt)
+    private var filteredEntries: [LibraryTimelineEntry] {
+        LibraryTimelineBuilder.filteredEntries(
+            timelineEntries,
+            query: searchText,
+            filter: timelineFilter
+        )
+    }
+
+    private var dayBuckets: [LibraryTimelineDayBucket] {
+        Dictionary(grouping: filteredEntries) { entry in
+            Calendar.current.startOfDay(for: entry.timestamp)
         }
-        .map { date, items in
-            LibraryDayBucket(date: date, items: items)
+        .map { date, entries in
+            LibraryTimelineDayBucket(date: date, entries: entries.sorted { $0.timestamp > $1.timestamp })
         }
         .sorted { $0.date > $1.date }
+    }
+
+    private var visibleVideoItems: [LibraryItem] {
+        filteredEntries.compactMap { entry in
+            if case .video(let item) = entry { return item }
+            return nil
+        }
     }
 
     private var selectedItems: [LibraryItem] {
         library.items.filter { selection.contains($0.id) }
     }
 
+    private var selectedEntry: LibraryTimelineEntry? {
+        LibraryTimelineBuilder.selectedEntry(currentID: selectedEntryID, in: filteredEntries)
+    }
+
+    private var filteredEntryIDs: [String] {
+        filteredEntries.map(\.id)
+    }
+
     var body: some View {
         VStack(spacing: 12) {
             LibraryToolbar(
                 searchText: $searchText,
-                kindFilter: $kindFilter,
-                sortMode: $sortMode,
-                visibleCount: filteredItems.count,
-                totalCount: library.items.count,
-                counts: LibraryKindFilterCounts(items: library.items),
+                timelineFilter: $timelineFilter,
+                visibleCount: filteredEntries.count,
+                totalCount: timelineEntries.count,
+                counts: LibraryTimelineFilterCounts(entries: timelineEntries),
                 isRefreshing: thumbnailStore.isRefreshing,
+                canRefreshThumbnails: !visibleVideoItems.isEmpty,
                 searchFocused: $searchFocused,
                 refreshAction: regenerateAllThumbnails
             )
@@ -129,12 +138,22 @@ struct LibraryView: View {
                 }
             } else if !selection.isEmpty {
                 selection.removeAll()
+            } else if selectedEntryID != nil {
+                selectedEntryID = nil
             }
         }
         .onDeleteCommand {
             if !selection.isEmpty {
                 showingBulkDeleteConfirmation = true
+            } else if let selectedEntry, case .video(let item) = selectedEntry {
+                pendingDeleteItem = item
             }
+        }
+        .onChange(of: filteredEntryIDs) { _, _ in
+            syncSelectedEntry()
+        }
+        .onAppear {
+            syncSelectedEntry()
         }
         .background(
             Button("") { searchFocused = true }
@@ -146,82 +165,156 @@ struct LibraryView: View {
 
     @ViewBuilder
     private var content: some View {
-        if library.items.isEmpty {
+        if timelineEntries.isEmpty {
             LibraryEmptyState()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if filteredItems.isEmpty {
+        } else if filteredEntries.isEmpty {
             LibraryNoResultsState(
                 searchText: searchText,
-                filter: kindFilter,
+                filter: timelineFilter,
                 clearAction: clearFilters
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 18, pinnedViews: [.sectionHeaders]) {
-                    ForEach(dayBuckets) { bucket in
-                        Section {
-                            LazyVGrid(
-                                columns: [GridItem(.adaptive(minimum: 240), spacing: 14)],
-                                alignment: .leading,
-                                spacing: 14
-                            ) {
-                                ForEach(bucket.items) { item in
-                                    LibraryCardView(
-                                        item: item,
-                                        thumbnail: thumbnailStore.image(for: item),
-                                        isThumbnailLoading: thumbnailStore.isLoading(item),
-                                        thumbnailFailed: thumbnailStore.didFail(item),
-                                        isSelected: selection.contains(item.id),
-                                        refreshThumbnail: {
-                                            Task { await thumbnailStore.load(item: item, force: true) }
-                                        },
-                                        openMedia: { openPreferredMedia(for: item) },
-                                        openSource: { openSource(for: item) },
-                                        reExtract: { reExtract(item) },
-                                        upload: { target in uploadItems([item], to: target) },
-                                        process: { preset in process(item, preset: preset) },
-                                        requestDelete: { pendingDeleteItem = item },
-                                        toggleSelection: { toggleSelection(for: item) }
-                                    )
-                                    .task(id: thumbnailTaskID(for: item)) {
-                                        await thumbnailStore.load(item: item)
-                                    }
-                                }
+            GeometryReader { proxy in
+                let isWide = proxy.size.width >= 900
+                let panelWidth = min(max(proxy.size.width * 0.34, 320), 410)
+
+                if isWide {
+                    HStack(alignment: .top, spacing: 12) {
+                        timelineScroll(inlineDetail: false)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                        if let selectedEntry {
+                            ScrollView {
+                                detailPanel(for: selectedEntry)
                             }
-                        } header: {
-                            LibraryDayHeader(date: bucket.date, count: bucket.items.count)
+                            .frame(width: panelWidth)
+                            .frame(maxHeight: .infinity)
                         }
                     }
+                } else {
+                    timelineScroll(inlineDetail: true)
                 }
-                .padding(.top, 2)
-                .padding(.bottom, selection.isEmpty ? 18 : 76)
             }
         }
     }
 
-    private func regenerateAllThumbnails() {
-        Task {
-            await thumbnailStore.refresh(items: filteredItems.isEmpty ? library.items : filteredItems, force: true)
+    private func timelineScroll(inlineDetail: Bool) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 8, pinnedViews: [.sectionHeaders]) {
+                ForEach(dayBuckets) { bucket in
+                    Section {
+                        ForEach(bucket.entries) { entry in
+                            LibraryTimelineRow(
+                                entry: entry,
+                                thumbnail: thumbnail(for: entry),
+                                isThumbnailLoading: isThumbnailLoading(entry),
+                                thumbnailFailed: thumbnailFailed(entry),
+                                isPreviewSelected: selectedEntry?.id == entry.id,
+                                isBulkSelected: isBulkSelected(entry),
+                                refreshThumbnail: { item in
+                                    Task { await thumbnailStore.load(item: item, force: true) }
+                                },
+                                openMedia: openPreferredMedia,
+                                openSource: openSource,
+                                reExtractVideo: reExtract,
+                                uploadVideo: { item, target in uploadItems([item], to: target) },
+                                processVideo: process,
+                                requestDeleteVideo: { pendingDeleteItem = $0 },
+                                selectEntry: selectEntry,
+                                toggleVideoSelection: toggleVideoSelection,
+                                extractAgain: reExtract,
+                                removeLink: { history.remove($0) },
+                                removeUpload: { history.removeCompletedUpload($0) }
+                            )
+                            .task(id: entry.thumbnailIdentity) {
+                                if case .video(let item) = entry {
+                                    await thumbnailStore.load(item: item)
+                                }
+                            }
+
+                            if inlineDetail, selectedEntry?.id == entry.id {
+                                detailPanel(for: entry)
+                                    .padding(.top, 2)
+                                    .padding(.bottom, 6)
+                            }
+                        }
+                    } header: {
+                        LibraryDayHeader(date: bucket.date, count: bucket.entries.count)
+                    }
+                }
+            }
+            .padding(.top, 2)
+            .padding(.bottom, selection.isEmpty ? 18 : 76)
         }
     }
 
-    private func thumbnailTaskID(for item: LibraryItem) -> String {
-        item.thumbnailURL ?? item.mp4Url ?? item.hlsUrls.first?.url ?? item.url
+    private func detailPanel(for entry: LibraryTimelineEntry) -> some View {
+        LibraryDetailPanel(
+            entry: entry,
+            thumbnail: thumbnail(for: entry),
+            isThumbnailLoading: isThumbnailLoading(entry),
+            thumbnailFailed: thumbnailFailed(entry),
+            refreshThumbnail: { item in
+                Task { await thumbnailStore.load(item: item, force: true) }
+            },
+            openMedia: openPreferredMedia,
+            openSource: openSource,
+            reExtractVideo: reExtract,
+            uploadVideo: { item, target in uploadItems([item], to: target) },
+            processVideo: process,
+            requestDeleteVideo: { pendingDeleteItem = $0 },
+            extractAgain: reExtract,
+            removeLink: { history.remove($0) },
+            removeUpload: { history.removeCompletedUpload($0) },
+            openURL: openURLString
+        )
+    }
+
+    private func regenerateAllThumbnails() {
+        let items = visibleVideoItems
+        guard !items.isEmpty else { return }
+        Task {
+            await thumbnailStore.refresh(items: items, force: true)
+        }
     }
 
     private func clearFilters() {
         searchText = ""
-        kindFilter = .all
-        sortMode = .newest
+        timelineFilter = .all
     }
 
-    private func toggleSelection(for item: LibraryItem) {
-        if selection.contains(item.id) {
-            selection.remove(item.id)
-        } else {
-            selection.insert(item.id)
-        }
+    private func thumbnail(for entry: LibraryTimelineEntry) -> NSImage? {
+        guard case .video(let item) = entry else { return nil }
+        return thumbnailStore.image(for: item)
+    }
+
+    private func isThumbnailLoading(_ entry: LibraryTimelineEntry) -> Bool {
+        guard case .video(let item) = entry else { return false }
+        return thumbnailStore.isLoading(item)
+    }
+
+    private func thumbnailFailed(_ entry: LibraryTimelineEntry) -> Bool {
+        guard case .video(let item) = entry else { return false }
+        return thumbnailStore.didFail(item)
+    }
+
+    private func isBulkSelected(_ entry: LibraryTimelineEntry) -> Bool {
+        guard case .video(let item) = entry else { return false }
+        return selection.contains(item.id)
+    }
+
+    private func selectEntry(_ entry: LibraryTimelineEntry) {
+        selectedEntryID = entry.id
+    }
+
+    private func toggleVideoSelection(_ entry: LibraryTimelineEntry) {
+        selection = LibraryTimelineBuilder.videoSelection(selection, toggling: entry)
+    }
+
+    private func syncSelectedEntry() {
+        selectedEntryID = LibraryTimelineBuilder.selectedEntryID(currentID: selectedEntryID, in: filteredEntries)
     }
 
     private func deleteSelectedItems() {
@@ -249,6 +342,11 @@ struct LibraryView: View {
     }
 
     private func reExtract(_ item: LibraryItem) {
+        AppStateManager.shared.pendingExtractURL = item.url
+        AppStateManager.shared.select(.home)
+    }
+
+    private func reExtract(_ item: HistoryItem) {
         AppStateManager.shared.pendingExtractURL = item.url
         AppStateManager.shared.select(.home)
     }
@@ -287,13 +385,13 @@ struct LibraryView: View {
 
 private struct LibraryToolbar: View {
     @Binding var searchText: String
-    @Binding var kindFilter: LibraryKindFilter
-    @Binding var sortMode: LibrarySortMode
+    @Binding var timelineFilter: LibraryTimelineFilter
 
     let visibleCount: Int
     let totalCount: Int
-    let counts: LibraryKindFilterCounts
+    let counts: LibraryTimelineFilterCounts
     let isRefreshing: Bool
+    let canRefreshThumbnails: Bool
     let searchFocused: FocusState<Bool>.Binding
     let refreshAction: () -> Void
 
@@ -301,30 +399,27 @@ private struct LibraryToolbar: View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 10) {
                 LibrarySearchField(text: $searchText, searchFocused: searchFocused)
-                LibraryFilterChips(selection: $kindFilter, counts: counts)
+                LibraryFilterChips(selection: $timelineFilter, counts: counts)
                 Spacer(minLength: 10)
-                LibrarySortMenu(selection: $sortMode)
-                LibraryCountBadge(visibleCount: visibleCount, totalCount: totalCount)
+                LibrarySummaryText(visibleCount: visibleCount, totalCount: totalCount)
                 refreshButton
             }
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 10) {
                     LibrarySearchField(text: $searchText, searchFocused: searchFocused)
                     Spacer(minLength: 10)
-                    LibraryCountBadge(visibleCount: visibleCount, totalCount: totalCount)
+                    LibrarySummaryText(visibleCount: visibleCount, totalCount: totalCount)
                     refreshButton
                 }
                 HStack(spacing: 10) {
-                    LibraryFilterChips(selection: $kindFilter, counts: counts)
-                    Spacer(minLength: 10)
-                    LibrarySortMenu(selection: $sortMode)
+                    LibraryFilterChips(selection: $timelineFilter, counts: counts)
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .glassCard(tint: Theme.skyBlue.opacity(0.15), cornerRadius: 14)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .glassCard(tint: Theme.skyBlue.opacity(0.1), cornerRadius: 8)
     }
 
     private var refreshButton: some View {
@@ -341,14 +436,15 @@ private struct LibraryToolbar: View {
                 }
             }
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(isRefreshing || totalCount == 0 ? Theme.textSecondary.opacity(0.55) : Theme.textSecondary)
+            .foregroundStyle(isRefreshing || !canRefreshThumbnails ? Theme.textSecondary.opacity(0.55) : Theme.textSecondary)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(Theme.accentDim.opacity(0.35), in: Capsule())
             .overlay(Capsule().strokeBorder(Theme.skyBlue.opacity(0.22), lineWidth: 0.5))
         }
         .buttonStyle(.plain)
-        .disabled(isRefreshing || totalCount == 0)
+        .disabled(isRefreshing || !canRefreshThumbnails)
+        .help(canRefreshThumbnails ? "Refresh thumbnails for visible videos" : "No visible videos to refresh")
     }
 }
 
@@ -361,7 +457,7 @@ private struct LibrarySearchField: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Theme.textSecondary)
-            TextField("Search title, source, or domain", text: $text)
+            TextField("Search title, provider, URL, or destination", text: $text)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
                 .focused(searchFocused)
@@ -380,18 +476,18 @@ private struct LibrarySearchField: View {
         .padding(.vertical, 7)
         .background(Theme.accentDim.opacity(0.4), in: Capsule())
         .overlay(Capsule().strokeBorder(Theme.skyBlue.opacity(0.25), lineWidth: 0.5))
-        .frame(maxWidth: 320)
+        .frame(maxWidth: 300)
     }
 }
 
 private struct LibraryFilterChips: View {
-    @Binding var selection: LibraryKindFilter
-    let counts: LibraryKindFilterCounts
+    @Binding var selection: LibraryTimelineFilter
+    let counts: LibraryTimelineFilterCounts
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                ForEach(LibraryKindFilter.allCases) { filter in
+                ForEach(LibraryTimelineFilter.allCases) { filter in
                     LibraryFilterChip(
                         title: filter.title,
                         count: counts.count(for: filter),
@@ -436,45 +532,22 @@ private struct LibraryFilterChip: View {
     }
 }
 
-private struct LibrarySortMenu: View {
-    @Binding var selection: LibrarySortMode
-
-    var body: some View {
-        Menu {
-            Picker("Sort", selection: $selection) {
-                ForEach(LibrarySortMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
-                }
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "arrow.up.arrow.down")
-                Text(selection.title)
-            }
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(Theme.textSecondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Theme.accentDim.opacity(0.35), in: Capsule())
-            .overlay(Capsule().strokeBorder(Theme.skyBlue.opacity(0.22), lineWidth: 0.5))
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-    }
-}
-
-private struct LibraryCountBadge: View {
+private struct LibrarySummaryText: View {
     let visibleCount: Int
     let totalCount: Int
 
     var body: some View {
-        Text(visibleCount == totalCount ? "\(totalCount)" : "\(visibleCount) / \(totalCount)")
-            .font(.system(size: 11, weight: .bold))
-            .foregroundStyle(Theme.skyBlue)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Theme.skyBlue.opacity(0.12), in: Capsule())
-            .overlay(Capsule().strokeBorder(Theme.skyBlue.opacity(0.25), lineWidth: 0.5))
+        Text(summary)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(Theme.textSecondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
+    }
+
+    private var summary: String {
+        if totalCount == 1 { return "1 item" }
+        if visibleCount == totalCount { return "\(totalCount) items" }
+        return "\(visibleCount) of \(totalCount) items"
     }
 }
 
@@ -509,6 +582,675 @@ private struct LibraryDayHeader: View {
                 endPoint: .bottom
             )
         )
+    }
+}
+
+private struct LibraryTimelineRow: View {
+    let entry: LibraryTimelineEntry
+    let thumbnail: NSImage?
+    let isThumbnailLoading: Bool
+    let thumbnailFailed: Bool
+    let isPreviewSelected: Bool
+    let isBulkSelected: Bool
+    let refreshThumbnail: (LibraryItem) -> Void
+    let openMedia: (LibraryItem) -> Void
+    let openSource: (LibraryItem) -> Void
+    let reExtractVideo: (LibraryItem) -> Void
+    let uploadVideo: (LibraryItem, CloudTarget) -> Void
+    let processVideo: (LibraryItem, VideoProcessingPreset) -> Void
+    let requestDeleteVideo: (LibraryItem) -> Void
+    let selectEntry: (LibraryTimelineEntry) -> Void
+    let toggleVideoSelection: (LibraryTimelineEntry) -> Void
+    let extractAgain: (HistoryItem) -> Void
+    let removeLink: (HistoryItem) -> Void
+    let removeUpload: (CompletedUploadItem) -> Void
+
+    @State private var isHovering = false
+
+    private var rowTint: Color {
+        switch entry {
+        case .video(let item):
+            if !item.remotePaths.isEmpty { return Theme.success }
+            return LibrarySourceKind.kind(for: item).tint
+        case .link(let item):
+            return LibraryTimelineProviderTint.color(for: item.provider)
+        case .upload(let item):
+            return LibraryTimelineDestinationFormatter.color(for: item.destination)
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            leadingTile
+
+            VStack(alignment: .leading, spacing: 6) {
+                titleLine
+                detailLine
+            }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+
+            Text(LibraryDateFormatter.timeLabel(for: entry.timestamp))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
+                .lineLimit(1)
+                .frame(width: 58, alignment: .trailing)
+
+            actions
+                .opacity(isHovering || isPreviewSelected ? 1 : 0)
+                .allowsHitTesting(isHovering || isPreviewSelected)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .glassCard(tint: rowTint.opacity(isPreviewSelected ? 0.14 : 0.08), cornerRadius: 8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isPreviewSelected ? Theme.skyBlue.opacity(0.75) : rowTint.opacity(0.12), lineWidth: isPreviewSelected ? 1.5 : 0.5)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 8))
+        .onHover { isHovering = $0 }
+        .onTapGesture { handleTap() }
+        .help(entry.url)
+        .contextMenu { contextMenu }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(accessibilityLabel))
+    }
+
+    @ViewBuilder
+    private var leadingTile: some View {
+        switch entry {
+        case .video(let item):
+            ZStack(alignment: .topLeading) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Theme.surface2)
+
+                    if let thumbnail {
+                        Image(nsImage: thumbnail)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        LibraryThumbnailPlaceholder(
+                            item: item,
+                            isLoading: isThumbnailLoading,
+                            didFail: thumbnailFailed,
+                            retryAction: { refreshThumbnail(item) }
+                        )
+                    }
+                }
+                .frame(width: 78, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                if isBulkSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Theme.gold)
+                        .shadow(color: .black.opacity(0.45), radius: 3, x: 0, y: 1)
+                        .padding(5)
+                }
+            }
+        case .link:
+            timelineIconTile(systemName: "play.rectangle.fill", tint: rowTint)
+        case .upload:
+            timelineIconTile(systemName: "checkmark.icloud.fill", tint: rowTint)
+        }
+    }
+
+    private func timelineIconTile(systemName: String, tint: Color) -> some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(Theme.surface2.opacity(0.9))
+            .frame(width: 78, height: 44)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(tint.opacity(0.32), lineWidth: 0.8)
+            )
+            .overlay(
+                Image(systemName: systemName)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(tint)
+            )
+    }
+
+    @ViewBuilder
+    private var titleLine: some View {
+        HStack(spacing: 6) {
+            switch entry {
+            case .video(let item):
+                LibraryKindBadge(kind: LibrarySourceKind.kind(for: item))
+                ForEach(LibraryDisplay.cloudBadges(for: item), id: \.id) { badge in
+                    LibraryCloudBadge(badge: badge)
+                }
+            case .link(let item):
+                LibraryTimelineProviderPill(provider: item.provider)
+            case .upload(let item):
+                LibraryTimelineProviderPill(provider: item.provider)
+                LibraryTimelineDestinationChip(destination: item.destination)
+            }
+
+            Text(entry.title)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+    }
+
+    @ViewBuilder
+    private var detailLine: some View {
+        switch entry {
+        case .video(let item):
+            Text(LibraryTimelineURLFormatter.prettyURL(item.url))
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Theme.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        case .link(let item):
+            Text(LibraryTimelineURLFormatter.prettyURL(item.url))
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Theme.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        case .upload(let item):
+            Text("up \(LibraryTimelineDestinationFormatter.displayName(for: item.destination)) · \(item.remotePath)")
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Theme.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        HStack(spacing: 4) {
+            switch entry {
+            case .video(let item):
+                LibraryTimelineIconButton(systemName: "play.fill", help: "Open media") {
+                    openMedia(item)
+                }
+                LibraryTimelineIconButton(systemName: "safari", help: "Open source page") {
+                    openSource(item)
+                }
+                LibraryTimelineIconButton(systemName: "arrow.clockwise", help: "Re-extract") {
+                    reExtractVideo(item)
+                }
+                Menu {
+                    Button("Mega") { uploadVideo(item, .mega) }
+                    Button("Google Drive") { uploadVideo(item, .gdrive) }
+                } label: {
+                    LibraryTimelineMenuLabel(systemName: "arrow.up.circle", help: "Upload")
+                }
+                .menuStyle(.borderlessButton)
+                .help("Upload")
+                Menu {
+                    VideoProcessingMenuItems { preset in
+                        processVideo(item, preset)
+                    }
+                } label: {
+                    LibraryTimelineMenuLabel(systemName: "wand.and.stars", help: "Pro Processing")
+                }
+                .menuStyle(.borderlessButton)
+                .help("Pro Processing")
+            case .link(let item):
+                LibraryTimelineIconButton(systemName: "arrow.clockwise", help: "Extract again") {
+                    extractAgain(item)
+                }
+                LibraryTimelineIconButton(systemName: "doc.on.doc", help: "Copy link") {
+                    ClipboardManager.copy(item.url)
+                }
+                LibraryTimelineIconButton(systemName: "safari", help: "Open link") {
+                    openURL(item.url)
+                }
+                LibraryTimelineIconButton(systemName: "trash", help: "Remove") {
+                    removeLink(item)
+                }
+            case .upload(let item):
+                LibraryTimelineIconButton(systemName: "arrow.up.right.square", help: "Copy remote path") {
+                    ClipboardManager.copy(item.remotePath)
+                }
+                LibraryTimelineIconButton(systemName: "doc.on.doc", help: "Copy source link") {
+                    ClipboardManager.copy(item.url)
+                }
+                LibraryTimelineIconButton(systemName: "safari", help: "Open source") {
+                    openURL(item.url)
+                }
+                LibraryTimelineIconButton(systemName: "trash", help: "Remove") {
+                    removeUpload(item)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var contextMenu: some View {
+        switch entry {
+        case .video(let item):
+            Button("Open Source Page") { openSource(item) }
+            Button("Open Media") { openMedia(item) }
+            Button("Re-extract") { reExtractVideo(item) }
+            Menu("Pro Processing") {
+                VideoProcessingMenuItems { preset in
+                    processVideo(item, preset)
+                }
+            }
+            Divider()
+            Button("Upload to Mega") { uploadVideo(item, .mega) }
+            Button("Upload to Google Drive") { uploadVideo(item, .gdrive) }
+            Divider()
+            Button("Refresh Thumbnail") { refreshThumbnail(item) }
+            Button("Copy Page URL") { ClipboardManager.copy(item.url) }
+            if let mp4 = item.mp4Url {
+                Button("Copy MP4 Link") { ClipboardManager.copy(mp4) }
+            }
+            Divider()
+            Button("Delete from Library", role: .destructive) { requestDeleteVideo(item) }
+        case .link(let item):
+            Button("Extract Again") { extractAgain(item) }
+            Button("Copy Link") { ClipboardManager.copy(item.url) }
+            Button("Open Link") { openURL(item.url) }
+            Divider()
+            Button("Remove", role: .destructive) { removeLink(item) }
+        case .upload(let item):
+            Button("Copy Remote Path") { ClipboardManager.copy(item.remotePath) }
+            Button("Copy Source Link") { ClipboardManager.copy(item.url) }
+            Button("Open Source Link") { openURL(item.url) }
+            Divider()
+            Button("Remove", role: .destructive) { removeUpload(item) }
+        }
+    }
+
+    private var accessibilityLabel: String {
+        let date = entry.timestamp.formatted(date: .abbreviated, time: .omitted)
+        let time = LibraryDateFormatter.timeLabel(for: entry.timestamp)
+        switch entry {
+        case .video(let item):
+            let uploaded = LibraryDisplay.cloudBadges(for: item).map(\.title).joined(separator: ", ")
+            let status = uploaded.isEmpty ? "local only" : uploaded
+            return "Library video, \(entry.title), \(time), \(date), \(status)"
+        case .link(let item):
+            return "\(LibraryTimelineProviderTint.displayName(for: item.provider)) link, \(entry.title), \(time), \(date)"
+        case .upload(let item):
+            return "\(LibraryTimelineDestinationFormatter.shortName(for: item.destination)) upload, \(entry.title), \(time), \(date)"
+        }
+    }
+
+    private func handleTap() {
+        selectEntry(entry)
+        if NSEvent.modifierFlags.contains(.command) {
+            toggleVideoSelection(entry)
+        }
+    }
+
+    private func openURL(_ raw: String) {
+        guard let url = URL(string: raw) else { return }
+        NSWorkspace.shared.open(url)
+    }
+}
+
+private struct LibraryDetailPanel: View {
+    let entry: LibraryTimelineEntry
+    let thumbnail: NSImage?
+    let isThumbnailLoading: Bool
+    let thumbnailFailed: Bool
+    let refreshThumbnail: (LibraryItem) -> Void
+    let openMedia: (LibraryItem) -> Void
+    let openSource: (LibraryItem) -> Void
+    let reExtractVideo: (LibraryItem) -> Void
+    let uploadVideo: (LibraryItem, CloudTarget) -> Void
+    let processVideo: (LibraryItem, VideoProcessingPreset) -> Void
+    let requestDeleteVideo: (LibraryItem) -> Void
+    let extractAgain: (HistoryItem) -> Void
+    let removeLink: (HistoryItem) -> Void
+    let removeUpload: (CompletedUploadItem) -> Void
+    let openURL: (String) -> Void
+
+    private var tint: Color {
+        switch entry {
+        case .video(let item):
+            if !item.remotePaths.isEmpty { return Theme.success }
+            return LibrarySourceKind.kind(for: item).tint
+        case .link(let item):
+            return LibraryTimelineProviderTint.color(for: item.provider)
+        case .upload(let item):
+            return LibraryTimelineDestinationFormatter.color(for: item.destination)
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            panelContent
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .glassCard(tint: tint.opacity(0.1), cornerRadius: 8)
+    }
+
+    @ViewBuilder
+    private var panelContent: some View {
+        switch entry {
+        case .video(let item):
+            videoPanel(item)
+        case .link(let item):
+            linkPanel(item)
+        case .upload(let item):
+            uploadPanel(item)
+        }
+    }
+
+    private func videoPanel(_ item: LibraryItem) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ZStack(alignment: .topTrailing) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Theme.surface2)
+
+                    if let thumbnail {
+                        Image(nsImage: thumbnail)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        LibraryThumbnailPlaceholder(
+                            item: item,
+                            isLoading: isThumbnailLoading,
+                            didFail: thumbnailFailed,
+                            retryAction: { refreshThumbnail(item) }
+                        )
+                    }
+                }
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                LibraryKindBadge(kind: LibrarySourceKind.kind(for: item))
+                    .padding(8)
+            }
+
+            titleBlock(title: LibraryDisplay.title(for: item), subtitle: LibraryDisplay.domain(for: item.url))
+
+            if LibraryDisplay.cloudBadges(for: item).isEmpty {
+                LibraryDetailChip(title: "Local only", tint: Theme.textSecondary)
+            } else {
+                HStack(spacing: 6) {
+                    ForEach(LibraryDisplay.cloudBadges(for: item), id: \.id) { badge in
+                        LibraryCloudBadge(badge: badge)
+                    }
+                }
+            }
+
+            metadataRows {
+                LibraryDetailMetadataRow(label: "Source", value: item.url, systemName: "link")
+                LibraryDetailMetadataRow(label: "Extracted", value: item.extractedAt.formatted(date: .abbreviated, time: .shortened), systemName: "calendar")
+                LibraryDetailMetadataRow(label: "Media", value: LibrarySourceKind.kind(for: item).label, systemName: "film")
+                ForEach(item.remotePaths.keys.sorted(), id: \.self) { key in
+                    if let value = item.remotePaths[key] {
+                        LibraryDetailMetadataRow(label: LibraryTimelineDestinationFormatter.shortName(for: key), value: value, systemName: "externaldrive.fill")
+                    }
+                }
+            }
+
+            actionGroup {
+                LibraryDetailActionButton(title: "Open Media", systemName: "play.fill", tint: Theme.skyBlue) { openMedia(item) }
+                LibraryDetailActionButton(title: "Open Source", systemName: "safari", tint: Theme.textSecondary) { openSource(item) }
+                LibraryDetailActionButton(title: "Re-extract", systemName: "arrow.clockwise", tint: Theme.lavender) { reExtractVideo(item) }
+                Menu {
+                    Button("Mega") { uploadVideo(item, .mega) }
+                    Button("Google Drive") { uploadVideo(item, .gdrive) }
+                } label: {
+                    LibraryDetailActionLabel(title: "Upload", systemName: "arrow.up.circle", tint: Theme.success)
+                }
+                .menuStyle(.borderlessButton)
+                Menu {
+                    VideoProcessingMenuItems { preset in
+                        processVideo(item, preset)
+                    }
+                } label: {
+                    LibraryDetailActionLabel(title: "Pro Processing", systemName: "wand.and.stars", tint: Theme.gold)
+                }
+                .menuStyle(.borderlessButton)
+                LibraryDetailActionButton(title: "Refresh Thumbnail", systemName: "photo", tint: Theme.skyBlue) { refreshThumbnail(item) }
+                LibraryDetailActionButton(title: "Delete", systemName: "trash", tint: Theme.error, role: .destructive) { requestDeleteVideo(item) }
+            }
+        }
+    }
+
+    private func linkPanel(_ item: HistoryItem) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            iconHeader(
+                systemName: "play.rectangle.fill",
+                tint: LibraryTimelineProviderTint.color(for: item.provider),
+                title: item.title,
+                subtitle: LibraryTimelineProviderTint.displayName(for: item.provider)
+            )
+
+            metadataRows {
+                LibraryDetailMetadataRow(label: "Source", value: item.url, systemName: "link")
+                LibraryDetailMetadataRow(label: "Recorded", value: item.recordedAt.formatted(date: .abbreviated, time: .shortened), systemName: "clock")
+                LibraryDetailMetadataRow(label: "Domain", value: LibraryDisplay.domain(for: item.url), systemName: "network")
+            }
+
+            actionGroup {
+                LibraryDetailActionButton(title: "Extract Again", systemName: "arrow.clockwise", tint: Theme.lavender) { extractAgain(item) }
+                LibraryDetailActionButton(title: "Open Link", systemName: "safari", tint: Theme.skyBlue) { openURL(item.url) }
+                LibraryDetailActionButton(title: "Copy Link", systemName: "doc.on.doc", tint: Theme.textSecondary) { ClipboardManager.copy(item.url) }
+                LibraryDetailActionButton(title: "Remove", systemName: "trash", tint: Theme.error, role: .destructive) { removeLink(item) }
+            }
+        }
+    }
+
+    private func uploadPanel(_ item: CompletedUploadItem) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            iconHeader(
+                systemName: "checkmark.icloud.fill",
+                tint: LibraryTimelineDestinationFormatter.color(for: item.destination),
+                title: item.title,
+                subtitle: LibraryTimelineDestinationFormatter.displayName(for: item.destination)
+            )
+
+            metadataRows {
+                LibraryDetailMetadataRow(label: "Remote Path", value: item.remotePath, systemName: "externaldrive.fill")
+                LibraryDetailMetadataRow(label: "Source", value: item.url, systemName: "link")
+                LibraryDetailMetadataRow(label: "Completed", value: item.completedAt.formatted(date: .abbreviated, time: .shortened), systemName: "clock.badge.checkmark")
+                LibraryDetailMetadataRow(label: "Provider", value: LibraryTimelineProviderTint.displayName(for: item.provider), systemName: "network")
+            }
+
+            actionGroup {
+                LibraryDetailActionButton(title: "Copy Remote Path", systemName: "arrow.up.right.square", tint: Theme.success) { ClipboardManager.copy(item.remotePath) }
+                LibraryDetailActionButton(title: "Copy Source Link", systemName: "doc.on.doc", tint: Theme.textSecondary) { ClipboardManager.copy(item.url) }
+                LibraryDetailActionButton(title: "Open Source", systemName: "safari", tint: Theme.skyBlue) { openURL(item.url) }
+                LibraryDetailActionButton(title: "Remove", systemName: "trash", tint: Theme.error, role: .destructive) { removeUpload(item) }
+            }
+        }
+    }
+
+    private func titleBlock(title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(subtitle)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+    }
+
+    private func iconHeader(systemName: String, tint: Color, title: String, subtitle: String) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Theme.surface2.opacity(0.9))
+                .frame(width: 52, height: 52)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(tint.opacity(0.34), lineWidth: 1)
+                )
+                .overlay(
+                    Image(systemName: systemName)
+                        .font(.system(size: 21, weight: .bold))
+                        .foregroundStyle(tint)
+                )
+
+            titleBlock(title: title, subtitle: subtitle)
+        }
+    }
+
+    private func metadataRows<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            content()
+        }
+        .padding(10)
+        .background(Theme.surface0.opacity(0.34), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.skyBlue.opacity(0.12), lineWidth: 0.5))
+    }
+
+    private func actionGroup<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Actions")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Theme.textSecondary)
+            content()
+        }
+    }
+}
+
+private struct LibraryDetailMetadataRow: View {
+    let label: String
+    let value: String
+    let systemName: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: systemName)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 15)
+
+            Text(label)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 76, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+
+            Text(value)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Theme.textPrimary.opacity(0.9))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(value)
+        }
+    }
+}
+
+private struct LibraryDetailChip: View {
+    let title: String
+    let tint: Color
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(tint.opacity(0.14), in: Capsule())
+    }
+}
+
+private struct LibraryDetailActionButton: View {
+    let title: String
+    let systemName: String
+    let tint: Color
+    var role: ButtonRole?
+    let action: () -> Void
+
+    var body: some View {
+        Button(role: role, action: action) {
+            LibraryDetailActionLabel(title: title, systemName: systemName, tint: tint)
+        }
+        .buttonStyle(.plain)
+        .help(title)
+    }
+}
+
+private struct LibraryDetailActionLabel: View {
+    let title: String
+    let systemName: String
+    let tint: Color
+
+    var body: some View {
+        Label {
+            Text(title)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+        } icon: {
+            Image(systemName: systemName)
+        }
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(tint)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(tint.opacity(0.11), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(tint.opacity(0.2), lineWidth: 0.5))
+    }
+}
+
+private struct LibraryTimelineIconButton: View {
+    let systemName: String
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+}
+
+private struct LibraryTimelineMenuLabel: View {
+    let systemName: String
+    let help: String
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Theme.textSecondary)
+            .frame(width: 24, height: 24)
+            .contentShape(Rectangle())
+            .help(help)
+    }
+}
+
+private struct LibraryTimelineProviderPill: View {
+    let provider: String
+
+    var body: some View {
+        Text(LibraryTimelineProviderTint.displayName(for: provider))
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(LibraryTimelineProviderTint.color(for: provider).opacity(0.85), in: Capsule())
+    }
+}
+
+private struct LibraryTimelineDestinationChip: View {
+    let destination: String
+
+    var body: some View {
+        Text(LibraryTimelineDestinationFormatter.shortName(for: destination))
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(LibraryTimelineDestinationFormatter.color(for: destination).opacity(0.86), in: Capsule())
     }
 }
 
@@ -646,13 +1388,7 @@ private struct LibraryCardView: View {
         Button("Open Media") { openMedia() }
         Button("Re-extract") { reExtract() }
         Menu("Pro Processing") {
-            ForEach(VideoProcessingPreset.allCases) { preset in
-                Button {
-                    process(preset)
-                } label: {
-                    Label(preset.title, systemImage: preset.systemImage)
-                }
-            }
+            VideoProcessingMenuItems(process: process)
         }
         Divider()
         Button("Upload to Mega") { upload(.mega) }
@@ -870,10 +1606,10 @@ private struct LibraryEmptyState: View {
                 .frame(width: 40, height: 40)
                 .foregroundStyle(Theme.gold.opacity(0.5))
                 .padding()
-            Text("No videos in library yet")
+            Text("No library activity yet")
                 .font(.caption)
                 .foregroundStyle(Theme.textSecondary)
-            Text("Extract a video URL to add items here")
+            Text("Extract or download a video to add it here")
                 .font(.caption2)
                 .foregroundStyle(Theme.textSecondary.opacity(0.65))
         }
@@ -882,7 +1618,7 @@ private struct LibraryEmptyState: View {
 
 private struct LibraryNoResultsState: View {
     let searchText: String
-    let filter: LibraryKindFilter
+    let filter: LibraryTimelineFilter
     let clearAction: () -> Void
 
     var body: some View {
@@ -918,7 +1654,7 @@ private struct LibraryNoResultsState: View {
     private var message: String {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if query.isEmpty, filter == .all {
-            return "No matching videos"
+            return "No matching library activity"
         }
         var parts: [String] = []
         if !query.isEmpty { parts.append("\"\(query)\"") }
@@ -927,74 +1663,178 @@ private struct LibraryNoResultsState: View {
     }
 }
 
-private enum LibraryKindFilter: String, CaseIterable, Identifiable {
+enum LibraryTimelineFilter: String, CaseIterable, Identifiable {
     case all
-    case mp4
-    case hls
-    case uploaded
-    case localOnly
+    case videos
+    case links
+    case uploads
 
     var id: Self { self }
 
     var title: String {
         switch self {
         case .all: return "All"
-        case .mp4: return "MP4"
-        case .hls: return "HLS"
-        case .uploaded: return "Uploaded"
-        case .localOnly: return "Local only"
+        case .videos: return "Videos"
+        case .links: return "Links"
+        case .uploads: return "Uploads"
         }
     }
 
     var tint: Color {
         switch self {
         case .all: return Theme.gold
-        case .mp4: return Theme.gold
-        case .hls: return Theme.taoRed
-        case .uploaded: return Theme.success
-        case .localOnly: return Theme.skyBlue
+        case .videos: return Theme.skyBlue
+        case .links: return Theme.lavender
+        case .uploads: return Theme.success
         }
     }
 
-    func matches(_ item: LibraryItem) -> Bool {
+    func matches(_ entry: LibraryTimelineEntry) -> Bool {
         switch self {
         case .all:
             return true
-        case .mp4:
-            return item.mp4Url != nil && item.hlsUrls.isEmpty
-        case .hls:
-            return !item.hlsUrls.isEmpty
-        case .uploaded:
-            return !item.remotePaths.isEmpty
-        case .localOnly:
-            return item.remotePaths.isEmpty
+        case .videos:
+            if case .video = entry { return true }
+            return false
+        case .links:
+            if case .link = entry { return true }
+            return false
+        case .uploads:
+            if case .upload = entry { return true }
+            return false
         }
     }
 }
 
-private struct LibraryKindFilterCounts {
-    let items: [LibraryItem]
+struct LibraryTimelineFilterCounts {
+    let entries: [LibraryTimelineEntry]
 
-    func count(for filter: LibraryKindFilter) -> Int {
-        items.filter(filter.matches(_:)).count
+    func count(for filter: LibraryTimelineFilter) -> Int {
+        entries.filter(filter.matches(_:)).count
     }
 }
 
-private enum LibrarySortMode: String, CaseIterable, Identifiable {
-    case newest
-    case oldest
-    case titleAscending
-    case titleDescending
+enum LibraryTimelineEntry: Identifiable {
+    case video(LibraryItem)
+    case link(HistoryItem)
+    case upload(CompletedUploadItem)
 
-    var id: Self { self }
+    var id: String {
+        switch self {
+        case .video(let item): return "video-\(item.id.uuidString)"
+        case .link(let item): return "link-\(item.id.uuidString)"
+        case .upload(let item): return "upload-\(item.id.uuidString)"
+        }
+    }
 
     var title: String {
         switch self {
-        case .newest: return "Newest"
-        case .oldest: return "Oldest"
-        case .titleAscending: return "A-Z"
-        case .titleDescending: return "Z-A"
+        case .video(let item): return LibraryDisplay.title(for: item)
+        case .link(let item): return item.title
+        case .upload(let item): return item.title
         }
+    }
+
+    var url: String {
+        switch self {
+        case .video(let item): return item.url
+        case .link(let item): return item.url
+        case .upload(let item): return item.url
+        }
+    }
+
+    var timestamp: Date {
+        switch self {
+        case .video(let item): return item.extractedAt
+        case .link(let item): return item.recordedAt
+        case .upload(let item): return item.completedAt
+        }
+    }
+
+    var thumbnailIdentity: String {
+        switch self {
+        case .video(let item):
+            return item.thumbnailURL ?? item.mp4Url ?? item.hlsUrls.first?.url ?? item.url
+        default:
+            return id
+        }
+    }
+}
+
+struct LibraryTimelineDayBucket: Identifiable {
+    let date: Date
+    let entries: [LibraryTimelineEntry]
+
+    var id: Date { date }
+}
+
+enum LibraryTimelineBuilder {
+    static func entries(
+        libraryItems: [LibraryItem],
+        historyItems: [HistoryItem],
+        completedUploads: [CompletedUploadItem]
+    ) -> [LibraryTimelineEntry] {
+        let libraryURLs = Set(libraryItems.map { normalizedURL($0.url) }.filter { !$0.isEmpty })
+        let videos = libraryItems.map(LibraryTimelineEntry.video)
+        let links = historyItems
+            .filter { !libraryURLs.contains(normalizedURL($0.url)) }
+            .map(LibraryTimelineEntry.link)
+        let uploads = completedUploads.map(LibraryTimelineEntry.upload)
+
+        return (videos + links + uploads).sorted {
+            if $0.timestamp == $1.timestamp { return $0.id < $1.id }
+            return $0.timestamp > $1.timestamp
+        }
+    }
+
+    static func filteredEntries(
+        _ entries: [LibraryTimelineEntry],
+        query: String,
+        filter: LibraryTimelineFilter
+    ) -> [LibraryTimelineEntry] {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return entries.filter { entry in
+            let queryMatches = normalizedQuery.isEmpty || searchText(for: entry).contains(normalizedQuery)
+            return queryMatches && filter.matches(entry)
+        }
+    }
+
+    static func selectedEntryID(currentID: String?, in entries: [LibraryTimelineEntry]) -> String? {
+        if let currentID, entries.contains(where: { $0.id == currentID }) {
+            return currentID
+        }
+        return entries.first?.id
+    }
+
+    static func selectedEntry(currentID: String?, in entries: [LibraryTimelineEntry]) -> LibraryTimelineEntry? {
+        guard let id = selectedEntryID(currentID: currentID, in: entries) else { return nil }
+        return entries.first { $0.id == id }
+    }
+
+    static func videoSelection(_ selection: Set<UUID>, toggling entry: LibraryTimelineEntry) -> Set<UUID> {
+        guard case .video(let item) = entry else { return selection }
+        var next = selection
+        if next.contains(item.id) {
+            next.remove(item.id)
+        } else {
+            next.insert(item.id)
+        }
+        return next
+    }
+
+    static func searchText(for entry: LibraryTimelineEntry) -> String {
+        switch entry {
+        case .video(let item):
+            return LibraryDisplay.searchText(for: item)
+        case .link(let item):
+            return "\(item.title) \(item.provider) \(item.url) \(LibraryDisplay.domain(for: item.url))".lowercased()
+        case .upload(let item):
+            return "\(item.title) \(item.provider) \(item.destination) \(item.remotePath) \(item.url) \(LibraryDisplay.domain(for: item.url))".lowercased()
+        }
+    }
+
+    static func normalizedURL(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
@@ -1030,13 +1870,6 @@ private struct LibraryCloudBadgeModel {
     let id: String
     let title: String
     let tint: Color
-}
-
-private struct LibraryDayBucket: Identifiable {
-    let date: Date
-    let items: [LibraryItem]
-
-    var id: Date { date }
 }
 
 private enum LibraryDisplay {
@@ -1077,8 +1910,119 @@ private enum LibraryDisplay {
     }
 
     static func searchText(for item: LibraryItem) -> String {
-        let clouds = item.remotePaths.keys.joined(separator: " ")
+        let clouds = item.remotePaths.flatMap { key, value in [key, value] }.joined(separator: " ")
         return "\(displayTitle(item.title)) \(item.title) \(item.url) \(domain(for: item.url)) \(LibrarySourceKind.kind(for: item).label) \(clouds)".lowercased()
+    }
+}
+
+private enum LibraryTimelineProviderTint {
+    static func key(for provider: String) -> String {
+        provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func color(for provider: String) -> Color {
+        color(forKey: key(for: provider))
+    }
+
+    static func color(forKey key: String) -> Color {
+        switch key {
+        case "pornhub":
+            return Theme.coral
+        case "streamtape":
+            return Theme.skyBlue
+        case "video site", "nativevideopage":
+            return Theme.gold
+        case "providerlink", "all porn stream":
+            return Theme.lavender
+        case "vidara":
+            return Theme.electricLime
+        case "lulustream", "lulu stream", "luluvid":
+            return Theme.hotPink
+        case "doodstream", "playmogo":
+            return Theme.taoRed
+        default:
+            return Theme.textSecondary
+        }
+    }
+
+    static func displayName(for provider: String) -> String {
+        switch key(for: provider) {
+        case "pornhub":
+            return "PornHub"
+        case "streamtape":
+            return "StreamTape"
+        case "video site", "nativevideopage":
+            return "Video Site"
+        case "providerlink":
+            return "Provider Link"
+        case "all porn stream":
+            return "All Porn Stream"
+        case "vidara":
+            return "Vidara"
+        case "lulustream", "lulu stream", "luluvid":
+            return "LuluStream"
+        case "doodstream":
+            return "DoodStream"
+        case "playmogo":
+            return "Playmogo"
+        case "generic":
+            return "Generic"
+        default:
+            let trimmed = provider.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "Unknown" : trimmed
+        }
+    }
+}
+
+private enum LibraryTimelineURLFormatter {
+    static func prettyURL(_ raw: String) -> String {
+        guard let url = URL(string: raw), let host = url.host?.replacingOccurrences(of: "www.", with: "") else {
+            return raw
+        }
+        guard let shortID = shortIdentifier(from: raw) else {
+            return host
+        }
+        return "\(host) · \(shortID)"
+    }
+
+    private static func shortIdentifier(from raw: String) -> String? {
+        guard let components = URLComponents(string: raw) else { return nil }
+        let queryKeys = ["viewkey", "id", "v", "video", "file"]
+        for key in queryKeys {
+            if let value = components.queryItems?.first(where: { $0.name.lowercased() == key })?.value,
+               !value.isEmpty {
+                return value.count > 10 ? String(value.prefix(6)) : value
+            }
+        }
+
+        if let path = components.path.split(separator: "/").last.map(String.init),
+           !path.isEmpty {
+            return path.count > 18 ? String(path.suffix(8)) : path
+        }
+        return nil
+    }
+}
+
+private enum LibraryTimelineDestinationFormatter {
+    static func shortName(for destination: String) -> String {
+        let lower = destination.lowercased()
+        if lower.contains("mega") { return "MEGA" }
+        if lower.contains("drive") || lower.contains("gdrive") { return "Drive" }
+        if lower.contains("seedbox") { return "Seedbox" }
+        let trimmed = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Remote" : trimmed
+    }
+
+    static func displayName(for destination: String) -> String {
+        shortName(for: destination)
+    }
+
+    static func color(for destination: String) -> Color {
+        let lower = destination.lowercased()
+        if lower.contains("mega") { return Theme.success }
+        if lower.contains("drive") || lower.contains("gdrive") { return Theme.skyBlue }
+        if lower.contains("seedbox") { return Theme.lavender }
+        return Theme.textSecondary
     }
 }
 
@@ -1088,6 +2032,10 @@ private enum LibraryDateFormatter {
         if calendar.isDateInToday(date) { return "Today" }
         if calendar.isDateInYesterday(date) { return "Yesterday" }
         return date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+    }
+
+    static func timeLabel(for date: Date) -> String {
+        date.formatted(date: .omitted, time: .shortened)
     }
 }
 

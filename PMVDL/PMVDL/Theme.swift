@@ -46,7 +46,6 @@ enum Theme {
     static func destinationColor(_ dest: NavDestination) -> Color {
         switch dest {
         case .home:       return coral
-        case .history:    return gold
         case .feed:       return lavender
         case .favorites:  return hotPink
         case .library:    return skyBlue

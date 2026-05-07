@@ -214,7 +214,7 @@ struct DownloadRetryPayload: Codable, Equatable {
 }
 
 enum QueueStatus: Codable, Equatable {
-    case pending, downloading, verifying, uploading, completed, paused, failed(String)
+    case pending, downloading, verifying, uploading, processing, completed, paused, failed(String)
 
     var isTerminal: Bool {
         switch self { case .completed, .failed: return true; default: return false }
@@ -226,6 +226,10 @@ enum DownloadResumeStrategy: String, Codable, Equatable {
     case appendLocalRange
     case appendSeedboxRange
     case remoteSafeNewFile
+}
+
+enum DownloadQueueItemKind: String, Codable, Equatable {
+    case processing
 }
 
 struct DownloadTransferMetrics: Codable, Equatable {
@@ -258,6 +262,7 @@ struct DownloadQueueItem: Identifiable, Codable {
     var expectedTotalBytes: Int64?
     var supportsByteRange: Bool?
     var resumeStrategy: DownloadResumeStrategy?
+    var itemKind: DownloadQueueItemKind?
 
     init(
         id: UUID = UUID(),
@@ -286,6 +291,7 @@ struct DownloadQueueItem: Identifiable, Codable {
         self.expectedTotalBytes = nil
         self.supportsByteRange = nil
         self.resumeStrategy = nil
+        self.itemKind = nil
     }
 
     var isPaused: Bool { status == .paused }
@@ -299,6 +305,10 @@ struct DownloadQueueItem: Identifiable, Codable {
 
     var hasEnteredUpload: Bool {
         uploadStarted == true || status == .uploading
+    }
+
+    var isProcessingJob: Bool {
+        itemKind == .processing || status == .processing
     }
 
     var isVisibleInDownloads: Bool {
@@ -366,7 +376,6 @@ enum CloudTarget: String, Codable, CaseIterable {
 
 enum NavDestination: String, Codable, CaseIterable {
     case home = "Home"
-    case history = "History"
     case feed = "Feed"
     case favorites = "Favorites"
     case library = "Library"
@@ -377,7 +386,6 @@ enum NavDestination: String, Codable, CaseIterable {
     var icon: String {
         switch self {
         case .home: return "house.fill"
-        case .history: return "clock.arrow.circlepath"
         case .feed: return "antenna.radiowaves.left.and.right"
         case .favorites: return "heart.fill"
         case .library: return "books.vertical.fill"

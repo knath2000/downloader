@@ -26,6 +26,7 @@ final class HQPornerFeedScraperTests: XCTestCase {
         XCTAssertEqual(item.title, "let's dare to e more than this")
         XCTAssertEqual(item.url, "https://hqporner.com/hdporn/126118-lets_dare_to_e_more_than_this.html")
         XCTAssertEqual(item.thumbnailURL, "https://fastporndelivery.hqporner.com/imgs/6/34/72d97dd8f1a94ff_main.jpg")
+        XCTAssertEqual(item.referer, "https://hqporner.com/")
         XCTAssertEqual(item.durationSeconds, 1_688)
         XCTAssertEqual(item.siteName, "hqporner.com")
         XCTAssertEqual(item.uploadDate, now)

@@ -34,6 +34,12 @@ class DownloadQueue: ObservableObject {
     func normalizeInterruptedItemsForLaunch() {
         for i in queue.indices {
             switch queue[i].status {
+            case .processing:
+                let message = "Processing was interrupted and must be started again."
+                queue[i].status = .failed(message)
+                queue[i].progress = 0
+                queue[i].bytesPerSecond = nil
+                queue[i].statusMessage = message
             case .downloading, .verifying, .uploading:
                 let wasUploading = queue[i].status == .uploading
                 if queue[i].retryPayload != nil {
@@ -80,6 +86,28 @@ class DownloadQueue: ObservableObject {
         return item.id
     }
 
+    func addProcessing(
+        url: String,
+        quality: String,
+        displayTitle: String,
+        message: String = "Checking encoder…"
+    ) -> UUID {
+        var item = DownloadQueueItem(
+            url: url,
+            quality: quality,
+            targetCloud: .local,
+            displayTitle: displayTitle,
+            retryPayload: nil
+        )
+        item.status = .processing
+        item.progress = 0
+        item.statusMessage = message
+        item.itemKind = .processing
+        queue.append(item)
+        save()
+        return item.id
+    }
+
     /// Resets a failed queue item back to pending so `DownloadJobRunner` can re-run it.
     /// Returns false if the item does not exist or is not retryable.
     @discardableResult
@@ -122,7 +150,7 @@ class DownloadQueue: ObservableObject {
     func remove(_ item: DownloadQueueItem) {
         if let current = queue.first(where: { $0.id == item.id }),
            !current.status.isTerminal {
-            DownloadJobRunner.shared.cancel(queueId: item.id)
+            cancelActiveWork(id: item.id, status: current.status)
         }
         queue.removeAll { $0.id == item.id }
         save()
@@ -131,7 +159,7 @@ class DownloadQueue: ObservableObject {
     func remove(id: UUID) {
         if let current = queue.first(where: { $0.id == id }),
            !current.status.isTerminal {
-            DownloadJobRunner.shared.cancel(queueId: id)
+            cancelActiveWork(id: id, status: current.status)
         }
         queue.removeAll { $0.id == id }
         save()
@@ -139,15 +167,17 @@ class DownloadQueue: ObservableObject {
 
     func pause(_ item: DownloadQueueItem) {
         guard let idx = queue.firstIndex(where: { $0.id == item.id }) else { return }
-        // Failed items are retried via the Retry button, not paused/resumed.
+        var shouldPauseRunner = false
         switch queue[idx].status {
         case .downloading, .verifying, .uploading, .pending:
             queue[idx].status = .paused
             queue[idx].bytesPerSecond = nil
             queue[idx].statusMessage = "Paused"
+            shouldPauseRunner = true
         default:
             break
         }
+        guard shouldPauseRunner else { return }
         DownloadJobRunner.shared.pause(queueId: item.id)
         save()
     }
@@ -173,7 +203,7 @@ class DownloadQueue: ObservableObject {
     }
 
     func pauseAll() {
-        for i in queue.indices where !queue[i].status.isTerminal {
+        for i in queue.indices where !queue[i].status.isTerminal && queue[i].status != .processing {
             queue[i].status = .paused
             queue[i].bytesPerSecond = nil
             queue[i].statusMessage = "Paused"
@@ -315,7 +345,7 @@ class DownloadQueue: ObservableObject {
         switch item.status {
         case .pending:
             return .uploading(message ?? "Queued")
-        case .downloading, .verifying, .uploading:
+        case .downloading, .verifying, .uploading, .processing:
             return .uploading(message ?? statusLabel(for: item))
         case .completed:
             return .done(message ?? "Done")
@@ -334,6 +364,8 @@ class DownloadQueue: ObservableObject {
             return "Verifying video…"
         case .uploading:
             return String(format: "Uploading… %.0f%%", item.progress)
+        case .processing:
+            return String(format: "Processing… %.0f%%", item.progress)
         default:
             return item.statusMessage ?? ""
         }
@@ -342,7 +374,7 @@ class DownloadQueue: ObservableObject {
     private var activeCount: Int {
         queue.filter { item in
             switch item.status {
-            case .downloading, .verifying, .uploading: return true
+            case .downloading, .verifying, .uploading, .processing: return true
             default: return false
             }
         }.count
@@ -352,5 +384,13 @@ class DownloadQueue: ObservableObject {
         // Will be called from ContentView batch download logic
         // The actual processing is handled by the calling code
         // This just tracks the state
+    }
+
+    private func cancelActiveWork(id: UUID, status: QueueStatus) {
+        if status == .processing {
+            VideoProcessingLauncher.cancel(queueId: id)
+        } else {
+            DownloadJobRunner.shared.cancel(queueId: id)
+        }
     }
 }

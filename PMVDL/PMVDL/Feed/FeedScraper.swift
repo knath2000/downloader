@@ -433,6 +433,7 @@ struct HQPornerFeedScraper: FeedScraper {
                 title: title,
                 url: url,
                 thumbnailURL: thumbnailURL(in: segment),
+                referer: "\(baseURL.absoluteString)/",
                 uploadDate: now,
                 viewCount: 0,
                 siteName: supportedHost,

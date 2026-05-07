@@ -1,4 +1,63 @@
+import AppKit
 import SwiftUI
+
+struct RefererAwareAsyncImage<Content: View>: View {
+    let url: URL
+    let referer: String?
+    let content: (AsyncImagePhase) -> Content
+
+    @State private var phase: AsyncImagePhase = .empty
+
+    init(
+        url: URL,
+        referer: String? = nil,
+        @ViewBuilder content: @escaping (AsyncImagePhase) -> Content
+    ) {
+        self.url = url
+        self.referer = referer
+        self.content = content
+    }
+
+    var body: some View {
+        if let referer = normalizedReferer {
+            content(phase)
+                .task(id: "\(url.absoluteString)|\(referer)") {
+                    await load(referer: referer)
+                }
+        } else {
+            AsyncImage(url: url, content: content)
+        }
+    }
+
+    private var normalizedReferer: String? {
+        let value = referer?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? nil : value
+    }
+
+    @MainActor
+    private func load(referer: String) async {
+        phase = .empty
+
+        do {
+            let identity = url.absoluteString
+            let image: NSImage
+            if let cached = await ThumbnailCache.shared.cachedImage(forIdentity: identity) {
+                image = cached
+            } else {
+                image = try await ThumbnailCache.downloadAndCacheImage(
+                    fromImageURL: identity,
+                    cacheIdentity: identity,
+                    referer: referer
+                )
+            }
+            guard !Task.isCancelled else { return }
+            phase = .success(Image(nsImage: image))
+        } catch {
+            guard !Task.isCancelled else { return }
+            phase = .failure(error)
+        }
+    }
+}
 
 // MARK: - MeshGradientBackground
 

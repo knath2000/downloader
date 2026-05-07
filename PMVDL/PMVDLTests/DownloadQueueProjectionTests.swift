@@ -150,6 +150,51 @@ final class DownloadQueueProjectionTests: XCTestCase {
         XCTAssertFalse(item.canRetry)
     }
 
+    func testSeedboxMaterializationCompletionProjectsToPreparationState() {
+        let projection = ProgressEvent.completed(msg: "Download complete").seedboxMaterializationProjection
+
+        XCTAssertNotEqual(projection.status, .completed)
+        XCTAssertEqual(projection.status, .verifying)
+        XCTAssertEqual(projection.progress, 99)
+        XCTAssertEqual(projection.message, "Preparing seedbox upload…")
+    }
+
+    @MainActor
+    func testSeedboxHLSLocalMaterializationStaysActiveUntilFinalCompletion() {
+        let queue = DownloadQueue.shared
+        let original = queue.queue
+        queue.queue = []
+        defer {
+            queue.queue = original
+            queue.save()
+        }
+
+        let id = queue.add(url: "https://vidara.example.test/video.m3u8", quality: "HLS → Seedbox", targetCloud: .seedbox, displayTitle: "Vidara Fixture")
+
+        queue.update(id: id, status: .downloading, progress: 10, message: "Materializing HLS…")
+        assertQueueItemIsActive(id: id, message: "Materializing HLS…")
+
+        let materialized = ProgressEvent.completed(msg: "Download complete").seedboxMaterializationProjection
+        queue.update(id: id, status: materialized.status, progress: materialized.progress, message: materialized.message, metrics: materialized.metrics)
+        assertQueueItemIsActive(id: id, message: "Preparing seedbox upload…")
+
+        queue.update(id: id, status: .uploading, progress: 0, message: "Uploading to seedbox… 0%")
+        assertQueueItemIsActive(id: id, message: "Uploading to seedbox… 0%")
+
+        queue.complete(id: id, finalPath: "/downloads/Vidara Fixture.mp4", message: "Uploaded to Seedbox")
+
+        guard let completed = queue.item(id: id),
+              let completedState = queue.projectedState(for: completed) else {
+            return XCTFail("Expected completed queue item")
+        }
+        XCTAssertEqual(completed.status, .completed)
+        if case .done(let message) = completedState {
+            XCTAssertEqual(message, "Uploaded to Seedbox")
+        } else {
+            XCTFail("Expected final done projection")
+        }
+    }
+
     // MARK: - Existing projection test
 
     @MainActor
@@ -186,6 +231,21 @@ final class DownloadQueueProjectionTests: XCTestCase {
             XCTAssertEqual(message, "Saved to video.mp4")
         } else {
             XCTFail("Expected done projection")
+        }
+    }
+
+    @MainActor
+    private func assertQueueItemIsActive(id: UUID, message: String, file: StaticString = #filePath, line: UInt = #line) {
+        guard let item = DownloadQueue.shared.item(id: id),
+              let state = DownloadQueue.shared.projectedState(for: item) else {
+            return XCTFail("Expected active queue item", file: file, line: line)
+        }
+
+        XCTAssertFalse(item.status.isTerminal, file: file, line: line)
+        if case .uploading(let projectedMessage) = state {
+            XCTAssertEqual(projectedMessage, message, file: file, line: line)
+        } else {
+            XCTFail("Expected non-terminal upload projection", file: file, line: line)
         }
     }
 }

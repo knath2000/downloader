@@ -8,6 +8,7 @@ final class FeedFavoritesTests: XCTestCase {
             title: "Example",
             url: " https://example.test/video ",
             thumbnailURL: "https://example.test/thumb.jpg",
+            referer: "https://example.test/",
             uploadDate: Date(timeIntervalSince1970: 100),
             viewCount: 42,
             siteName: "Example",
@@ -26,6 +27,7 @@ final class FeedFavoritesTests: XCTestCase {
         XCTAssertEqual(favorite.url, "https://example.test/video")
         XCTAssertEqual(favorite.title, "Example")
         XCTAssertEqual(favorite.thumbnailURL, "https://example.test/thumb.jpg")
+        XCTAssertEqual(favorite.referer, "https://example.test/")
         XCTAssertEqual(favorite.viewCount, 42)
         XCTAssertEqual(favorite.siteName, "Example")
         XCTAssertEqual(favorite.studio, "Studio")

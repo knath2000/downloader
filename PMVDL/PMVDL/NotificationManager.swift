@@ -62,4 +62,34 @@ struct NotificationManager {
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }
+
+    func notifyProcessingStarted(filename: String, preset: String) {
+        guard isEnabled(.uploadComplete) else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Processing Started"
+        content.body = "\(preset): \(filename)"
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    func notifyProcessingComplete(filename: String, summary: String) {
+        guard isEnabled(.uploadComplete) else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Processing Complete"
+        content.body = "\(filename): \(summary)"
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    func notifyProcessingFailed(filename: String, reason: String) {
+        guard isEnabled(.uploadFailed) else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "Processing Failed"
+        content.body = "\(filename): \(reason)"
+        content.sound = .defaultCritical
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
 }

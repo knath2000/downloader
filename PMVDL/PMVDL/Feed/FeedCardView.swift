@@ -198,7 +198,7 @@ struct FeedCardView: View {
 
             if let thumbnailURL = item.thumbnailURL,
                let url = URL(string: thumbnailURL) {
-                AsyncImage(url: url) { phase in
+                RefererAwareAsyncImage(url: url, referer: item.referer) { phase in
                     switch phase {
                     case .success(let image):
                         image

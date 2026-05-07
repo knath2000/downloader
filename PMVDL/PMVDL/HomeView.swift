@@ -9,6 +9,7 @@ struct HomeView: View {
     @State private var isLoading = false
     @State private var loadProgress = ""
     @State private var showingStatusPopover = false
+    @State private var showResultsSheet = false
     var megaRemotePath: String
     var gdriveRemoteName: String
     var gdriveRemotePath: String
@@ -91,6 +92,9 @@ struct HomeView: View {
             .frame(maxWidth: .infinity, alignment: .top)
             .padding(HomeLayoutMetrics.pagePadding)
         }
+        .sheet(isPresented: $showResultsSheet) {
+            resultsSheet
+        }
         .onAppear {
             if let pending = appState.pendingExtractURL {
                 consumePendingExtractURL(pending)
@@ -141,17 +145,17 @@ struct HomeView: View {
                 onFileDrop: { _ in }
             ))
 
-            supportedSources
-            DependencySetupPanel(gdriveRemoteName: gdriveRemoteName)
-
             if isLoading {
                 loadingState
-            }
+            } else {
+                supportedSources
+                DependencySetupPanel(gdriveRemoteName: gdriveRemoteName)
 
-            if !results.isEmpty {
-                resultsSection
-            } else if !isLoading {
-                emptyState
+                if !results.isEmpty {
+                    showResultsButton
+                } else {
+                    emptyState
+                }
             }
         }
     }
@@ -225,6 +229,79 @@ struct HomeView: View {
         }
     }
 
+    private var resultsSheet: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Extraction Results")
+                        .font(Theme.sectionHeader)
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("\(results.count) found")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+
+                Spacer()
+
+                Button {
+                    showResultsSheet = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .frame(width: 30, height: 30)
+                        .background(Theme.surface2.opacity(0.78), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .help("Dismiss")
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 18)
+            .padding(.bottom, 12)
+
+            Divider()
+                .opacity(0.35)
+
+            ScrollView {
+                resultsSection
+                    .padding(20)
+                    .frame(maxWidth: 880, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, alignment: .top)
+            }
+        }
+        .frame(minWidth: 720, idealWidth: 860, maxWidth: 980, minHeight: 420, idealHeight: 640, maxHeight: 760)
+        .background(Theme.surface0.opacity(0.94))
+    }
+
+    private var showResultsButton: some View {
+        Button {
+            showResultsSheet = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "rectangle.stack.fill")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Theme.skyBlue)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Results Ready")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("\(results.count) extracted URL\(results.count == 1 ? "" : "s")")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "arrow.up.forward.square")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .padding(14)
+            .glassCard(tint: Theme.skyBlue.opacity(0.10), cornerRadius: HomeLayoutMetrics.cardCornerRadius)
+        }
+        .buttonStyle(.plain)
+    }
+
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 8) {
             Label("Ready for URLs", systemImage: "sparkles")
@@ -262,6 +339,7 @@ struct HomeView: View {
         let urls = urlLines
         guard !urls.isEmpty, inputModel.invalidLines.isEmpty else { return }
         results = []
+        showResultsSheet = false
         isLoading = true
         loadProgress = ""
         tracker.clear(except: Set(tracker.megaUploads.keys)
@@ -310,7 +388,9 @@ struct HomeView: View {
             }
             NotificationManager.shared.notifyScrapeComplete(count: ordered.filter { $0.source != nil }.count)
 
-            isLoading = false; loadProgress = ""
+            isLoading = false
+            loadProgress = ""
+            showResultsSheet = !ordered.isEmpty
         }
     }
 
