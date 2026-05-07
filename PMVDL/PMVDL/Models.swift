@@ -379,7 +379,6 @@ enum NavDestination: String, Codable, CaseIterable {
     case feed = "Feed"
     case favorites = "Favorites"
     case library = "Library"
-    case downloads = "Downloads"
     case files = "Files"
     case settings = "Settings"
 
@@ -389,7 +388,6 @@ enum NavDestination: String, Codable, CaseIterable {
         case .feed: return "antenna.radiowaves.left.and.right"
         case .favorites: return "heart.fill"
         case .library: return "books.vertical.fill"
-        case .downloads: return "arrow.down.circle.fill"
         case .files: return "folder.fill"
         case .settings: return "gearshape.fill"
         }

@@ -31,9 +31,9 @@ struct AllPornStreamFeedScraper: FeedScraper {
     static func fetchPage(page: Int) async throws -> [FeedItem] {
         let html = try await fetchHTML(page: page)
         let list = try decodeItemList(from: html)
-        let thumbnails = thumbnailMap(for: list.itemListElement, html: html)
+        let previews = previewMap(for: list.itemListElement, html: html)
         return list.itemListElement.compactMap { video in
-            feedItem(from: video, thumbnailURL: thumbnails[video.url])
+            feedItem(from: video, previewURLs: previews[video.url] ?? [])
         }
     }
 
@@ -83,7 +83,7 @@ struct AllPornStreamFeedScraper: FeedScraper {
         }
     }
 
-    private static func feedItem(from video: JSONLDVideoObject, thumbnailURL: String?) -> FeedItem? {
+    private static func feedItem(from video: JSONLDVideoObject, previewURLs: [String]) -> FeedItem? {
         guard let uploadDate = parseDate(video.uploadDate),
               let fullURL = fullPostURL(relative: video.url),
               let id = postID(from: video.url) else {
@@ -93,7 +93,8 @@ struct AllPornStreamFeedScraper: FeedScraper {
             id: id,
             title: video.name,
             url: fullURL,
-            thumbnailURL: thumbnailURL,
+            thumbnailURL: previewURLs.first,
+            previewURLs: previewURLs,
             uploadDate: uploadDate,
             viewCount: video.interactionStatistic?.userInteractionCount.value ?? 0,
             siteName: supportedHost,
@@ -134,13 +135,14 @@ struct AllPornStreamFeedScraper: FeedScraper {
         return ISO8601DateFormatter().date(from: raw)
     }
 
-    private static func thumbnailMap(for videos: [JSONLDVideoObject], html: String) -> [String: String] {
-        var output: [String: String] = [:]
+    private static func previewMap(for videos: [JSONLDVideoObject], html: String) -> [String: [String]] {
+        var output: [String: [String]] = [:]
         for video in videos {
             guard let cardRange = cardRange(for: video, html: html) else { continue }
             let segment = String(html[cardRange])
-            if let thumbnail = firstThumbnailURL(in: segment) {
-                output[video.url] = thumbnail
+            let previews = thumbnailURLs(in: segment)
+            if !previews.isEmpty {
+                output[video.url] = previews
             }
         }
         return output
@@ -160,18 +162,21 @@ struct AllPornStreamFeedScraper: FeedScraper {
         return tokenRange.lowerBound..<end
     }
 
-    private static func firstThumbnailURL(in html: String) -> String? {
-        if let dataImages = dataImagesAttribute(in: html),
-           let thumbnail = firstDirectImageURL(in: decodeHTMLEntities(dataImages)) {
-            return proxiedThumbnailURL(for: thumbnail)
+    private static func thumbnailURLs(in html: String) -> [String] {
+        if let dataImages = dataImagesAttribute(in: html) {
+            let thumbnails = proxiedThumbnailURLs(for: allDirectImageURLs(in: decodeHTMLEntities(dataImages)))
+            if !thumbnails.isEmpty { return thumbnails }
         }
 
         let encodedPattern = #"https%3A%2F%2F[^"'\s,&<>]+\.(?:jpg|jpeg|png|webp)"#
-        if let encoded = firstMatch(pattern: encodedPattern, in: html) {
-            return encoded.removingPercentEncoding.flatMap(proxiedThumbnailURL)
+        let encoded = allMatches(pattern: encodedPattern, in: html)
+            .compactMap(\.removingPercentEncoding)
+        let encodedThumbnails = proxiedThumbnailURLs(for: encoded)
+        if !encodedThumbnails.isEmpty {
+            return encodedThumbnails
         }
 
-        return firstDirectImageURL(in: decodeHTMLEntities(html)).flatMap(proxiedThumbnailURL)
+        return proxiedThumbnailURLs(for: allDirectImageURLs(in: decodeHTMLEntities(html)))
     }
 
     private static func dataImagesAttribute(in html: String) -> String? {
@@ -188,9 +193,9 @@ struct AllPornStreamFeedScraper: FeedScraper {
         return String(html[matchRange])
     }
 
-    private static func firstDirectImageURL(in html: String) -> String? {
+    private static func allDirectImageURLs(in html: String) -> [String] {
         let directPattern = #"https://[^"'\s,&<>\]]+\.(?:jpg|jpeg|png|webp)(?:\?[^"'\s,&<>\]]*)?"#
-        return firstMatch(pattern: directPattern, in: html)
+        return allMatches(pattern: directPattern, in: html)
     }
 
     private static func proxiedThumbnailURL(for sourceURL: String) -> String? {
@@ -207,6 +212,16 @@ struct AllPornStreamFeedScraper: FeedScraper {
         return components?.url?.absoluteString
     }
 
+    private static func proxiedThumbnailURLs(for sourceURLs: [String]) -> [String] {
+        var output: [String] = []
+        for sourceURL in sourceURLs {
+            guard let thumbnail = proxiedThumbnailURL(for: sourceURL),
+                  !output.contains(thumbnail) else { continue }
+            output.append(thumbnail)
+        }
+        return output
+    }
+
     private static func decodeHTMLEntities(_ value: String) -> String {
         value
             .replacingOccurrences(of: "&quot;", with: "\"")
@@ -217,15 +232,17 @@ struct AllPornStreamFeedScraper: FeedScraper {
     }
 
     private static func firstMatch(pattern: String, in text: String) -> String? {
+        allMatches(pattern: pattern, in: text).first
+    }
+
+    private static func allMatches(pattern: String, in text: String) -> [String] {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
-            return nil
+            return []
         }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard let match = regex.firstMatch(in: text, range: range),
-              let matchRange = Range(match.range, in: text) else {
-            return nil
+        return regex.matches(in: text, range: range).compactMap { match in
+            Range(match.range, in: text).map { String(text[$0]) }
         }
-        return String(text[matchRange])
     }
 }
 
@@ -427,14 +444,18 @@ struct HQPornerFeedScraper: FeedScraper {
 
             let title = title(in: segment)
             guard !title.isEmpty else { return nil }
+            let thumb = thumbnailURL(in: segment)
+            let previews = previewURLs(in: segment)
 
             return FeedItem(
                 id: "hqporner-\(id)",
                 title: title,
                 url: url,
-                thumbnailURL: thumbnailURL(in: segment),
+                thumbnailURL: thumb,
+                previewURLs: previews,
                 referer: "\(baseURL.absoluteString)/",
                 uploadDate: now,
+                uploadDateIsApproximate: true,
                 viewCount: 0,
                 siteName: supportedHost,
                 studio: nil,
@@ -496,6 +517,23 @@ struct HQPornerFeedScraper: FeedScraper {
         return absoluteURL(decodeHTMLEntities(raw))
     }
 
+    private static func previewURLs(in segment: String) -> [String] {
+        let pattern = #"changeImage\(["']([^"']+)["']"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return []
+        }
+        let range = NSRange(segment.startIndex..<segment.endIndex, in: segment)
+        var urls: [String] = []
+        for match in regex.matches(in: segment, range: range) {
+            guard match.numberOfRanges > 1,
+                  let matchRange = Range(match.range(at: 1), in: segment),
+                  let resolved = absoluteURL(decodeHTMLEntities(String(segment[matchRange]))),
+                  !urls.contains(resolved) else { continue }
+            urls.append(resolved)
+        }
+        return urls
+    }
+
     static func durationSeconds(from raw: String) -> Int? {
         let lower = raw.lowercased()
         var total = 0
@@ -511,6 +549,60 @@ struct HQPornerFeedScraper: FeedScraper {
         return matched ? total : nil
     }
 
+    static func resolveUploadDate(from relativeDateString: String, now: Date = Date()) -> Date {
+        let s = relativeDateString.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let calendar = Calendar.current
+
+        if s == "today" {
+            return now
+        }
+        if s == "yesterday" {
+            return calendar.date(byAdding: .day, value: -1, to: now) ?? now
+        }
+        if s == "one week ago" {
+            return calendar.date(byAdding: .weekOfYear, value: -1, to: now) ?? now
+        }
+
+        let patterns: [(String, Calendar.Component)] = [
+            (#"(\d+)\s+days?\s+ago"#, .day),
+            (#"(\d+)\s+weeks?\s+ago"#, .weekOfYear),
+            (#"(\d+)\s+months?\s+ago"#, .month),
+            (#"(\d+)\s+years?\s+ago"#, .year),
+        ]
+
+        for (pattern, component) in patterns {
+            if let match = try? NSRegularExpression(pattern: pattern).firstMatch(
+                in: s,
+                range: NSRange(s.startIndex..<s.endIndex, in: s)
+            ),
+               match.numberOfRanges > 1,
+               let range = Range(match.range(at: 1), in: s),
+               let value = Int(s[range]) {
+                return calendar.date(byAdding: component, value: -value, to: now) ?? now
+            }
+        }
+
+        return now
+    }
+
+    static func fetchUploadDate(for videoURL: String) async -> Date? {
+        guard let url = URL(string: videoURL) else { return nil }
+        var request = URLRequest(url: url)
+        request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(baseURL.absoluteString, forHTTPHeaderField: "Referer")
+        request.timeoutInterval = 10
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200...299).contains(http.statusCode),
+              let html = String(data: data, encoding: .utf8) else {
+            return nil
+        }
+
+        guard let relativeDate = uploadDateString(in: html) else { return nil }
+        return resolveUploadDate(from: relativeDate)
+    }
+
     private static func durationSeconds(in segment: String) -> Int? {
         guard let raw = firstCapture(pattern: #"fa-clock-o\s+meta-data["'][^>]*>([^<]+)<"#, in: segment) else {
             return nil
@@ -523,6 +615,13 @@ struct HQPornerFeedScraper: FeedScraper {
         let lower = segment.lowercased()
         let labels = candidates.filter { lower.contains($0.lowercased()) }
         return labels.isEmpty ? ["HD"] : labels
+    }
+
+    private static func uploadDateString(in html: String) -> String? {
+        guard let raw = firstCapture(pattern: #"<li[^>]*fa-calendar[^>]*>([^<]+)</li>"#, in: html) else {
+            return nil
+        }
+        return decodeHTMLEntities(raw.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     private static func absoluteURL(_ raw: String) -> String? {

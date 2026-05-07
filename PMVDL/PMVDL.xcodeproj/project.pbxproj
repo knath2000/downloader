@@ -49,6 +49,7 @@
 	A10057 /* StreamTapeExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20057; };
 	A10058 /* MixDropExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20058; };
 	A10059 /* DoodStreamExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20059; };
+	A10120 /* HQPornerExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20120 /* HQPornerExtractor.swift */; };
 	A10060 /* WebViewExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20060 /* WebViewExtractor.swift */; };
 	A10061 /* LicenseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20061 /* LicenseManager.swift */; };
 	A10064 /* HardwareID.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20064 /* HardwareID.swift */; };
@@ -66,6 +67,7 @@
 	A10091 /* HomeURLInputModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20091 /* HomeURLInputModel.swift */; };
 	A10092 /* HomeHeroHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20092 /* HomeHeroHeader.swift */; };
 	A10093 /* HomeURLInputCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20093 /* HomeURLInputCard.swift */; };
+	A10119 /* HomeCompactQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20119 /* HomeCompactQueue.swift */; };
 	A10094 /* VideoResultPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20094 /* VideoResultPresentation.swift */; };
 	A10095 /* BatchDownloadBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20095 /* BatchDownloadBar.swift */; };
 	A10096 /* HomeStatusRail.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20096 /* HomeStatusRail.swift */; };
@@ -179,6 +181,7 @@
 	A20057 /* StreamTapeExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamTapeExtractor.swift; sourceTree = "<group>"; };
 	A20058 /* MixDropExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MixDropExtractor.swift; sourceTree = "<group>"; };
 	A20059 /* DoodStreamExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoodStreamExtractor.swift; sourceTree = "<group>"; };
+	A20120 /* HQPornerExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HQPornerExtractor.swift; sourceTree = "<group>"; };
 	A20060 /* WebViewExtractor.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WebViewExtractor.swift; sourceTree = "<group>"; };
 	A20061 /* LicenseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LicenseManager.swift; sourceTree = "<group>"; };
 	A20064 /* HardwareID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareID.swift; sourceTree = "<group>"; };
@@ -195,6 +198,7 @@
 	A20091 /* HomeURLInputModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeURLInputModel.swift; sourceTree = "<group>"; };
 	A20092 /* HomeHeroHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeHeroHeader.swift; sourceTree = "<group>"; };
 	A20093 /* HomeURLInputCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeURLInputCard.swift; sourceTree = "<group>"; };
+	A20119 /* HomeCompactQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeCompactQueue.swift; sourceTree = "<group>"; };
 	A20094 /* VideoResultPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoResultPresentation.swift; sourceTree = "<group>"; };
 	A20095 /* BatchDownloadBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchDownloadBar.swift; sourceTree = "<group>"; };
 	A20096 /* HomeStatusRail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeStatusRail.swift; sourceTree = "<group>"; };
@@ -407,13 +411,14 @@
 	};
 	A50015 /* Home */ = {
 		isa = PBXGroup;
-		children = (
-			A20090 /* HomeLayoutMetrics.swift */,
-			A20091 /* HomeURLInputModel.swift */,
-			A20092 /* HomeHeroHeader.swift */,
-			A20093 /* HomeURLInputCard.swift */,
-			A20094 /* VideoResultPresentation.swift */,
-			A20095 /* BatchDownloadBar.swift */,
+			children = (
+				A20090 /* HomeLayoutMetrics.swift */,
+				A20091 /* HomeURLInputModel.swift */,
+				A20092 /* HomeHeroHeader.swift */,
+				A20093 /* HomeURLInputCard.swift */,
+				A20119 /* HomeCompactQueue.swift */,
+				A20094 /* VideoResultPresentation.swift */,
+				A20095 /* BatchDownloadBar.swift */,
 			A20096 /* HomeStatusRail.swift */,
 			A20097 /* VideoResultCard.swift */,
 			A20072 /* DependencySetupPanel.swift */,
@@ -551,6 +556,7 @@
 			A20057 /* StreamTapeExtractor.swift */,
 			A20058 /* MixDropExtractor.swift */,
 			A20059 /* DoodStreamExtractor.swift */,
+			A20120 /* HQPornerExtractor.swift */,
 		);
 		name = Extractors;
 		sourceTree = "<group>";
@@ -698,6 +704,7 @@
 			A10057 /* StreamTapeExtractor.swift in Sources */,
 			A10058 /* MixDropExtractor.swift in Sources */,
 			A10059 /* DoodStreamExtractor.swift in Sources */,
+			A10120 /* HQPornerExtractor.swift in Sources */,
 			A10060 /* WebViewExtractor.swift in Sources */,
 			A10061 /* LicenseManager.swift in Sources */,
 			A10064 /* HardwareID.swift in Sources */,
@@ -708,14 +715,15 @@
 			A10071 /* SettingsView.swift in Sources */,
 			A10087 /* SettingsDependencyState.swift in Sources */,
 			A10088 /* SettingsDependencyStore.swift in Sources */,
-			A10072 /* DependencySetupPanel.swift in Sources */,
-			A10073 /* VideoResultRow.swift in Sources */,
-			A10090 /* HomeLayoutMetrics.swift in Sources */,
-			A10091 /* HomeURLInputModel.swift in Sources */,
-			A10092 /* HomeHeroHeader.swift in Sources */,
-			A10093 /* HomeURLInputCard.swift in Sources */,
-			A10094 /* VideoResultPresentation.swift in Sources */,
-			A10095 /* BatchDownloadBar.swift in Sources */,
+				A10072 /* DependencySetupPanel.swift in Sources */,
+				A10073 /* VideoResultRow.swift in Sources */,
+				A10090 /* HomeLayoutMetrics.swift in Sources */,
+				A10091 /* HomeURLInputModel.swift in Sources */,
+				A10092 /* HomeHeroHeader.swift in Sources */,
+				A10093 /* HomeURLInputCard.swift in Sources */,
+				A10119 /* HomeCompactQueue.swift in Sources */,
+				A10094 /* VideoResultPresentation.swift in Sources */,
+				A10095 /* BatchDownloadBar.swift in Sources */,
 			A10096 /* HomeStatusRail.swift in Sources */,
 			A10097 /* VideoResultCard.swift in Sources */,
 			A10098 /* FeedItem.swift in Sources */,

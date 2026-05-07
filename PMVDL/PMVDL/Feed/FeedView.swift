@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 private enum FeedLayout {
@@ -30,10 +31,19 @@ struct FeedGridLayout: Equatable {
 }
 
 struct FeedView: View {
-    @StateObject private var model = FeedViewModel()
+    @StateObject private var model = FeedViewModel.shared
     @StateObject private var favorites = FeedFavoritesStore.shared
     @State private var showsAdvancedFilters = false
+    @State private var selectedItemIDs: Set<String> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var isSelecting: Bool { !selectedItemIDs.isEmpty }
+    private var capabilities: FeedSiteCapabilities {
+        FeedSiteCapabilities.capabilities(for: model.selectedSite)
+    }
+    private var siteTheme: FeedSiteTheme {
+        FeedSiteTheme.theme(for: model.selectedSite)
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -48,6 +58,7 @@ struct FeedView: View {
                     visibleCount: model.filteredItems.count,
                     totalCount: model.items.count,
                     isLoading: model.isLoading,
+                    theme: siteTheme,
                     refreshAction: { Task { await model.refresh() } }
                 )
 
@@ -56,6 +67,8 @@ struct FeedView: View {
                     filters: $model.filters,
                     sortMode: $model.sortMode,
                     showsAdvancedFilters: $showsAdvancedFilters,
+                    capabilities: capabilities,
+                    theme: siteTheme,
                     availableStudios: model.availableStudios,
                     availableCategories: model.availableCategories,
                     availableTags: model.availableTags,
@@ -66,6 +79,7 @@ struct FeedView: View {
                 if !model.filters.activeChips.isEmpty {
                     FeedActiveFiltersRow(
                         chips: model.filters.activeChips,
+                        accent: siteTheme.accent,
                         remove: removeActiveFilter,
                         clearAll: model.clearFilters
                     )
@@ -73,17 +87,25 @@ struct FeedView: View {
                 }
 
                 if let error = model.error, !model.items.isEmpty {
-                    FeedInlineErrorBanner(message: error) {
+                    FeedInlineErrorBanner(message: error, accent: siteTheme.accent) {
                         Task { await model.refresh() }
                     }
                 }
 
                 content(availableWidth: availableWidth)
+
+                if isSelecting {
+                    batchSelectionBar
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)))
+                }
             }
             .frame(maxWidth: FeedLayout.contentMaxWidth, maxHeight: .infinity, alignment: .topLeading)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(.horizontal, FeedLayout.outerSpacing)
             .padding(.top, 10)
+            .background(siteTheme.backgroundTint.opacity(0.18).ignoresSafeArea())
+            .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.82), value: isSelecting)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: model.selectedSite)
         }
         .task {
             await model.loadInitial()
@@ -91,7 +113,9 @@ struct FeedView: View {
         .onChange(of: model.filters.date) { _, _ in
             model.resetPaginationForFilter()
         }
-        .onChange(of: model.selectedSite) { _, _ in
+        .onChange(of: model.selectedSite) { _, newSite in
+            applySiteCapabilities(for: newSite)
+            selectedItemIDs = []
             Task { await model.refresh() }
         }
     }
@@ -99,19 +123,20 @@ struct FeedView: View {
     @ViewBuilder
     private func content(availableWidth: CGFloat) -> some View {
         if let error = model.error, model.items.isEmpty {
-            FeedErrorState(message: error) {
+            FeedErrorState(message: error, accent: siteTheme.accent) {
                 Task { await model.refresh() }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if model.isLoading && model.items.isEmpty {
             ScrollView {
-                FeedSkeletonGrid(layout: FeedGridLayout(availableWidth: availableWidth))
+                FeedSkeletonGrid(layout: FeedGridLayout(availableWidth: availableWidth), accent: siteTheme.accent)
                     .padding(.bottom, FeedLayout.gridBottomPadding)
             }
         } else if model.filteredItems.isEmpty {
             FeedEmptyState(
                 filters: model.filters,
                 hasMore: model.hasMore,
+                accent: siteTheme.accent,
                 clearFilters: model.clearFilters,
                 loadMore: { Task { await model.loadMore() } },
                 refresh: { Task { await model.refresh() } }
@@ -138,13 +163,25 @@ struct FeedView: View {
                                             }
                                         },
                                         extract: {
-                                            extract(item)
+                                            if isSelecting {
+                                                toggleSelection(item)
+                                            } else {
+                                                extract(item)
+                                            }
                                         }
                                     )
+                                    .overlay(alignment: .topTrailing) {
+                                        if isSelecting {
+                                            selectionBadge(for: item)
+                                        }
+                                    }
+                                    .contextMenu {
+                                        cardContextMenu(for: item)
+                                    }
                                 }
                             }
                         } header: {
-                            FeedDayHeader(date: bucket.date, count: bucket.items.count)
+                            FeedDayHeader(date: bucket.date, count: bucket.items.count, accent: siteTheme.accent)
                         }
                     }
 
@@ -153,6 +190,71 @@ struct FeedView: View {
                 .padding(.bottom, FeedLayout.gridBottomPadding)
             }
         }
+    }
+
+    private var batchSelectionBar: some View {
+        HStack(spacing: 12) {
+            Text("\(selectedItemIDs.count) selected")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Theme.textPrimary)
+
+            Spacer()
+
+            Button("Clear") {
+                selectedItemIDs = []
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+            Button {
+                extractSelected()
+            } label: {
+                Label("Extract Selected", systemImage: "bolt.fill")
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(siteTheme.accent)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .glassCard(tint: siteTheme.accent.opacity(0.14), cornerRadius: 14)
+    }
+
+    private func selectionBadge(for item: FeedItem) -> some View {
+        Image(systemName: selectedItemIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 20, weight: .bold))
+            .foregroundStyle(selectedItemIDs.contains(item.id) ? siteTheme.accent : .white.opacity(0.7))
+            .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 1)
+            .padding(10)
+    }
+
+    @ViewBuilder
+    private func cardContextMenu(for item: FeedItem) -> some View {
+        Button(selectedItemIDs.contains(item.id) ? "Deselect" : "Select") {
+            toggleSelection(item)
+        }
+        Button("Select All Visible") {
+            selectedItemIDs = Set(model.filteredItems.map(\.id))
+        }
+        if isSelecting {
+            Divider()
+            Button("Extract Selected (\(selectedItemIDs.count))") {
+                extractSelected()
+            }
+            Button("Clear Selection") {
+                selectedItemIDs = []
+            }
+        }
+        Divider()
+        Button("Extract") { extract(item) }
+        Button(favorites.contains(url: item.url) ? "Remove from Favorites" : "Add to Favorites") {
+            withAnimation {
+                favorites.toggle(feedItem: item)
+            }
+        }
+        Divider()
+        Button("Copy Link") { ClipboardManager.copy(item.url) }
+        Button("Open in Browser") { openInBrowser(item) }
     }
 
     private var loadMoreRow: some View {
@@ -171,6 +273,7 @@ struct FeedView: View {
                     }
                 }
                 .buttonStyle(.bordered)
+                .tint(siteTheme.accent)
                 .controlSize(.small)
                 .disabled(model.isLoading)
             } else {
@@ -189,9 +292,57 @@ struct FeedView: View {
     }
 
     private func extract(_ item: FeedItem) {
-        AppStateManager.shared.pendingExtractURL = item.url
+        AppStateManager.shared.pendingExtractThumbnailURL = item.thumbnailURL
         AppStateManager.shared.pendingExtractShouldStart = true
+        AppStateManager.shared.pendingExtractURL = item.url
         AppStateManager.shared.select(.home)
+    }
+
+    private func toggleSelection(_ item: FeedItem) {
+        if selectedItemIDs.contains(item.id) {
+            selectedItemIDs.remove(item.id)
+        } else {
+            selectedItemIDs.insert(item.id)
+        }
+    }
+
+    private func extractSelected() {
+        let selected = model.filteredItems.filter { selectedItemIDs.contains($0.id) }
+        guard !selected.isEmpty else { return }
+
+        AppStateManager.shared.pendingExtractThumbnailURL = nil
+        AppStateManager.shared.pendingExtractShouldStart = true
+        AppStateManager.shared.pendingExtractURL = selected.map(\.url).joined(separator: "\n")
+        selectedItemIDs = []
+        AppStateManager.shared.select(.home)
+    }
+
+    private func openInBrowser(_ item: FeedItem) {
+        guard let url = URL(string: item.url) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    private func applySiteCapabilities(for site: String) {
+        let caps = FeedSiteCapabilities.capabilities(for: site)
+        if !caps.availableSortModes.contains(model.sortMode) {
+            model.sortMode = caps.availableSortModes.first ?? .titleAZ
+        }
+        if !caps.hasRealDates && model.filters.date != .all {
+            model.filters.date = .all
+        }
+        if !caps.hasViewCounts {
+            model.filters.minViews = nil
+        }
+        if !caps.hasDuration {
+            model.filters.minDurationSeconds = nil
+            model.filters.maxDurationSeconds = nil
+        }
+        if !caps.hasStudios {
+            model.filters.selectedStudios = []
+        }
+        if !caps.hasQualityLabels {
+            model.filters.selectedQualityLabels = []
+        }
     }
 }
 
@@ -200,23 +351,26 @@ private struct FeedPageHeader: View {
     let visibleCount: Int
     let totalCount: Int
     let isLoading: Bool
+    let theme: FeedSiteTheme
     let refreshAction: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Theme.lavender.opacity(0.18))
-                    .frame(width: 38, height: 38)
-                Image(systemName: "antenna.radiowaves.left.and.right")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Theme.lavender)
-            }
+            RoundedRectangle(cornerRadius: 3)
+                .fill(theme.accent)
+                .frame(width: 4, height: 36)
+
+            Image(systemName: theme.icon)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(theme.accent)
+                .frame(width: 36, height: 36)
+                .background(theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(theme.accent.opacity(0.24), lineWidth: 0.5))
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("Feed")
-                    .font(.system(.title3, design: .rounded).weight(.black))
-                    .foregroundStyle(Theme.textPrimary)
+                logo
                 Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(Theme.textSecondary)
@@ -225,7 +379,7 @@ private struct FeedPageHeader: View {
 
             Spacer()
 
-            FeedCountBadge(count: visibleCount, total: totalCount)
+            FeedCountBadge(count: visibleCount, total: totalCount, accent: theme.accent)
 
             Button(action: refreshAction) {
                 if isLoading {
@@ -237,7 +391,7 @@ private struct FeedPageHeader: View {
                 }
             }
             .buttonStyle(.borderedProminent)
-            .tint(Theme.lavender)
+            .tint(theme.accent)
             .controlSize(.small)
             .disabled(isLoading)
             .keyboardShortcut("r", modifiers: [.command])
@@ -245,14 +399,33 @@ private struct FeedPageHeader: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .glassCard(tint: Theme.lavender.opacity(0.12), cornerRadius: FeedLayout.toolbarCornerRadius)
+        .glassCard(tint: theme.accent.opacity(0.10), cornerRadius: FeedLayout.toolbarCornerRadius)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: selectedSite)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text("Feed, \(subtitle)"))
     }
 
+    @ViewBuilder
+    private var logo: some View {
+        if let logoText = theme.logoText {
+            HStack(spacing: 0) {
+                Text(logoText.prefix)
+                    .font(.system(.title3, design: .default).weight(.heavy))
+                    .foregroundStyle(theme.accent)
+                Text(logoText.suffix)
+                    .font(.system(.title3, design: .default).weight(.heavy))
+                    .foregroundStyle(Theme.textPrimary)
+            }
+        } else {
+            Text(theme.displayName)
+                .font(.system(.title3, design: .rounded).weight(.black))
+                .foregroundStyle(Theme.textPrimary)
+        }
+    }
+
     private var subtitle: String {
         let countText = totalCount == visibleCount ? "\(totalCount) loaded" : "\(visibleCount) visible of \(totalCount) loaded"
-        return "\(FeedSiteDisplay.name(for: selectedSite)) - \(countText)"
+        return "\(theme.displayName) - \(countText)"
     }
 }
 
@@ -264,6 +437,8 @@ private struct FeedToolbar: View {
     @FocusState private var searchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    let capabilities: FeedSiteCapabilities
+    let theme: FeedSiteTheme
     let availableStudios: [String]
     let availableCategories: [String]
     let availableTags: [String]
@@ -281,6 +456,8 @@ private struct FeedToolbar: View {
                 if showsAdvancedFilters {
                     FeedAdvancedFilterPanel(
                         filters: $filters,
+                        capabilities: capabilities,
+                        accent: theme.accent,
                         availableStudios: availableStudios,
                         availableCategories: availableCategories,
                         availableTags: availableTags,
@@ -300,7 +477,8 @@ private struct FeedToolbar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .glassCard(tint: Theme.lavender.opacity(0.10), cornerRadius: 16)
+        .glassCard(tint: theme.accent.opacity(0.10), cornerRadius: 16)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: selectedSite)
         .onExitCommand {
             if searchFocused {
                 filters.query = ""
@@ -341,7 +519,7 @@ private struct FeedToolbar: View {
     }
 
     private var sitePicker: some View {
-        FeedMenuPicker(title: "Site") {
+        FeedMenuPicker(title: "Site", accent: theme.accent) {
             Picker("Site", selection: $selectedSite) {
                 Text(AllPornStreamFeedScraper.supportedHost).tag(AllPornStreamFeedScraper.supportedHost)
                 Text(RentryFeedScraper.supportedHost).tag(RentryFeedScraper.supportedHost)
@@ -367,30 +545,33 @@ private struct FeedToolbar: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(Theme.accentDim.opacity(0.24), in: Capsule())
-        .overlay(Capsule().strokeBorder(Theme.lavender.opacity(0.20), lineWidth: 0.5))
+        .background(theme.accent.opacity(0.12), in: Capsule())
+        .overlay(Capsule().strokeBorder(theme.accent.opacity(0.20), lineWidth: 0.5))
         .frame(minWidth: 220, idealWidth: 270, maxWidth: 320)
         .accessibilityLabel(Text("Search feed"))
     }
 
+    @ViewBuilder
     private var datePicker: some View {
-        FeedMenuPicker(title: "Date") {
-            Picker("Date", selection: $filters.date) {
-                ForEach(FeedDateFilter.allCases) { filter in
-                    Text(filter.title).tag(filter)
+        if capabilities.hasRealDates {
+            FeedMenuPicker(title: "Date", accent: theme.accent) {
+                Picker("Date", selection: $filters.date) {
+                    ForEach(FeedDateFilter.allCases) { filter in
+                        Text(filter.title).tag(filter)
+                    }
                 }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .frame(width: 132)
             }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .frame(width: 132)
+            .accessibilityLabel(Text("Date filter"))
         }
-        .accessibilityLabel(Text("Date filter"))
     }
 
     private var sortPicker: some View {
-        FeedMenuPicker(title: "Sort") {
+        FeedMenuPicker(title: "Sort", accent: theme.accent) {
             Picker("Sort", selection: $sortMode) {
-                ForEach(FeedSortMode.allCases) { sort in
+                ForEach(capabilities.availableSortModes) { sort in
                     Text(sort.title).tag(sort)
                 }
             }
@@ -412,6 +593,7 @@ private struct FeedToolbar: View {
             .font(.caption.weight(.semibold))
         }
         .buttonStyle(.bordered)
+        .tint(theme.accent)
         .controlSize(.small)
         .help("Show advanced feed filters")
         .accessibilityLabel(Text(showsAdvancedFilters ? "Hide advanced filters" : "Show advanced filters"))
@@ -422,6 +604,7 @@ private struct FeedToolbar: View {
         if !filters.isDefault {
             Button("Clear", action: clearFilters)
                 .buttonStyle(.bordered)
+                .tint(theme.accent)
                 .controlSize(.small)
                 .help("Clear feed filters")
         }
@@ -430,6 +613,7 @@ private struct FeedToolbar: View {
 
 private struct FeedActiveFiltersRow: View {
     let chips: [FeedActiveFilterChip]
+    let accent: Color
     let remove: (String) -> Void
     let clearAll: () -> Void
 
@@ -454,8 +638,8 @@ private struct FeedActiveFiltersRow: View {
                         .foregroundStyle(Theme.textPrimary)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 5)
-                        .background(Theme.lavender.opacity(0.16), in: Capsule())
-                        .overlay(Capsule().strokeBorder(Theme.lavender.opacity(0.22), lineWidth: 0.5))
+                        .background(accent.opacity(0.16), in: Capsule())
+                        .overlay(Capsule().strokeBorder(accent.opacity(0.22), lineWidth: 0.5))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text("Remove filter: \(chip.title)"))
@@ -473,10 +657,12 @@ private struct FeedActiveFiltersRow: View {
 
 private struct FeedMenuPicker<Content: View>: View {
     let title: String
+    let accent: Color
     let content: Content
 
-    init(title: String, @ViewBuilder content: () -> Content) {
+    init(title: String, accent: Color, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.accent = accent
         self.content = content()
     }
 
@@ -489,14 +675,17 @@ private struct FeedMenuPicker<Content: View>: View {
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
-        .background(Theme.accentDim.opacity(0.24), in: Capsule())
-        .overlay(Capsule().strokeBorder(Theme.lavender.opacity(0.20), lineWidth: 0.5))
+        .background(accent.opacity(0.12), in: Capsule())
+        .overlay(Capsule().strokeBorder(accent.opacity(0.20), lineWidth: 0.5))
+        .tint(accent)
     }
 }
 
 private struct FeedAdvancedFilterPanel: View {
     @Binding var filters: FeedFilterState
 
+    let capabilities: FeedSiteCapabilities
+    let accent: Color
     let availableStudios: [String]
     let availableCategories: [String]
     let availableTags: [String]
@@ -507,7 +696,7 @@ private struct FeedAdvancedFilterPanel: View {
             HStack(spacing: 8) {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Theme.lavender)
+                    .foregroundStyle(accent)
                 Text("Advanced filters")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Theme.textPrimary)
@@ -532,57 +721,76 @@ private struct FeedAdvancedFilterPanel: View {
         }
         .padding(12)
         .background(Theme.surface1.opacity(0.34), in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.lavender.opacity(0.16), lineWidth: 0.8))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(accent.opacity(0.16), lineWidth: 0.8))
     }
 
+    @ViewBuilder
     private var metricsSection: some View {
-        FeedFilterSection("Metrics", icon: "gauge.with.dots.needle.bottom.50percent") {
-            HStack(spacing: 10) {
-                FeedMenuPicker(title: "Views") {
-                    Picker("Views", selection: minViewsBinding) {
-                        Text("Any").tag(0)
-                        Text("1K+").tag(1_000)
-                        Text("10K+").tag(10_000)
-                        Text("100K+").tag(100_000)
-                        Text("1M+").tag(1_000_000)
+        if capabilities.hasViewCounts || capabilities.hasDuration {
+            FeedFilterSection("Metrics", icon: "gauge.with.dots.needle.bottom.50percent") {
+                HStack(spacing: 10) {
+                    if capabilities.hasViewCounts {
+                        FeedMenuPicker(title: "Views", accent: accent) {
+                            Picker("Views", selection: minViewsBinding) {
+                                Text("Any").tag(0)
+                                Text("1K+").tag(1_000)
+                                Text("10K+").tag(10_000)
+                                Text("100K+").tag(100_000)
+                                Text("1M+").tag(1_000_000)
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .frame(width: 92)
+                        }
                     }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .frame(width: 92)
-                }
 
-                FeedMenuPicker(title: "Duration") {
-                    Picker("Duration", selection: durationBinding) {
-                        Text("Any").tag("any")
-                        Text("< 10m").tag("short")
-                        Text("10-30m").tag("medium")
-                        Text("30m+").tag("long")
+                    if capabilities.hasDuration {
+                        FeedMenuPicker(title: "Duration", accent: accent) {
+                            Picker("Duration", selection: durationBinding) {
+                                Text("Any").tag("any")
+                                Text("< 10m").tag("short")
+                                Text("10-30m").tag("medium")
+                                Text("30m+").tag("long")
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                            .frame(width: 96)
+                        }
                     }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .frame(width: 96)
                 }
             }
         }
     }
 
+    @ViewBuilder
     private var sourceSection: some View {
-        FeedFilterSection("Source metadata", icon: "tag.fill") {
-            filterRow(title: "Quality", values: availableQualityLabels, selection: $filters.selectedQualityLabels)
-            filterRow(title: "Studio", values: availableStudios, selection: $filters.selectedStudios, limit: 14)
+        let showQuality = capabilities.hasQualityLabels && !availableQualityLabels.isEmpty
+        let showStudios = capabilities.hasStudios && !availableStudios.isEmpty
+        if showQuality || showStudios {
+            FeedFilterSection("Source metadata", icon: "tag.fill") {
+                if showQuality {
+                    filterRow(title: "Quality", values: availableQualityLabels, selection: $filters.selectedQualityLabels)
+                }
+                if showStudios {
+                    filterRow(title: "Studio", values: availableStudios, selection: $filters.selectedStudios, limit: 14)
+                }
+            }
         }
     }
 
+    @ViewBuilder
     private var discoverySection: some View {
-        FeedFilterSection("Discovery", icon: "sparkle.magnifyingglass") {
-            filterRow(title: "Category", values: availableCategories, selection: $filters.selectedCategories, limit: 16)
-            filterRow(title: "Tags", values: availableTags, selection: $filters.selectedTags, limit: 20)
-            if !filters.selectedTags.isEmpty {
-                Toggle("Require all selected tags", isOn: $filters.requireAllTags)
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.textSecondary)
+        if !availableCategories.isEmpty || !availableTags.isEmpty {
+            FeedFilterSection("Discovery", icon: "sparkle.magnifyingglass") {
+                filterRow(title: "Category", values: availableCategories, selection: $filters.selectedCategories, limit: 16)
+                filterRow(title: "Tags", values: availableTags, selection: $filters.selectedTags, limit: 20)
+                if !filters.selectedTags.isEmpty {
+                    Toggle("Require all selected tags", isOn: $filters.requireAllTags)
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                }
             }
         }
     }
@@ -633,7 +841,8 @@ private struct FeedAdvancedFilterPanel: View {
                         ForEach(Array(values.prefix(limit)), id: \.self) { value in
                             FeedFilterChip(
                                 title: value,
-                                isSelected: selection.wrappedValue.contains(value)
+                                isSelected: selection.wrappedValue.contains(value),
+                                accent: accent
                             ) {
                                 var next = selection.wrappedValue
                                 if next.contains(value) {
@@ -685,7 +894,10 @@ private struct FeedFilterSection<Content: View>: View {
 private struct FeedFilterChip: View {
     let title: String
     let isSelected: Bool
+    let accent: Color
     let action: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
@@ -695,8 +907,9 @@ private struct FeedFilterChip: View {
                 .lineLimit(1)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
-                .background(isSelected ? Theme.lavender.opacity(0.70) : Theme.accentDim.opacity(0.24), in: Capsule())
-                .overlay(Capsule().strokeBorder(Theme.lavender.opacity(isSelected ? 0.35 : 0.16), lineWidth: 0.5))
+                .background(isSelected ? accent.opacity(0.70) : accent.opacity(0.10), in: Capsule())
+                .overlay(Capsule().strokeBorder(accent.opacity(isSelected ? 0.35 : 0.16), lineWidth: 0.5))
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: isSelected)
         }
         .buttonStyle(.plain)
     }
@@ -705,15 +918,16 @@ private struct FeedFilterChip: View {
 private struct FeedCountBadge: View {
     let count: Int
     let total: Int
+    let accent: Color
 
     var body: some View {
         Text(total == count ? "\(count)" : "\(count) / \(total)")
             .font(.caption.weight(.bold))
-            .foregroundStyle(Theme.gold)
+            .foregroundStyle(accent)
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
-            .background(Theme.gold.opacity(0.14), in: Capsule())
-            .overlay(Capsule().strokeBorder(Theme.gold.opacity(0.25), lineWidth: 0.5))
+            .background(accent.opacity(0.14), in: Capsule())
+            .overlay(Capsule().strokeBorder(accent.opacity(0.25), lineWidth: 0.5))
             .accessibilityLabel(Text("\(count) visible out of \(total) loaded videos"))
     }
 }
@@ -721,6 +935,7 @@ private struct FeedCountBadge: View {
 private struct FeedDayHeader: View {
     let date: Date
     let count: Int
+    let accent: Color
 
     var body: some View {
         HStack(spacing: 10) {
@@ -730,7 +945,7 @@ private struct FeedDayHeader: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Theme.textSecondary)
             Rectangle()
-                .fill(Theme.lavender.opacity(0.18))
+                .fill(accent.opacity(0.18))
                 .frame(height: 1)
         }
         .foregroundStyle(Theme.textPrimary)
@@ -741,6 +956,7 @@ private struct FeedDayHeader: View {
 
 private struct FeedSkeletonGrid: View {
     let layout: FeedGridLayout
+    let accent: Color
 
     var body: some View {
         LazyVGrid(columns: layout.columns, alignment: .leading, spacing: layout.spacing) {
@@ -757,7 +973,7 @@ private struct FeedSkeletonGrid: View {
                         .frame(width: 120, height: 10)
                 }
                 .padding(10)
-                .glassCard(tint: Theme.lavender.opacity(0.08), cornerRadius: 16)
+                .glassCard(tint: accent.opacity(0.08), cornerRadius: 16)
             }
         }
         .redacted(reason: .placeholder)
@@ -768,6 +984,7 @@ private struct FeedSkeletonGrid: View {
 private struct FeedEmptyState: View {
     let filters: FeedFilterState
     let hasMore: Bool
+    let accent: Color
     let clearFilters: () -> Void
     let loadMore: () -> Void
     let refresh: () -> Void
@@ -776,7 +993,7 @@ private struct FeedEmptyState: View {
         VStack(spacing: 12) {
             Image(systemName: "antenna.radiowaves.left.and.right")
                 .font(.system(size: 38, weight: .bold))
-                .foregroundStyle(Theme.lavender.opacity(0.62))
+                .foregroundStyle(accent.opacity(0.62))
             Text(emptyMessage)
                 .font(.headline)
                 .foregroundStyle(Theme.textPrimary)
@@ -789,18 +1006,19 @@ private struct FeedEmptyState: View {
                 if filters.isDefault {
                     Button("Refresh", action: refresh)
                         .buttonStyle(.borderedProminent)
-                        .tint(Theme.lavender)
+                        .tint(accent)
                         .controlSize(.small)
                 } else {
                     Button("Clear Filters", action: clearFilters)
                         .buttonStyle(.borderedProminent)
-                        .tint(Theme.lavender)
+                        .tint(accent)
                         .controlSize(.small)
                 }
 
                 if hasMore {
                     Button("Load More", action: loadMore)
                         .buttonStyle(.bordered)
+                        .tint(accent)
                         .controlSize(.small)
                 }
             }
@@ -824,6 +1042,7 @@ private struct FeedEmptyState: View {
 
 private struct FeedErrorState: View {
     let message: String
+    let accent: Color
     let retry: () -> Void
 
     var body: some View {
@@ -838,7 +1057,7 @@ private struct FeedErrorState: View {
                 .frame(maxWidth: 360)
             Button("Retry", action: retry)
                 .buttonStyle(.borderedProminent)
-                .tint(Theme.lavender)
+                .tint(accent)
                 .controlSize(.small)
         }
     }
@@ -846,6 +1065,7 @@ private struct FeedErrorState: View {
 
 private struct FeedInlineErrorBanner: View {
     let message: String
+    let accent: Color
     let retry: () -> Void
 
     var body: some View {
@@ -860,6 +1080,7 @@ private struct FeedInlineErrorBanner: View {
             Spacer()
             Button("Retry", action: retry)
                 .buttonStyle(.bordered)
+                .tint(accent)
                 .controlSize(.small)
         }
         .padding(.horizontal, 12)

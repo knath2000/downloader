@@ -1,3 +1,9 @@
+# Latest Session - 2026-05-07 Feed, Home Queue, HQPorner, and Theming
+
+See `docs/SESSION_2026_05_07_FEED_HOME_HQPORNER.md` for the durable summary of the latest Home, compact queue, thumbnail, Feed, HQPorner, site-capability, site-theming, README, validation, and launch work.
+
+---
+
 # VidDL LuluVid/LuluStream Extractor Fix - Session Summary
 **Date:** 2026-05-04
 **Project:** VidDL

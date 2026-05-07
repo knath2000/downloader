@@ -10,6 +10,7 @@ class AppStateManager: ObservableObject {
     @Published var windowSize: CGSize = CGSize(width: 900, height: 650)
     @Published var pendingExtractURL: String?
     @Published var pendingExtractShouldStart = false
+    @Published var pendingExtractThumbnailURL: String?
 
     func setActivationPolicy(_ policy: NSApplication.ActivationPolicy) {
         NSApp.setActivationPolicy(policy)

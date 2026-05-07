@@ -1,12 +1,14 @@
-import Foundation
+import SwiftUI
 
 struct FeedItem: Identifiable, Hashable {
     let id: String
     let title: String
     let url: String
     let thumbnailURL: String?
+    let previewURLs: [String]
     let referer: String?
     let uploadDate: Date
+    let uploadDateIsApproximate: Bool
     let viewCount: Int
     let siteName: String
     let studio: String?
@@ -22,8 +24,10 @@ struct FeedItem: Identifiable, Hashable {
         title: String,
         url: String,
         thumbnailURL: String?,
+        previewURLs: [String] = [],
         referer: String? = nil,
         uploadDate: Date,
+        uploadDateIsApproximate: Bool = false,
         viewCount: Int,
         siteName: String,
         studio: String?,
@@ -38,8 +42,10 @@ struct FeedItem: Identifiable, Hashable {
         self.title = title
         self.url = url
         self.thumbnailURL = thumbnailURL
+        self.previewURLs = previewURLs
         self.referer = referer
         self.uploadDate = uploadDate
+        self.uploadDateIsApproximate = uploadDateIsApproximate
         self.viewCount = viewCount
         self.siteName = siteName
         self.studio = studio
@@ -49,6 +55,28 @@ struct FeedItem: Identifiable, Hashable {
         self.performers = performers
         self.qualityLabels = qualityLabels
         self.sourceKind = sourceKind
+    }
+
+    func withUploadDate(_ date: Date, isApproximate: Bool) -> FeedItem {
+        FeedItem(
+            id: id,
+            title: title,
+            url: url,
+            thumbnailURL: thumbnailURL,
+            previewURLs: previewURLs,
+            referer: referer,
+            uploadDate: date,
+            uploadDateIsApproximate: isApproximate,
+            viewCount: viewCount,
+            siteName: siteName,
+            studio: studio,
+            durationSeconds: durationSeconds,
+            categories: categories,
+            tags: tags,
+            performers: performers,
+            qualityLabels: qualityLabels,
+            sourceKind: sourceKind
+        )
     }
 }
 
@@ -156,6 +184,113 @@ enum FeedSortMode: String, CaseIterable, Identifiable {
                 }
                 return $0.siteName.localizedCaseInsensitiveCompare($1.siteName) == .orderedAscending
             }
+        }
+    }
+}
+
+struct FeedSiteCapabilities {
+    let hasRealDates: Bool
+    let hasViewCounts: Bool
+    let hasDuration: Bool
+    let hasStudios: Bool
+    let hasQualityLabels: Bool
+
+    var availableSortModes: [FeedSortMode] {
+        FeedSortMode.allCases.filter { mode in
+            switch mode {
+            case .newest, .oldest:
+                return hasRealDates
+            case .mostViewed:
+                return hasViewCounts
+            case .shortest, .longest:
+                return hasDuration
+            case .titleAZ:
+                return true
+            case .siteThenNewest:
+                return false
+            }
+        }
+    }
+
+    static let allPornStream = FeedSiteCapabilities(
+        hasRealDates: true,
+        hasViewCounts: true,
+        hasDuration: false,
+        hasStudios: true,
+        hasQualityLabels: false
+    )
+
+    static let rentry = FeedSiteCapabilities(
+        hasRealDates: true,
+        hasViewCounts: false,
+        hasDuration: false,
+        hasStudios: true,
+        hasQualityLabels: false
+    )
+
+    static let hqporner = FeedSiteCapabilities(
+        hasRealDates: true,
+        hasViewCounts: false,
+        hasDuration: true,
+        hasStudios: false,
+        hasQualityLabels: true
+    )
+
+    static func capabilities(for site: String) -> FeedSiteCapabilities {
+        switch site {
+        case AllPornStreamFeedScraper.supportedHost:
+            return .allPornStream
+        case RentryFeedScraper.supportedHost:
+            return .rentry
+        case HQPornerFeedScraper.supportedHost:
+            return .hqporner
+        default:
+            return .allPornStream
+        }
+    }
+}
+
+struct FeedSiteTheme {
+    let accent: Color
+    let backgroundTint: Color
+    let displayName: String
+    let icon: String
+    let logoText: (prefix: String, suffix: String)?
+
+    static let allPornStream = FeedSiteTheme(
+        accent: Color(hex: "#00BCD4"),
+        backgroundTint: Color(hex: "#001820"),
+        displayName: "AllPornStream",
+        icon: "play.rectangle.on.rectangle.fill",
+        logoText: ("AllPorn", "STREAM")
+    )
+
+    static let rentry = FeedSiteTheme(
+        accent: Color(hex: "#7CB342"),
+        backgroundTint: Color(hex: "#0A1A08"),
+        displayName: "OnlyFan420",
+        icon: "lock.open.fill",
+        logoText: ("OnlyFan", "420")
+    )
+
+    static let hqporner = FeedSiteTheme(
+        accent: Color(hex: "#FF6070"),
+        backgroundTint: Color(hex: "#1A0508"),
+        displayName: "HQPorner",
+        icon: "film.stack.fill",
+        logoText: ("HQ", "PORNER")
+    )
+
+    static func theme(for site: String) -> FeedSiteTheme {
+        switch site {
+        case AllPornStreamFeedScraper.supportedHost:
+            return .allPornStream
+        case RentryFeedScraper.supportedHost:
+            return .rentry
+        case HQPornerFeedScraper.supportedHost:
+            return .hqporner
+        default:
+            return .allPornStream
         }
     }
 }

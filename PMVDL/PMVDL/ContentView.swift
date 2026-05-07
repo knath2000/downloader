@@ -17,6 +17,7 @@ struct ContentView: View {
     @AppStorage("seedboxWebdavPassword") var seedboxWebdavPassword = ""
     @State private var showUpgradeOverlay = false
     @Namespace private var sidebarGlass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -28,7 +29,8 @@ struct ContentView: View {
                 .zIndex(0)
 
             if showUpgradeOverlay {
-                UpgradeOverlay { showUpgradeOverlay = false }
+                UpgradeOverlay { dismissUpgradeOverlay() }
+                    .transition(.opacity)
                     .zIndex(1)
             }
         }
@@ -65,7 +67,7 @@ struct ContentView: View {
                         badge: navBadge(for: dest),
                         namespace: sidebarGlass
                     ) {
-                        appState.select(dest)
+                        selectDestination(dest)
                     }
                     .scrollEntrance(delay: Double(idx) * 0.04)
                 }
@@ -91,19 +93,16 @@ struct ContentView: View {
                              seedboxWebdavURL: seedboxWebdavURL,
                              seedboxWebdavUser: seedboxWebdavUser,
                              seedboxWebdavPassword: seedboxWebdavPassword,
-                             onUpgradeRequired: { showUpgradeOverlay = true })
+                             onUpgradeRequired: presentUpgradeOverlay)
                         .padding()
                 case .library:
-                    LibraryView(onUpgradeRequired: { showUpgradeOverlay = true })
+                    LibraryView(onUpgradeRequired: presentUpgradeOverlay)
                         .padding()
                 case .feed:
                     FeedView()
                         .padding()
                 case .favorites:
                     FavoritesView()
-                        .padding()
-                case .downloads:
-                    DownloadQueueViewNew(onUpgradeRequired: { showUpgradeOverlay = true })
                         .padding()
                 case .files:
                     RemoteFilesView(
@@ -125,9 +124,11 @@ struct ContentView: View {
                                  seedboxWebdavURL: $seedboxWebdavURL,
                                  seedboxWebdavUser: $seedboxWebdavUser,
                                  seedboxWebdavPassword: $seedboxWebdavPassword,
-                                 onUpgradeRequired: { showUpgradeOverlay = true })
+                                 onUpgradeRequired: presentUpgradeOverlay)
                 }
             }
+            .transition(.opacity)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: appState.selectedDestination)
             .navigationTitle(appState.selectedDestination.rawValue)
             .toolbar {
                 ToolbarItem(placement: .automatic) {
@@ -161,7 +162,7 @@ struct ContentView: View {
 
     private func navBadge(for dest: NavDestination) -> Int? {
         switch dest {
-        case .downloads:
+        case .home:
             let q = downloadQueue.queue.filter {
                 switch $0.status {
                 case .downloading, .verifying, .uploading, .processing:
@@ -180,7 +181,7 @@ struct ContentView: View {
 
     private var upgradeButton: some View {
         Button {
-            appState.select(.settings)
+            selectDestination(.settings)
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "crown.fill")
@@ -199,6 +200,24 @@ struct ContentView: View {
         .glassCard(tint: Theme.gold, cornerRadius: 10)
         .padding(.bottom, 8)
     }
+
+    private func selectDestination(_ destination: NavDestination) {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7)) {
+            appState.select(destination)
+        }
+    }
+
+    private func presentUpgradeOverlay() {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+            showUpgradeOverlay = true
+        }
+    }
+
+    private func dismissUpgradeOverlay() {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+            showUpgradeOverlay = false
+        }
+    }
 }
 
 // MARK: - SidebarNavItem
@@ -209,6 +228,8 @@ private struct SidebarNavItem: View {
     let badge: Int?
     let namespace: Namespace.ID
     let action: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var destColor: Color { Theme.destinationColor(dest) }
 
@@ -245,6 +266,7 @@ private struct SidebarNavItem: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .background(selectionBackground)
+            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7), value: isSelected)
         }
         .buttonStyle(.plain)
         .pressEffect(scale: 0.96)

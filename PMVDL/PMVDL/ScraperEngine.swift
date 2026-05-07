@@ -58,6 +58,7 @@ struct ScraperEngine {
   StreamTapeExtractor.self, // Native extractor for streamtape.com / streamtape.net
   MixDropExtractor.self, // Native extractor for mixdrop.co / mixdrop.sx / mixdrop.pw
   DoodStreamExtractor.self, // Native extractor for doodstream.com / dood.wf
+  HQPornerExtractor.self, // Native extractor for hqporner.com
   M3U8Extractor.self, // Raw HLS stream handler
   YtDlpExtractor.self, // General: covers 1700+ sites (fallback — broad URL match)
  ]

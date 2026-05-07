@@ -14,6 +14,7 @@ struct DownloadQueueViewNew: View {
     @State private var showingBulkRemoveConfirmation = false
     @State private var diagnosticItem: DownloadQueueItem?
     @FocusState private var searchFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let onUpgradeRequired: () -> Void
 
@@ -51,6 +52,10 @@ struct DownloadQueueViewNew: View {
         downloadItems.filter { selection.contains($0.id) }
     }
 
+    private var visibleRowAnimationKey: [String] {
+        visibleItems.map { "\($0.id.uuidString)-\(DownloadStatusFormatting.statusLabel($0))" }
+    }
+
     var body: some View {
         VStack(spacing: 12) {
             DownloadsToolbar(
@@ -69,6 +74,7 @@ struct DownloadQueueViewNew: View {
 
             content
         }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: downloadItems.isEmpty)
         .safeAreaInset(edge: .bottom) {
             if !selection.isEmpty {
                 DownloadSelectionBar(
@@ -129,6 +135,7 @@ struct DownloadQueueViewNew: View {
                 AppStateManager.shared.select(.home)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .transition(.opacity)
         } else if visibleItems.isEmpty {
             DownloadsNoResultsState(
                 filter: statusFilter,
@@ -164,6 +171,7 @@ struct DownloadQueueViewNew: View {
                                         onProcess: { preset in process(item, preset: preset) },
                                         onToggleSelection: { toggleSelection(for: item) }
                                     )
+                                    .transition(rowTransition)
                                 }
                             }
                         } header: {
@@ -182,8 +190,16 @@ struct DownloadQueueViewNew: View {
                 }
                 .padding(.top, 2)
                 .padding(.bottom, selection.isEmpty ? 18 : 76)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: visibleRowAnimationKey)
             }
         }
+    }
+
+    private var rowTransition: AnyTransition {
+        reduceMotion ? .opacity : .asymmetric(
+            insertion: .move(edge: .top).combined(with: .opacity),
+            removal: .opacity
+        )
     }
 
     private func clearFilters() {
@@ -556,6 +572,8 @@ private struct DownloadQueueRow: View {
     let onProcess: (VideoProcessingPreset) -> Void
     let onToggleSelection: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     private var tint: Color {
         DownloadStatusFormatting.statusTint(item)
     }
@@ -599,6 +617,7 @@ private struct DownloadQueueRow: View {
         .help(item.url)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(accessibilityLabel))
+        .animation(reduceMotion ? nil : .default, value: item.status)
     }
 
     private var leadingRail: some View {
@@ -755,6 +774,8 @@ private struct DownloadPrimaryMetric: View {
     let queueIndex: Int?
     let queueCount: Int
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         HStack(spacing: 5) {
             if item.status == .verifying || (item.status == .processing && item.progress <= 0) {
@@ -766,6 +787,8 @@ private struct DownloadPrimaryMetric: View {
                 .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(DownloadStatusFormatting.statusTint(item))
                 .lineLimit(1)
+                .contentTransition(.numericText())
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: metric)
         }
     }
 

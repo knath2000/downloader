@@ -10,6 +10,7 @@ struct HomeView: View {
     @State private var loadProgress = ""
     @State private var showingStatusPopover = false
     @State private var showResultsSheet = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var megaRemotePath: String
     var gdriveRemoteName: String
     var gdriveRemotePath: String
@@ -112,12 +113,14 @@ struct HomeView: View {
 
     private func consumePendingExtractURL(_ url: String) {
         let shouldStart = appState.pendingExtractShouldStart
+        let feedThumbnail = appState.pendingExtractThumbnailURL
         urlText = url
         appState.pendingExtractURL = nil
         appState.pendingExtractShouldStart = false
+        appState.pendingExtractThumbnailURL = nil
         if shouldStart {
             DispatchQueue.main.async {
-                extractAll()
+                extractAll(feedThumbnailURL: feedThumbnail)
             }
         }
     }
@@ -138,25 +141,31 @@ struct HomeView: View {
                 isLoading: isLoading,
                 onPaste: pasteFromClipboard,
                 onClear: { urlText = "" },
-                onExtract: extractAll
+                onExtract: { extractAll() }
             )
             .modifier(HomeDropDestination(
                 onUrlPaste: appendURLText,
                 onFileDrop: { _ in }
             ))
 
-            if isLoading {
-                loadingState
-            } else {
-                supportedSources
-                DependencySetupPanel(gdriveRemoteName: gdriveRemoteName)
+            HomeCompactQueue(
+                seedboxWebdavPassword: seedboxWebdavPassword,
+                onUpgradeRequired: onUpgradeRequired
+            )
 
+            supportedSources
+            DependencySetupPanel(gdriveRemoteName: gdriveRemoteName)
+
+            Group {
                 if !results.isEmpty {
                     showResultsButton
+                        .transition(resultsReadyTransition)
                 } else {
                     emptyState
+                        .transition(.opacity)
                 }
             }
+            .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.82), value: results.isEmpty)
         }
     }
 
@@ -236,7 +245,7 @@ struct HomeView: View {
                     Text("Extraction Results")
                         .font(Theme.sectionHeader)
                         .foregroundStyle(Theme.textPrimary)
-                    Text("\(results.count) found")
+                    Text(resultsSheetSubtitle)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Theme.textSecondary)
                 }
@@ -262,7 +271,7 @@ struct HomeView: View {
                 .opacity(0.35)
 
             ScrollView {
-                resultsSection
+                resultsSheetContent
                     .padding(20)
                     .frame(maxWidth: 880, alignment: .topLeading)
                     .frame(maxWidth: .infinity, alignment: .top)
@@ -270,6 +279,26 @@ struct HomeView: View {
         }
         .frame(minWidth: 720, idealWidth: 860, maxWidth: 980, minHeight: 420, idealHeight: 640, maxHeight: 760)
         .background(Theme.surface0.opacity(0.94))
+    }
+
+    @ViewBuilder
+    private var resultsSheetContent: some View {
+        if isLoading {
+            loadingState
+        } else {
+            resultsSection
+        }
+    }
+
+    private var resultsSheetSubtitle: String {
+        if isLoading {
+            return loadProgress.isEmpty ? "Extracting..." : loadProgress
+        }
+        return "\(results.count) found"
+    }
+
+    private var resultsReadyTransition: AnyTransition {
+        reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.97))
     }
 
     private var showResultsButton: some View {
@@ -335,12 +364,12 @@ struct HomeView: View {
         }
     }
 
-    private func extractAll() {
+    private func extractAll(feedThumbnailURL: String? = nil) {
         let urls = urlLines
         guard !urls.isEmpty, inputModel.invalidLines.isEmpty else { return }
         results = []
-        showResultsSheet = false
         isLoading = true
+        showResultsSheet = true
         loadProgress = ""
         tracker.clear(except: Set(tracker.megaUploads.keys)
             .union(tracker.gdriveUploads.keys)
@@ -380,7 +409,7 @@ struct HomeView: View {
                             title: title,
                             mp4Url: src.mp4,
                             hlsUrls: src.hls,
-                            thumbnailURL: src.thumbnail
+                            thumbnailURL: src.thumbnail ?? feedThumbnailURL
                         )
                     )
                     HistoryManager.shared.record(url: r.url, source: src)

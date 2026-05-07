@@ -126,8 +126,27 @@ extension ThumbnailCache {
         }
     }
 
+    static func generateAndCacheImage(fromLocalFile localPath: String, forRemoteUrl url: String) async -> NSImage? {
+        if let cached = await shared.cachedImage(for: url) { return cached }
+
+        let fileURL = URL(fileURLWithPath: localPath)
+        let asset = AVAsset(url: fileURL)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 320, height: 180)
+
+        guard let duration = try? await asset.load(.duration) else { return nil }
+        let time = CMTime(seconds: min(1.0, duration.seconds * 0.05), preferredTimescale: 600)
+
+        guard let (cgImage, _) = try? await generator.image(at: time) else { return nil }
+        let image = NSImage(cgImage: cgImage, size: CGSize(width: cgImage.width, height: cgImage.height))
+
+        await shared.store(image, for: url)
+        return image
+    }
+
     /// Download first 2 MB of a remote video and generate a thumbnail (for backfill).
-    static func generateAndCache(fromRemoteURL url: String) async throws -> NSImage {
+    static func generateAndCache(fromRemoteURL url: String, headers: [String: String]? = nil) async throws -> NSImage {
         // Check cache first
         if let cached = await shared.cachedImage(for: url) { return cached }
 
@@ -135,6 +154,10 @@ extension ThumbnailCache {
         var request = URLRequest(url: remoteURL)
         request.setValue("bytes=0-2097151", forHTTPHeaderField: "Range")
         request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
+        headers?.forEach { field, value in
+            guard field.caseInsensitiveCompare("Range") != .orderedSame else { return }
+            request.setValue(value, forHTTPHeaderField: field)
+        }
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse,
            !(200...299).contains(http.statusCode) {

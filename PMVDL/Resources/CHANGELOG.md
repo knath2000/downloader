@@ -5,6 +5,17 @@
 - Added video, link, and upload detail actions directly in the Library preview panel
 - Kept video bulk selection separate from timeline preview selection
 - Added Library timeline tests for selected-entry fallback and video-only bulk selection
+- Moved extraction loading into the results sheet so Home content stays visible while extraction runs
+- Embedded a compact download queue on Home and removed the standalone Downloads navigation route
+- Added compact queue thumbnails, context actions, and completed-download thumbnail fixes
+- Stabilized download job state by keeping `DownloadJobRunner` on the main actor
+- Added native HQPorner extraction through the nested player iframe with referer-aware MP4 qualities
+- Added Feed batch selection and batch extraction
+- Added Feed hover preview scrub for HQPorner preview images
+- Added site-capability-aware Feed filters and sort options
+- Added lazy HQPorner detail-page date resolution
+- Added site-specific Feed page theming for AllPornStream, OnlyFan420/Rentry, and HQPorner
+- Added user-facing setup documentation in `README.md`
 
 ## v2.0.0 (Apr 2026)
 - Dual window + menu bar mode (no longer menubar-only)

@@ -17,6 +17,9 @@ struct FeedCardView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
+    @State private var scrubFraction: CGFloat?
+    @State private var previewImages: [String: NSImage] = [:]
+    @State private var didRequestPreviewPrefetch = false
 
     init(
         item: FeedItem,
@@ -45,17 +48,11 @@ struct FeedCardView: View {
                 .padding(17)
         }
         .contentShape(RoundedRectangle(cornerRadius: FeedCardLayout.cornerRadius))
-        .onHover { isHovered = $0 }
-        .contextMenu {
-            Button("Extract") { extract() }
-            Button(isFavorite ? "Remove from Favorites" : "Add to Favorites") {
-                toggleFavorite()
+        .onHover { hovering in
+            isHovered = hovering
+            if !hovering {
+                scrubFraction = nil
             }
-
-            Divider()
-
-            Button("Copy Link") { ClipboardManager.copy(item.url) }
-            Button("Open in Browser") { openInBrowser() }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(accessibilityLabel))
@@ -144,13 +141,53 @@ struct FeedCardView: View {
         return output
     }
 
-    private var thumbnailArea: some View {
-        ZStack {
-            thumbnailImage
+    private var previewURLs: [String] {
+        var output: [String] = []
+        func append(_ value: String?) {
+            guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !value.isEmpty,
+                  !output.contains(value) else { return }
+            output.append(value)
+        }
+        append(item.thumbnailURL)
+        item.previewURLs.forEach { append($0) }
+        return output
+    }
 
-            if isHovered {
-                hoverOverlay
-                    .transition(.opacity)
+    private var activePreviewIndex: Int? {
+        let urls = previewURLs
+        guard urls.count > 1, let scrubFraction else { return nil }
+        let index = Int((scrubFraction * CGFloat(urls.count)).rounded(.down))
+        return min(max(index, 0), urls.count - 1)
+    }
+
+    private var activePreviewURL: String? {
+        guard let activePreviewIndex else { return nil }
+        let urls = previewURLs
+        guard urls.indices.contains(activePreviewIndex) else { return nil }
+        return urls[activePreviewIndex]
+    }
+
+    private var thumbnailArea: some View {
+        GeometryReader { proxy in
+            ZStack {
+                thumbnailImage
+
+                if isHovered && activePreviewIndex == nil {
+                    hoverOverlay
+                        .transition(.opacity)
+                }
+
+                if activePreviewIndex != nil {
+                    scrubIndicator
+                        .padding(.horizontal, 7)
+                        .padding(.bottom, 4)
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        .transition(.opacity)
+                }
+            }
+            .onContinuousHover { phase in
+                updateScrub(phase, width: proxy.size.width)
             }
         }
         .aspectRatio(16 / 9, contentMode: .fit)
@@ -196,7 +233,13 @@ struct FeedCardView: View {
             RoundedRectangle(cornerRadius: FeedCardLayout.thumbnailRadius)
                 .fill(placeholderColor.opacity(0.70))
 
-            if let thumbnailURL = item.thumbnailURL,
+            if let activePreviewURL,
+               let image = previewImages[activePreviewURL] {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .transition(.opacity)
+            } else if let thumbnailURL = item.thumbnailURL,
                let url = URL(string: thumbnailURL) {
                 RefererAwareAsyncImage(url: url, referer: item.referer) { phase in
                     switch phase {
@@ -220,6 +263,19 @@ struct FeedCardView: View {
                 placeholder
             }
         }
+    }
+
+    private var scrubIndicator: some View {
+        let urls = previewURLs
+        return HStack(spacing: 2) {
+            ForEach(urls.indices, id: \.self) { index in
+                Capsule()
+                    .fill(index == activePreviewIndex ? .white : .white.opacity(0.30))
+                    .frame(height: index == activePreviewIndex ? 4 : 3)
+            }
+        }
+        .padding(3)
+        .background(.black.opacity(0.36), in: Capsule())
     }
 
     private var hoverOverlay: some View {
@@ -296,10 +352,41 @@ struct FeedCardView: View {
         return pieces.joined(separator: ", ")
     }
 
-    private func openInBrowser() {
-        guard let url = URL(string: item.url) else { return }
-        NSWorkspace.shared.open(url)
+    private func updateScrub(_ phase: HoverPhase, width: CGFloat) {
+        guard previewURLs.count > 1 else { return }
+        switch phase {
+        case .active(let location):
+            guard width > 0 else { return }
+            scrubFraction = min(max(location.x / width, 0), 1)
+            prefetchPreviewImagesIfNeeded()
+        case .ended:
+            scrubFraction = nil
+        }
     }
+
+    private func prefetchPreviewImagesIfNeeded() {
+        guard !didRequestPreviewPrefetch else { return }
+        didRequestPreviewPrefetch = true
+        let urls = previewURLs
+        let referer = item.referer
+        Task {
+            for url in urls {
+                guard !Task.isCancelled else { return }
+                if let cached = await ThumbnailCache.shared.cachedImage(forIdentity: url) {
+                    await MainActor.run { previewImages[url] = cached }
+                    continue
+                }
+                if let image = try? await ThumbnailCache.downloadAndCacheImage(
+                    fromImageURL: url,
+                    cacheIdentity: url,
+                    referer: referer
+                ) {
+                    await MainActor.run { previewImages[url] = image }
+                }
+            }
+        }
+    }
+
 }
 
 private enum FeedStudioTint {

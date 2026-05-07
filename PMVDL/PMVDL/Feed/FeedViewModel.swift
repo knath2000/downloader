@@ -2,6 +2,8 @@ import Foundation
 
 @MainActor
 final class FeedViewModel: ObservableObject {
+    static let shared = FeedViewModel()
+
     @Published var items: [FeedItem] = []
     @Published var isLoading = false
     @Published var currentPage = 0
@@ -11,9 +13,13 @@ final class FeedViewModel: ObservableObject {
     @Published var sortMode: FeedSortMode = .newest
     @Published var error: String?
 
+    private var resolvingDateIDs: Set<String> = []
+
     var filteredItems: [FeedItem] {
         sortMode.sort(items.filter { filters.matches($0) })
     }
+
+    private init() {}
 
     var dateFilter: FeedDateFilter {
         get { filters.date }
@@ -57,6 +63,9 @@ final class FeedViewModel: ObservableObject {
             let existingIDs = Set(items.map(\.id))
             items.append(contentsOf: pageItems.filter { !existingIDs.contains($0.id) })
             currentPage = nextPage
+            if pageItems.contains(where: \.uploadDateIsApproximate) {
+                Task { await resolveApproximateDates() }
+            }
 
             if selectedSite == RentryFeedScraper.supportedHost {
                 hasMore = false
@@ -68,6 +77,35 @@ final class FeedViewModel: ObservableObject {
             }
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    func resolveApproximateDates() async {
+        let approximate = items.filter {
+            $0.uploadDateIsApproximate &&
+                $0.siteName == HQPornerFeedScraper.supportedHost &&
+                !resolvingDateIDs.contains($0.id)
+        }
+        guard !approximate.isEmpty else { return }
+
+        resolvingDateIDs.formUnion(approximate.map(\.id))
+
+        await withTaskGroup(of: (String, Date?).self) { group in
+            for item in approximate {
+                let id = item.id
+                let url = item.url
+                group.addTask {
+                    let date = await HQPornerFeedScraper.fetchUploadDate(for: url)
+                    return (id, date)
+                }
+            }
+
+            for await (id, date) in group {
+                resolvingDateIDs.remove(id)
+                guard let date,
+                      let index = items.firstIndex(where: { $0.id == id }) else { continue }
+                items[index] = items[index].withUploadDate(date, isApproximate: false)
+            }
         }
     }
 

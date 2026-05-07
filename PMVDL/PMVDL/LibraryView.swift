@@ -15,6 +15,7 @@ struct LibraryView: View {
     @State private var showingBulkDeleteConfirmation = false
     @State private var pendingDeleteItem: LibraryItem?
     @FocusState private var searchFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(onUpgradeRequired: @escaping () -> Void = {}) {
         self.onUpgradeRequired = onUpgradeRequired
@@ -189,10 +190,13 @@ struct LibraryView: View {
                             ScrollView {
                                 detailPanel(for: selectedEntry)
                             }
+                            .id(selectedEntry.id)
                             .frame(width: panelWidth)
                             .frame(maxHeight: .infinity)
+                            .transition(detailPanelTransition)
                         }
                     }
+                    .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.78), value: selectedEntryID)
                 } else {
                     timelineScroll(inlineDetail: true)
                 }
@@ -236,8 +240,10 @@ struct LibraryView: View {
 
                             if inlineDetail, selectedEntry?.id == entry.id {
                                 detailPanel(for: entry)
+                                    .id(entry.id)
                                     .padding(.top, 2)
                                     .padding(.bottom, 6)
+                                    .transition(detailPanelTransition)
                             }
                         }
                     } header: {
@@ -248,6 +254,10 @@ struct LibraryView: View {
             .padding(.top, 2)
             .padding(.bottom, selection.isEmpty ? 18 : 76)
         }
+    }
+
+    private var detailPanelTransition: AnyTransition {
+        reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity)
     }
 
     private func detailPanel(for entry: LibraryTimelineEntry) -> some View {
@@ -306,7 +316,9 @@ struct LibraryView: View {
     }
 
     private func selectEntry(_ entry: LibraryTimelineEntry) {
-        selectedEntryID = entry.id
+        withAnimation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.78)) {
+            selectedEntryID = entry.id
+        }
     }
 
     private func toggleVideoSelection(_ entry: LibraryTimelineEntry) {
@@ -366,7 +378,7 @@ struct LibraryView: View {
             }
             DownloadJobRunner.shared.start(resolution: resolution, target: target, context: context)
         }
-        AppStateManager.shared.select(.downloads)
+        AppStateManager.shared.select(.home)
     }
 
     private func process(_ item: LibraryItem, preset: VideoProcessingPreset) {
