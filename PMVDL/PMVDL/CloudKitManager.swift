@@ -67,6 +67,9 @@ class CloudKitManager: ObservableObject {
                 record["url"] = item.url
                 record["mp4Url"] = item.mp4Url
                 record["thumbnailURL"] = item.thumbnailURL
+                record["uploaderName"] = item.uploaderName
+                record["uploaderURL"] = item.uploaderURL
+                record["sourceSiteName"] = item.sourceSiteName
                 record["extractedAt"] = item.extractedAt
                 record["modifiedAt"] = Date() as CKRecordValue
                 try await database.save(record)
@@ -129,6 +132,9 @@ class CloudKitManager: ObservableObject {
                     let url = record["url"] as? String ?? ""
                     let mp4Url = record["mp4Url"] as? String
                     let thumbnailURL = record["thumbnailURL"] as? String
+                    let uploaderName = record["uploaderName"] as? String
+                    let uploaderURL = record["uploaderURL"] as? String
+                    let sourceSiteName = record["sourceSiteName"] as? String
                     let date = record["extractedAt"] as? Date ?? Date()
                     if let id = id {
                         let item = LibraryItem(
@@ -138,7 +144,10 @@ class CloudKitManager: ObservableObject {
                             mp4Url: mp4Url,
                             hlsUrls: [],
                             extractedAt: date,
-                            thumbnailURL: thumbnailURL
+                            thumbnailURL: thumbnailURL,
+                            uploaderName: uploaderName,
+                            uploaderURL: uploaderURL,
+                            sourceSiteName: sourceSiteName
                         )
                         VideoLibrary.shared.addIfNew(item)
                     }

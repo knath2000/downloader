@@ -257,13 +257,19 @@ struct PornHubFeedScraper: FeedScraper {
     }
 
     static func fetchPage(page: Int, section: PornHubSection) async throws -> [FeedItem] {
-        let html = try await fetchHTML(page: page, section: section)
+        let html = try await fetchHTML(page: page, section: section, usesActiveUploader: true)
         return parseEntries(from: html)
     }
 
-    private static func fetchHTML(page: Int, section: PornHubSection) async throws -> String {
+    static func fetchProfilePage(page: Int, section: PornHubSection) async throws -> [FeedItem] {
+        let html = try await fetchHTML(page: page, section: section, usesActiveUploader: false)
+        return parseEntries(from: html)
+    }
+
+    private static func fetchHTML(page: Int, section: PornHubSection, usesActiveUploader: Bool) async throws -> String {
         let url: URL
-        if let uploaderBase = await MainActor.run(body: { FeedViewModel.shared.pornHubUploaderURL }) {
+        if usesActiveUploader,
+           let uploaderBase = await MainActor.run(body: { FeedViewModel.shared.pornHubUploaderURL }) {
             var raw = uploaderBase
             if raw.hasSuffix("/") {
                 raw.removeLast()
@@ -349,29 +355,56 @@ struct PornHubFeedScraper: FeedScraper {
             uploadDateIsApproximate: addedRaw == nil,
             viewCount: parseViews(viewsRaw),
             siteName: supportedHost,
-            studio: uploader.name,
+            studio: uploader.isPerformer ? nil : uploader.name,
             studioURL: uploader.url,
             durationSeconds: parseDuration(durationRaw),
+            categories: parseCategories(from: segment),
+            tags: parseTags(from: segment),
+            performers: uploader.isPerformer ? [uploader.name].compactMap { $0 } : [],
             sourceKind: .siteFeed
         )
     }
 
-    private static func uploader(in segment: String) -> (name: String?, url: String?) {
+    private static func uploader(in segment: String) -> (name: String?, url: String?, isPerformer: Bool) {
         let pattern = #"href=["'](/(?:model|pornstar|channels|user)/[^"']+)["'][^>]*>([^<]+)<"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
-            return (nil, nil)
+            return (nil, nil, false)
         }
         let range = NSRange(segment.startIndex..<segment.endIndex, in: segment)
         guard let match = regex.firstMatch(in: segment, range: range),
               match.numberOfRanges > 2,
               let pathRange = Range(match.range(at: 1), in: segment),
               let nameRange = Range(match.range(at: 2), in: segment) else {
-            return (nil, nil)
+            return (nil, nil, false)
         }
+        let path = String(segment[pathRange])
         return (
             decodeHTMLEntities(String(segment[nameRange])),
-            absoluteURL(String(segment[pathRange]))
+            absoluteURL(path),
+            path.hasPrefix("/pornstar/") || path.hasPrefix("/model/") || path.hasPrefix("/user/")
         )
+    }
+
+    private static func parseCategories(from segment: String) -> [String] {
+        linkedLabels(pattern: #"href=["']/category/[^"']+["'][^>]*>([^<]+)<"#, in: segment)
+    }
+
+    private static func parseTags(from segment: String) -> [String] {
+        linkedLabels(pattern: #"href=["']/tags/[^"']+["'][^>]*>([^<]+)<"#, in: segment)
+    }
+
+    private static func linkedLabels(pattern: String, in segment: String) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return [] }
+        let range = NSRange(segment.startIndex..<segment.endIndex, in: segment)
+        var seen = Set<String>()
+        return regex.matches(in: segment, range: range).compactMap { match -> String? in
+            guard match.numberOfRanges > 1,
+                  let labelRange = Range(match.range(at: 1), in: segment) else { return nil }
+            let label = decodeHTMLEntities(String(segment[labelRange]))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !label.isEmpty, seen.insert(label.lowercased()).inserted else { return nil }
+            return label
+        }
     }
 
     private static func parseDuration(_ raw: String) -> Int? {

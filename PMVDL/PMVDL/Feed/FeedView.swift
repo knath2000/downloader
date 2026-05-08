@@ -33,6 +33,7 @@ struct FeedGridLayout: Equatable {
 struct FeedView: View {
     @StateObject private var model = FeedViewModel.shared
     @StateObject private var favorites = FeedFavoritesStore.shared
+    @StateObject private var profileVM = ProfileViewModel.shared
     @State private var showsAdvancedFilters = false
     @State private var selectedItemIDs: Set<String> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -81,6 +82,11 @@ struct FeedView: View {
                     PornHubLoginBanner {
                         Task { await model.refresh() }
                     }
+                }
+
+                if model.sortMode == .profileCurated,
+                   case .idle = profileVM.state {
+                    profileCuratedNoBanner
                 }
 
                 if !model.filters.activeChips.isEmpty {
@@ -179,6 +185,26 @@ struct FeedView: View {
         }
     }
 
+    private var profileCuratedNoBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.crop.circle.badge.exclamationmark")
+                .foregroundStyle(Theme.gold)
+            Text("No profile generated yet. Go to Profile tab to generate one.")
+                .font(.caption)
+                .foregroundStyle(Theme.textSecondary)
+            Spacer()
+            Button("Go to Profile") {
+                AppStateManager.shared.select(.profile)
+            }
+            .buttonStyle(.bordered)
+            .tint(Theme.gold)
+            .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .glassCard(tint: Theme.gold.opacity(0.12), cornerRadius: 14)
+    }
+
     private var batchSelectionBar: some View {
         HStack(spacing: 12) {
             Text("\(selectedItemIDs.count) selected")
@@ -208,7 +234,9 @@ struct FeedView: View {
     }
 
     private func feedGrid(items: [FeedItem], layout: FeedGridLayout) -> some View {
-        LazyVGrid(
+        let profileMatchReasons = model.sortMode == .profileCurated ? model.profileMatchReasons : [:]
+
+        return LazyVGrid(
             columns: layout.columns,
             alignment: .leading,
             spacing: layout.spacing
@@ -228,7 +256,8 @@ struct FeedView: View {
                         } else {
                             extract(item)
                         }
-                    }
+                    },
+                    profileMatch: profileMatchReasons[item.id]
                 )
                 .overlay(alignment: .topTrailing) {
                     if isSelecting {

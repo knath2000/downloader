@@ -15,6 +15,7 @@ struct SettingsView: View {
 
     @AppStorage("downloadSubtitles") private var downloadSubtitles = false
     @AppStorage("embeddedSubsMode") private var embeddedSubsMode = false
+    @AppStorage("xaiAPIKey") private var xaiAPIKey = ""
 
     @StateObject private var license = LicenseManager.shared
     @StateObject private var updater = UpdateManager.shared
@@ -88,6 +89,10 @@ struct SettingsView: View {
                             preferencesSection
                         }
 
+                        settingsSection(.ai) {
+                            aiSection
+                        }
+
                         settingsSection(.pro) {
                             proSection
                         }
@@ -146,14 +151,19 @@ struct SettingsView: View {
             .keyboardShortcut("2", modifiers: .command)
 
             Button("") {
-                jump(to: .pro, proxy: proxy)
+                jump(to: .ai, proxy: proxy)
             }
             .keyboardShortcut("3", modifiers: .command)
 
             Button("") {
-                jump(to: .info, proxy: proxy)
+                jump(to: .pro, proxy: proxy)
             }
             .keyboardShortcut("4", modifiers: .command)
+
+            Button("") {
+                jump(to: .info, proxy: proxy)
+            }
+            .keyboardShortcut("5", modifiers: .command)
 
             Button("") {
                 refreshDependencyChecks()
@@ -464,6 +474,49 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             notificationsCard
             downloadBehaviorCard
+        }
+    }
+
+    private var aiSection: some View {
+        SettingsCard(tint: Theme.gold) {
+            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
+                SettingsCardTitle(
+                    title: "AI Profile",
+                    subtitle: "xAI API key for Grok-powered taste profiles.",
+                    systemImage: "brain.head.profile",
+                    tint: Theme.gold,
+                    status: XAIClient.model
+                )
+
+                GlassSecureField(
+                    label: "xAI API Key",
+                    placeholder: "xai-...",
+                    text: $xaiAPIKey,
+                    help: "Get a key at x.ai/api."
+                )
+
+                SettingsFieldRow("Model") {
+                    Text(XAIClient.model)
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Theme.surface2.opacity(0.16), in: RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius))
+                }
+
+                HStack {
+                    Spacer()
+                    Button {
+                        AppStateManager.shared.select(.profile)
+                        Task { await ProfileViewModel.shared.generate() }
+                    } label: {
+                        Label("Generate Profile", systemImage: "person.crop.circle.badge.sparkles")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.gold)
+                    .controlSize(.small)
+                }
+            }
         }
     }
 
@@ -870,6 +923,7 @@ private enum SettingsLayoutMetrics {
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case cloud
     case preferences
+    case ai
     case pro
     case info
 
@@ -879,6 +933,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .cloud: return "Cloud"
         case .preferences: return "Preferences"
+        case .ai: return "AI"
         case .pro: return "Pro"
         case .info: return "Info"
         }
@@ -888,6 +943,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .cloud: return "Cloud Destinations"
         case .preferences: return "Preferences"
+        case .ai: return "AI Profile"
         case .pro: return "Pro"
         case .info: return "Info"
         }
@@ -897,6 +953,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .cloud: return "Configure where completed downloads are uploaded."
         case .preferences: return "Notifications, download behavior, and helper tools."
+        case .ai: return "xAI API key for Grok-powered taste profiles."
         case .pro: return "Your VidDL Pro license."
         case .info: return "Updates, extensions, and about VidDL."
         }
@@ -906,6 +963,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .cloud: return "cloud.fill"
         case .preferences: return "slider.horizontal.3"
+        case .ai: return "brain.head.profile"
         case .pro: return "crown.fill"
         case .info: return "info.circle.fill"
         }
@@ -915,6 +973,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .cloud: return Theme.electricLime
         case .preferences: return Theme.gold
+        case .ai: return Theme.gold
         case .pro: return Theme.coral
         case .info: return Theme.skyBlue
         }

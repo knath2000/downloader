@@ -120,6 +120,10 @@ struct ContentView: View {
             )
             .padding()
             .padding(.bottom, floatingTabContentInset)
+        case .profile:
+            ProfileView()
+                .padding()
+                .padding(.bottom, floatingTabContentInset)
         case .settings:
             SettingsView(gdriveRemoteName: $gdriveRemoteName,
                          gdriveRemotePath: $gdriveRemotePath,

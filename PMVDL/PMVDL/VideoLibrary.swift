@@ -1,5 +1,13 @@
 import Foundation
 
+struct LibraryItemMetadataUpdate {
+    let id: UUID
+    let uploaderName: String?
+    let uploaderURL: String?
+    let sourceSiteName: String?
+    let thumbnailURL: String?
+}
+
 @MainActor
 class VideoLibrary: ObservableObject {
     static let shared = VideoLibrary()
@@ -54,16 +62,26 @@ class VideoLibrary: ObservableObject {
     nonisolated static func mergedLibraryItems(existing: [LibraryItem], incoming: LibraryItem) -> [LibraryItem] {
         var copy = existing
         if let idx = copy.firstIndex(where: { $0.url == incoming.url }) {
-            if (copy[idx].thumbnailURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true),
-               let thumbnailURL = incoming.thumbnailURL?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !thumbnailURL.isEmpty {
-                copy[idx].thumbnailURL = thumbnailURL
-            }
+            mergeMetadata(into: &copy[idx], from: incoming)
             return copy
         }
 
         copy.insert(incoming, at: 0)
         return copy
+    }
+
+    nonisolated private static func mergeMetadata(into item: inout LibraryItem, from incoming: LibraryItem) {
+        setIfMissing(&item.thumbnailURL, incoming.thumbnailURL)
+        setIfMissing(&item.uploaderName, incoming.uploaderName)
+        setIfMissing(&item.uploaderURL, incoming.uploaderURL)
+        setIfMissing(&item.sourceSiteName, incoming.sourceSiteName)
+    }
+
+    nonisolated private static func setIfMissing(_ current: inout String?, _ incoming: String?) {
+        guard current?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true,
+              let value = incoming?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return }
+        current = value
     }
 
     func remove(_ item: LibraryItem) {
@@ -89,6 +107,29 @@ class VideoLibrary: ObservableObject {
 
         var copy = items
         copy[idx].thumbnailURL = normalized
+        items = copy
+        save()
+    }
+
+    func updateMetadata(_ updates: [LibraryItemMetadataUpdate]) {
+        guard !updates.isEmpty else { return }
+        var copy = items
+        var didChange = false
+
+        for update in updates {
+            guard let idx = copy.firstIndex(where: { $0.id == update.id }) else { continue }
+            var item = copy[idx]
+            let before = item
+            Self.setIfMissing(&item.uploaderName, update.uploaderName)
+            Self.setIfMissing(&item.uploaderURL, update.uploaderURL)
+            Self.setIfMissing(&item.sourceSiteName, update.sourceSiteName)
+            Self.setIfMissing(&item.thumbnailURL, update.thumbnailURL)
+            guard item != before else { continue }
+            copy[idx] = item
+            didChange = true
+        }
+
+        guard didChange else { return }
         items = copy
         save()
     }

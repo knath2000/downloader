@@ -409,7 +409,10 @@ struct HomeView: View {
                             title: title,
                             mp4Url: src.mp4,
                             hlsUrls: src.hls,
-                            thumbnailURL: src.thumbnail ?? feedThumbnailURL
+                            thumbnailURL: src.thumbnail ?? feedThumbnailURL,
+                            uploaderName: src.uploader,
+                            uploaderURL: src.uploaderURL,
+                            sourceSiteName: src.siteName
                         )
                     )
                     HistoryManager.shared.record(url: r.url, source: src)

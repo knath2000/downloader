@@ -4,6 +4,14 @@ import Foundation
 struct YtDlpExtractor: VideoSiteExtractor {
     private static let directMediaExtensions: Set<String> = ["mp4", "mov", "m4v", "webm", "mkv"]
 
+    struct Metadata {
+        let title: String?
+        let thumbnail: String?
+        let uploader: String?
+        let uploaderURL: String?
+        let siteName: String?
+    }
+
     static func supports(_ url: URL) -> Bool {
         guard let host = url.host, !host.isEmpty else { return false }
         return !NativeVideoPageExtractor.supports(url)
@@ -11,6 +19,15 @@ struct YtDlpExtractor: VideoSiteExtractor {
     }
 
     static func extract(fromHTML: String, url: URL) async throws -> VideoSource {
+        let json = try await dumpJSON(for: url)
+        return parseVideoSource(from: json, url: url)
+    }
+
+    static func fetchMetadata(for url: URL) async throws -> Metadata {
+        metadata(from: try await dumpJSON(for: url))
+    }
+
+    private static func dumpJSON(for url: URL) async throws -> [String: Any] {
         guard let ytDlpPath = findYTDLPath() else {
             throw ScraperError.toolNotInstalled(name: "yt-dlp", installCmd: "brew install yt-dlp")
         }
@@ -40,7 +57,7 @@ struct YtDlpExtractor: VideoSiteExtractor {
         let stderr = String(data: stderrData, encoding: .utf8) ?? ""
         if !stdoutData.isEmpty,
            let json = try? JSONSerialization.jsonObject(with: stdoutData) as? [String: Any] {
-            return parseVideoSource(from: json, url: url)
+            return json
         }
 
         let stdoutStr = String(data: stdoutData, encoding: .utf8) ?? "(empty)"
@@ -53,6 +70,19 @@ struct YtDlpExtractor: VideoSiteExtractor {
 
     // MARK: - Parse
 
+    private static func metadata(from json: [String: Any]) -> Metadata {
+        Metadata(
+            title: (json["title"] as? String)?.nilIfEmpty,
+            thumbnail: (json["thumbnail"] as? String)?.nilIfEmpty,
+            uploader: (json["uploader"] as? String)?.nilIfEmpty
+                ?? (json["channel"] as? String)?.nilIfEmpty,
+            uploaderURL: (json["uploader_url"] as? String)?.nilIfEmpty
+                ?? (json["channel_url"] as? String)?.nilIfEmpty,
+            siteName: (json["extractor"] as? String)?.nilIfEmpty
+                ?? (json["extractor_key"] as? String)?.nilIfEmpty
+        )
+    }
+
     private static func parseVideoSource(from json: [String: Any], url: URL) -> VideoSource {
         // YouTube typically has no direct mp4 URL — bestUrl will be nil.
         // DownloadManager handles this by falling back to `downloadViaYTDLPSite`.
@@ -62,7 +92,7 @@ struct YtDlpExtractor: VideoSiteExtractor {
         let title = json["title"] as? String ?? "Unknown"
         let thumbnail = json["thumbnail"] as? String
         let duration = json["duration"] as? TimeInterval
-        let uploader = (json["uploader"] as? String)?.nilIfEmpty
+        let metadata = metadata(from: json)
         let siteName = (json["extractor"] as? String)?.nilIfEmpty
             ?? (json["extractor_key"] as? String)?.nilIfEmpty
         let isAudio = isAudioOnly(json: json)
@@ -112,7 +142,8 @@ struct YtDlpExtractor: VideoSiteExtractor {
             title: title,
             thumbnail: thumbnail,
             duration: duration,
-            uploader: uploader,
+            uploader: metadata.uploader,
+            uploaderURL: metadata.uploaderURL,
             siteName: siteName,
             isAudio: isAudio
         )

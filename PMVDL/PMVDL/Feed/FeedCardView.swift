@@ -15,6 +15,7 @@ struct FeedCardView: View {
     let isFavorite: Bool
     let toggleFavorite: () -> Void
     let extract: () -> Void
+    let profileMatch: ProfileMatchReason?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovered = false
@@ -26,12 +27,14 @@ struct FeedCardView: View {
         item: FeedItem,
         isFavorite: Bool = false,
         toggleFavorite: @escaping () -> Void = {},
-        extract: @escaping () -> Void
+        extract: @escaping () -> Void,
+        profileMatch: ProfileMatchReason? = nil
     ) {
         self.item = item
         self.isFavorite = isFavorite
         self.toggleFavorite = toggleFavorite
         self.extract = extract
+        self.profileMatch = profileMatch
     }
 
     private var tint: Color {
@@ -50,6 +53,11 @@ struct FeedCardView: View {
                 .padding(17)
         }
         .contentShape(RoundedRectangle(cornerRadius: FeedCardLayout.cornerRadius))
+        .overlay(alignment: .bottomTrailing) {
+            if let profileMatch, profileMatch.score > 0 {
+                profileMatchBadge(profileMatch)
+            }
+        }
         .onHover { hovering in
             isHovered = hovering
             if !hovering {
@@ -78,6 +86,10 @@ struct FeedCardView: View {
                     .lineLimit(FeedCardLayout.titleLineLimit)
                     .lineSpacing(1)
                     .help(item.title)
+
+                if let profileMatch, profileMatch.score > 0 {
+                    profileMatchSubtext(profileMatch)
+                }
 
                 if !metadataChips.isEmpty {
                     HStack(spacing: 5) {
@@ -181,11 +193,6 @@ struct FeedCardView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .transition(.opacity)
                 } else {
-                    if isHovered && activePreviewIndex == nil {
-                        hoverOverlay
-                            .transition(.opacity)
-                    }
-
                     if activePreviewIndex != nil {
                         scrubIndicator
                             .padding(.horizontal, 7)
@@ -202,8 +209,8 @@ struct FeedCardView: View {
         .aspectRatio(16 / 9, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: FeedCardLayout.thumbnailRadius))
         .overlay(alignment: .topTrailing) {
-            if let studio = item.studio {
-                studioBadge(studio)
+            if let uploaderBadge {
+                studioBadge(uploaderBadge.name, isPerformer: uploaderBadge.isPerformer)
                     .padding(7)
             }
         }
@@ -235,6 +242,40 @@ struct FeedCardView: View {
         .buttonStyle(.plain)
         .help(isFavorite ? "Remove from Favorites" : "Add to Favorites")
         .accessibilityLabel(Text(isFavorite ? "Remove from Favorites" : "Add to Favorites"))
+    }
+
+    private func profileMatchBadge(_ match: ProfileMatchReason) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 9, weight: .black))
+            Text("Match")
+                .font(.system(size: 9, weight: .black))
+        }
+        .foregroundStyle(Theme.gold)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(Theme.gold.opacity(0.18), in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.gold.opacity(0.28), lineWidth: 0.5))
+        .padding(8)
+    }
+
+    private func profileMatchSubtext(_ match: ProfileMatchReason) -> some View {
+        HStack(alignment: .top, spacing: 5) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 9, weight: .black))
+                .foregroundStyle(Theme.gold)
+                .padding(.top, 2)
+            Text(match.subtext)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.gold.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.gold.opacity(0.16), lineWidth: 0.5))
     }
 
     private var thumbnailImage: some View {
@@ -287,27 +328,17 @@ struct FeedCardView: View {
         .background(.black.opacity(0.36), in: Capsule())
     }
 
-    private var hoverOverlay: some View {
-        ZStack {
-            LinearGradient(
-                colors: [.black.opacity(0.10), .black.opacity(0.58)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            Button(action: extract) {
-                Label("Extract", systemImage: "bolt.fill")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(tint.opacity(0.84), in: Capsule())
-            }
-            .buttonStyle(.plain)
+    private var uploaderBadge: (name: String, isPerformer: Bool)? {
+        if let studio = item.studio {
+            return (studio, false)
         }
+        guard item.siteName == PornHubFeedScraper.supportedHost,
+              item.studioURL != nil,
+              let performer = item.performers.first else { return nil }
+        return (performer, true)
     }
 
-    private func studioBadge(_ studio: String) -> some View {
+    private func studioBadge(_ studio: String, isPerformer: Bool) -> some View {
         Group {
             if let urlString = item.studioURL, let url = URL(string: urlString) {
                 Button {
@@ -315,21 +346,20 @@ struct FeedCardView: View {
                         await FeedViewModel.shared.navigateToPornHubUploader(url: url.absoluteString, name: studio)
                     }
                 } label: {
-                    studioBadgeContent(studio)
+                    studioBadgeContent(studio, isPerformer: isPerformer)
                 }
                 .buttonStyle(.plain)
                 .help(urlString)
             } else {
-                studioBadgeContent(studio)
+                studioBadgeContent(studio, isPerformer: isPerformer)
             }
         }
     }
 
-    private func studioBadgeContent(_ studio: String) -> some View {
+    private func studioBadgeContent(_ studio: String, isPerformer: Bool) -> some View {
         HStack(spacing: 5) {
-            Circle()
-                .fill(tint)
-                .frame(width: 6, height: 6)
+            Image(systemName: isPerformer ? "person.crop.circle.fill" : "building.2.fill")
+                .font(.system(size: 8, weight: .black))
             Text(studio)
                 .lineLimit(1)
         }

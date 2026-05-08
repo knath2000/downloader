@@ -26,6 +26,7 @@ struct VideoSource: Codable, Equatable {
     let thumbnail: String?
     let duration: TimeInterval?
     let uploader: String?
+    let uploaderURL: String?
     let siteName: String?
     let isAudio: Bool
     /// Source-level HTTP headers required for downloading the video (e.g. Referer for hot-link
@@ -33,8 +34,8 @@ struct VideoSource: Codable, Equatable {
     /// a per-quality `headers` map isn't available (e.g. the bare `mp4` URL is not in `hls`).
     let headers: [String: String]?
 
-    init(mp4: String?, hls: [Quality], title: String? = nil, thumbnail: String? = nil, duration: TimeInterval? = nil, uploader: String? = nil, siteName: String? = nil, isAudio: Bool = false, headers: [String: String]? = nil) {
-        self.mp4 = mp4; self.hls = hls; self.title = title; self.thumbnail = thumbnail; self.duration = duration; self.uploader = uploader; self.siteName = siteName; self.isAudio = isAudio; self.headers = headers
+    init(mp4: String?, hls: [Quality], title: String? = nil, thumbnail: String? = nil, duration: TimeInterval? = nil, uploader: String? = nil, uploaderURL: String? = nil, siteName: String? = nil, isAudio: Bool = false, headers: [String: String]? = nil) {
+        self.mp4 = mp4; self.hls = hls; self.title = title; self.thumbnail = thumbnail; self.duration = duration; self.uploader = uploader; self.uploaderURL = uploaderURL; self.siteName = siteName; self.isAudio = isAudio; self.headers = headers
     }
 
     var displaySiteName: String {
@@ -164,6 +165,9 @@ struct LibraryItem: Identifiable, Codable, Hashable {
     let hlsUrls: [VideoSource.Quality]
     let extractedAt: Date
     var thumbnailURL: String?
+    var uploaderName: String?
+    var uploaderURL: String?
+    var sourceSiteName: String?
     var remotePaths: [String: String] // "mega": "/Cloud/...", "gdrive": "gdrive:VidDL/..."
 
     init(
@@ -174,6 +178,9 @@ struct LibraryItem: Identifiable, Codable, Hashable {
         hlsUrls: [VideoSource.Quality],
         extractedAt: Date = Date(),
         thumbnailURL: String? = nil,
+        uploaderName: String? = nil,
+        uploaderURL: String? = nil,
+        sourceSiteName: String? = nil,
         remotePaths: [String: String] = [:]
     ) {
         self.id = id
@@ -183,6 +190,9 @@ struct LibraryItem: Identifiable, Codable, Hashable {
         self.hlsUrls = hlsUrls
         self.extractedAt = extractedAt
         self.thumbnailURL = thumbnailURL
+        self.uploaderName = uploaderName
+        self.uploaderURL = uploaderURL
+        self.sourceSiteName = sourceSiteName
         self.remotePaths = remotePaths
     }
 }
@@ -380,6 +390,7 @@ enum NavDestination: String, Codable, CaseIterable {
     case favorites = "Favorites"
     case library = "Library"
     case files = "Files"
+    case profile = "Profile"
     case settings = "Settings"
 
     var icon: String {
@@ -389,6 +400,7 @@ enum NavDestination: String, Codable, CaseIterable {
         case .favorites: return "heart.fill"
         case .library: return "books.vertical.fill"
         case .files: return "folder.fill"
+        case .profile: return "person.crop.circle.fill"
         case .settings: return "gearshape.fill"
         }
     }

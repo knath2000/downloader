@@ -50,6 +50,7 @@ enum Theme {
         case .favorites:  return hotPink
         case .library:    return skyBlue
         case .files:      return skyBlue
+        case .profile:    return gold
         case .settings:   return Color(hex: "#A0A0FF")
         }
     }

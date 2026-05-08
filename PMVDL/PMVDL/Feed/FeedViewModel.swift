@@ -1,5 +1,26 @@
 import Foundation
 
+struct ProfileMatchReason {
+    let score: Int
+    let matchedPerformers: [String]
+    let matchedTitlePerformers: [String]
+    let matchedCategories: [String]
+    let matchedTags: [String]
+    let matchedStudio: String?
+    let matchedQuality: [String]
+
+    var subtext: String {
+        var parts = ["Score \(score)"]
+        if !matchedPerformers.isEmpty { parts.append("Performers: \(matchedPerformers.joined(separator: ", "))") }
+        if !matchedTitlePerformers.isEmpty { parts.append("Performer in title: \(matchedTitlePerformers.joined(separator: ", "))") }
+        if !matchedCategories.isEmpty { parts.append("Categories: \(matchedCategories.joined(separator: ", "))") }
+        if !matchedTags.isEmpty { parts.append("Tags: \(matchedTags.joined(separator: ", "))") }
+        if let matchedStudio { parts.append("Studio: \(matchedStudio)") }
+        if !matchedQuality.isEmpty { parts.append("Quality: \(matchedQuality.joined(separator: ", "))") }
+        return parts.joined(separator: " - ")
+    }
+}
+
 @MainActor
 final class FeedViewModel: ObservableObject {
     static let shared = FeedViewModel()
@@ -19,7 +40,25 @@ final class FeedViewModel: ObservableObject {
     private var resolvingDateIDs: Set<String> = []
 
     var filteredItems: [FeedItem] {
-        sortMode.sort(items.filter { filters.matches($0) })
+        let base = items.filter { filters.matches($0) }
+        guard sortMode == .profileCurated else {
+            return sortMode.sort(base)
+        }
+
+        if case .loaded(let result) = ProfileViewModel.shared.state {
+            let scored = base.map { ($0, profileMatchReason($0, stats: result.stats)) }
+            let matched = scored.filter { $0.1.score > 0 }.sorted { $0.1.score > $1.1.score }
+            return matched.map { $0.0 }
+        }
+        return base
+    }
+
+    var profileMatchReasons: [String: ProfileMatchReason] {
+        guard sortMode == .profileCurated,
+              case .loaded(let result) = ProfileViewModel.shared.state else { return [:] }
+        return Dictionary(uniqueKeysWithValues: items.map {
+            ($0.id, profileMatchReason($0, stats: result.stats))
+        })
     }
 
     private init() {}
@@ -128,6 +167,93 @@ final class FeedViewModel: ObservableObject {
     func clearFilters() {
         filters = FeedFilterState()
         resetPaginationForFilter()
+    }
+
+    private func profileMatchReason(_ item: FeedItem, stats: ProfileStats) -> ProfileMatchReason {
+        var score = 0
+        var matchedPerformers: [String] = []
+        var matchedTitlePerformers: [String] = []
+        var matchedCategories: [String] = []
+        var matchedTags: [String] = []
+        var matchedStudio: String?
+        var matchedQuality: [String] = []
+        let title = FeedDisplay.title(for: item)
+
+        for (i, entry) in stats.topPerformers.enumerated() {
+            let explicitMatch = item.performers.contains { $0.caseInsensitiveCompare(entry.name) == .orderedSame }
+            let titleMatch = titleContainsProfileName(entry.name, in: title)
+            if explicitMatch {
+                score += max(10 - i, 1) * entry.count
+                matchedPerformers.append(entry.name)
+            } else if titleMatch {
+                score += max(9 - i, 1) * entry.count
+                matchedTitlePerformers.append(entry.name)
+            }
+        }
+        for (i, entry) in stats.topCategories.enumerated() {
+            if item.categories.contains(where: { $0.caseInsensitiveCompare(entry.name) == .orderedSame }) {
+                score += max(8 - i, 1) * entry.count
+                matchedCategories.append(entry.name)
+            }
+        }
+        for tag in item.tags {
+            if let entry = stats.topTags.first(where: { $0.name.caseInsensitiveCompare(tag) == .orderedSame }) {
+                score += entry.count
+                matchedTags.append(entry.name)
+            }
+        }
+        if let studio = item.studio,
+           let entry = stats.topStudios.first(where: { $0.name.caseInsensitiveCompare(studio) == .orderedSame }) {
+            score += 5
+            matchedStudio = entry.name
+        }
+        for (i, entry) in stats.preferredQuality.enumerated() {
+            if item.qualityLabels.contains(where: { $0.caseInsensitiveCompare(entry.name) == .orderedSame }) {
+                score += max(3 - i, 1)
+                matchedQuality.append(entry.name)
+            }
+        }
+        return ProfileMatchReason(
+            score: score,
+            matchedPerformers: matchedPerformers,
+            matchedTitlePerformers: matchedTitlePerformers,
+            matchedCategories: matchedCategories,
+            matchedTags: matchedTags,
+            matchedStudio: matchedStudio,
+            matchedQuality: matchedQuality
+        )
+    }
+
+    private func titleContainsProfileName(_ name: String, in title: String) -> Bool {
+        let nameTokens = normalizedTokens(name)
+        let titleTokens = normalizedTokens(title)
+        guard !nameTokens.isEmpty, !titleTokens.isEmpty else { return false }
+        if containsSequence(nameTokens, in: titleTokens) {
+            return true
+        }
+
+        let compactName = nameTokens.joined()
+        guard compactName.count >= 6 else { return false }
+        return titleTokens.joined().contains(compactName)
+    }
+
+    private func containsSequence(_ needle: [String], in haystack: [String]) -> Bool {
+        guard !needle.isEmpty, needle.count <= haystack.count else { return false }
+        for index in 0...(haystack.count - needle.count) {
+            if Array(haystack[index..<(index + needle.count)]) == needle {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func normalizedTokens(_ value: String) -> [String] {
+        value
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+            .replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
+            .split(separator: " ")
+            .map(String.init)
     }
 
     func selectPornHubSection(_ section: PornHubSection) async {

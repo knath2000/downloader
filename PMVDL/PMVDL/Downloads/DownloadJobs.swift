@@ -790,7 +790,10 @@ final class DownloadJobRunner {
             title: title,
             mp4Url: result.source?.mp4,
             hlsUrls: result.source?.hls ?? [],
-            thumbnailURL: result.source?.thumbnail
+            thumbnailURL: result.source?.thumbnail,
+            uploaderName: result.source?.uploader,
+            uploaderURL: result.source?.uploaderURL,
+            sourceSiteName: result.source?.siteName
         )
         VideoLibrary.shared.addIfNew(newItem)
         return VideoLibrary.shared.items.first(where: { $0.url == result.url }) ?? newItem

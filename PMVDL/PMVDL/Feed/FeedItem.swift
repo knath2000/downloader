@@ -234,6 +234,7 @@ enum FeedSortMode: String, CaseIterable, Identifiable {
     case longest
     case titleAZ
     case siteThenNewest
+    case profileCurated = "profileCurated"
 
     var id: String { rawValue }
 
@@ -246,6 +247,7 @@ enum FeedSortMode: String, CaseIterable, Identifiable {
         case .longest: return "Longest"
         case .titleAZ: return "Title A-Z"
         case .siteThenNewest: return "Site + Newest"
+        case .profileCurated: return "Profile Match"
         }
     }
 
@@ -276,6 +278,8 @@ enum FeedSortMode: String, CaseIterable, Identifiable {
                 }
                 return $0.siteName.localizedCaseInsensitiveCompare($1.siteName) == .orderedAscending
             }
+        case .profileCurated:
+            return items
         }
     }
 }
@@ -301,6 +305,8 @@ struct FeedSiteCapabilities {
                 return true
             case .siteThenNewest:
                 return false
+            case .profileCurated:
+                return true
             }
         }
     }
