@@ -77,6 +77,8 @@
 	A10100 /* FeedViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20100 /* FeedViewModel.swift */; };
 	A10101 /* FeedCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20101 /* FeedCardView.swift */; };
 	A10102 /* FeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20102 /* FeedView.swift */; };
+	A10121 /* PornHubSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20121 /* PornHubSessionManager.swift */; };
+	A10122 /* PornHubLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20122 /* PornHubLoginView.swift */; };
 	A10103 /* FeedFavoriteItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20103 /* FeedFavoriteItem.swift */; };
 	A10104 /* FeedFavoritesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20104 /* FeedFavoritesStore.swift */; };
 	A10105 /* FavoritesDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20105 /* FavoritesDisplay.swift */; };
@@ -208,6 +210,8 @@
 	A20100 /* FeedViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedViewModel.swift; sourceTree = "<group>"; };
 	A20101 /* FeedCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedCardView.swift; sourceTree = "<group>"; };
 	A20102 /* FeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedView.swift; sourceTree = "<group>"; };
+	A20121 /* PornHubSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PornHubSessionManager.swift; sourceTree = "<group>"; };
+	A20122 /* PornHubLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PornHubLoginView.swift; sourceTree = "<group>"; };
 	A20103 /* FeedFavoriteItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedFavoriteItem.swift; sourceTree = "<group>"; };
 	A20104 /* FeedFavoritesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedFavoritesStore.swift; sourceTree = "<group>"; };
 	A20105 /* FavoritesDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesDisplay.swift; sourceTree = "<group>"; };
@@ -365,6 +369,8 @@
 			A20100 /* FeedViewModel.swift */,
 			A20101 /* FeedCardView.swift */,
 			A20102 /* FeedView.swift */,
+			A20121 /* PornHubSessionManager.swift */,
+			A20122 /* PornHubLoginView.swift */,
 		);
 		path = Feed;
 		sourceTree = "<group>";
@@ -728,10 +734,12 @@
 			A10097 /* VideoResultCard.swift in Sources */,
 			A10098 /* FeedItem.swift in Sources */,
 			A10099 /* FeedScraper.swift in Sources */,
-			A10100 /* FeedViewModel.swift in Sources */,
-			A10101 /* FeedCardView.swift in Sources */,
-			A10102 /* FeedView.swift in Sources */,
-			A10103 /* FeedFavoriteItem.swift in Sources */,
+				A10100 /* FeedViewModel.swift in Sources */,
+				A10101 /* FeedCardView.swift in Sources */,
+				A10102 /* FeedView.swift in Sources */,
+				A10121 /* PornHubSessionManager.swift in Sources */,
+				A10122 /* PornHubLoginView.swift in Sources */,
+				A10103 /* FeedFavoriteItem.swift in Sources */,
 			A10104 /* FeedFavoritesStore.swift in Sources */,
 			A10105 /* FavoritesDisplay.swift in Sources */,
 			A10106 /* FavoritesView.swift in Sources */,

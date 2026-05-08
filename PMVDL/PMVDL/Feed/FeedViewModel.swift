@@ -9,6 +9,9 @@ final class FeedViewModel: ObservableObject {
     @Published var currentPage = 0
     @Published var hasMore = true
     @Published var selectedSite = AllPornStreamFeedScraper.supportedHost
+    @Published var selectedPornHubSection: PornHubSection = .recommended
+    @Published var pornHubUploaderURL: String?
+    @Published var pornHubUploaderName: String?
     @Published var filters = FeedFilterState()
     @Published var sortMode: FeedSortMode = .newest
     @Published var error: String?
@@ -54,7 +57,14 @@ final class FeedViewModel: ObservableObject {
 
         do {
             let nextPage = currentPage + 1
-            let pageItems = try await scraper().fetchPage(page: nextPage)
+            if selectedSite == PornHubFeedScraper.supportedHost,
+               selectedPornHubSection.requiresLogin,
+               !PornHubSessionManager.shared.isLoggedIn {
+                hasMore = false
+                return
+            }
+
+            let pageItems = try await feedPage(page: nextPage)
             if pageItems.isEmpty {
                 hasMore = false
                 return
@@ -120,6 +130,26 @@ final class FeedViewModel: ObservableObject {
         resetPaginationForFilter()
     }
 
+    func selectPornHubSection(_ section: PornHubSection) async {
+        guard selectedPornHubSection != section else { return }
+        pornHubUploaderURL = nil
+        pornHubUploaderName = nil
+        selectedPornHubSection = section
+        await refresh()
+    }
+
+    func navigateToPornHubUploader(url: String, name: String) async {
+        pornHubUploaderURL = url
+        pornHubUploaderName = name
+        await refresh()
+    }
+
+    func pornHubUploaderBack() async {
+        pornHubUploaderURL = nil
+        pornHubUploaderName = nil
+        await refresh()
+    }
+
     var availableSites: [String] {
         sortedValues(items.map(\.siteName))
     }
@@ -157,9 +187,18 @@ final class FeedViewModel: ObservableObject {
             return RentryFeedScraper.self
         case HQPornerFeedScraper.supportedHost:
             return HQPornerFeedScraper.self
+        case PornHubFeedScraper.supportedHost:
+            return PornHubFeedScraper.self
         default:
             throw FeedScraperError.unsupportedSite(selectedSite)
         }
+    }
+
+    private func feedPage(page: Int) async throws -> [FeedItem] {
+        if selectedSite == PornHubFeedScraper.supportedHost {
+            return try await PornHubFeedScraper.fetchPage(page: page, section: selectedPornHubSection)
+        }
+        return try await scraper().fetchPage(page: page)
     }
 
     private func sortedValues(_ values: [String]) -> [String] {

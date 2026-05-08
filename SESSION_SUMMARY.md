@@ -1,4 +1,16 @@
-# Latest Session - 2026-05-07 Feed, Home Queue, HQPorner, and Theming
+# Latest Session - 2026-05-07 PornHub Feed, Login, and Preview
+
+See `docs/SESSION_2026_05_07_PORNHUB_FEED.md` for the durable summary of the PornHub feed source, WKWebView cookie login, section picker, flat source-order grid, in-app uploader navigation, hover MP4 previews, parser corrections, and validation.
+
+---
+
+# Previous Session - 2026-05-07 Floating Navigation
+
+See `docs/SESSION_2026_05_07_FLOATING_NAVIGATION.md` for the durable summary of the full-window shell, floating bottom pill navigation, bottom-strip diagnostics, final zero-inset fix, validation, and launch work.
+
+---
+
+# Earlier Session - 2026-05-07 Feed, Home Queue, HQPorner, and Theming
 
 See `docs/SESSION_2026_05_07_FEED_HOME_HQPORNER.md` for the durable summary of the latest Home, compact queue, thumbnail, Feed, HQPorner, site-capability, site-theming, README, validation, and launch work.
 

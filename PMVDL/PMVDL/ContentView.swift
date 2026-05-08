@@ -1,10 +1,9 @@
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
     @StateObject private var appState = AppStateManager.shared
     @StateObject private var downloadQueue = DownloadQueue.shared
-    @StateObject private var updateManager = UpdateManager.shared
-    @StateObject private var licenseManager = LicenseManager.shared
     @StateObject private var favorites = FeedFavoritesStore.shared
     @AppStorage("megaRemotePath") var megaRemotePath = "/Cloud/VidDL/"
     @AppStorage("gdriveRemoteName") var gdriveRemoteName = "gdrive"
@@ -16,13 +15,15 @@ struct ContentView: View {
     @AppStorage("seedboxWebdavUser") var seedboxWebdavUser = ""
     @AppStorage("seedboxWebdavPassword") var seedboxWebdavPassword = ""
     @State private var showUpgradeOverlay = false
-    @Namespace private var sidebarGlass
+    @Namespace private var tabSwitcherGlass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let floatingTabContentInset: CGFloat = 0
 
     var body: some View {
         ZStack {
             // Animated mesh gradient background
             MeshGradientBackground()
+                .ignoresSafeArea()
                 .zIndex(-1)
 
             navigationBody
@@ -34,6 +35,7 @@ struct ContentView: View {
                     .zIndex(1)
             }
         }
+        .background(WindowConfigurator())
         .onAppear {
             if !favorites.hasFavorites && appState.selectedDestination == .favorites {
                 appState.select(.feed)
@@ -49,103 +51,88 @@ struct ContentView: View {
     @ViewBuilder
     private var navigationBody: some View {
         if #available(macOS 26, *) {
-            splitView
+            mainLayout
                 .backgroundExtensionEffect()
         } else {
-            splitView
+            mainLayout
         }
     }
 
-    private var splitView: some View {
-        NavigationSplitView {
-            // SIDEBAR — marketplace-style with colored icon bubbles
-            VStack(spacing: 2) {
-                ForEach(Array(sidebarDestinations.enumerated()), id: \.element) { idx, dest in
-                    SidebarNavItem(
-                        dest: dest,
-                        isSelected: appState.selectedDestination == dest,
-                        badge: navBadge(for: dest),
-                        namespace: sidebarGlass
-                    ) {
-                        selectDestination(dest)
-                    }
-                    .scrollEntrance(delay: Double(idx) * 0.04)
-                }
-                Spacer()
-                if !ProFeatureGate.isPro {
-                    upgradeButton
-                }
-            }
-            .padding(.horizontal, 6)
-            .padding(.top, 8)
-            .navigationSplitViewColumnWidth(min: 160, ideal: 180)
-        } detail: {
-            Group {
-                switch appState.selectedDestination {
-                case .home:
-                    HomeView(appState: appState,
-                             megaRemotePath: megaRemotePath,
-                             gdriveRemoteName: gdriveRemoteName,
-                             gdriveRemotePath: gdriveRemotePath,
-                             seedboxTransferMode: seedboxTransferMode,
-                             seedboxRemoteName: seedboxRemoteName,
-                             seedboxRemotePath: seedboxRemotePath,
-                             seedboxWebdavURL: seedboxWebdavURL,
-                             seedboxWebdavUser: seedboxWebdavUser,
-                             seedboxWebdavPassword: seedboxWebdavPassword,
-                             onUpgradeRequired: presentUpgradeOverlay)
-                        .padding()
-                case .library:
-                    LibraryView(onUpgradeRequired: presentUpgradeOverlay)
-                        .padding()
-                case .feed:
-                    FeedView()
-                        .padding()
-                case .favorites:
-                    FavoritesView()
-                        .padding()
-                case .files:
-                    RemoteFilesView(
-                        seedboxTransferMode: seedboxTransferMode,
-                        seedboxRemoteName: seedboxRemoteName,
-                        seedboxRemotePath: seedboxRemotePath,
-                        seedboxWebdavURL: seedboxWebdavURL,
-                        seedboxWebdavUser: seedboxWebdavUser,
-                        seedboxWebdavPassword: seedboxWebdavPassword
-                    )
-                        .padding()
-                case .settings:
-                    SettingsView(gdriveRemoteName: $gdriveRemoteName,
-                                 gdriveRemotePath: $gdriveRemotePath,
-                                 megaRemotePath: $megaRemotePath,
-                                 seedboxTransferMode: $seedboxTransferMode,
-                                 seedboxRemoteName: $seedboxRemoteName,
-                                 seedboxRemotePath: $seedboxRemotePath,
-                                 seedboxWebdavURL: $seedboxWebdavURL,
-                                 seedboxWebdavUser: $seedboxWebdavUser,
-                                 seedboxWebdavPassword: $seedboxWebdavPassword,
-                                 onUpgradeRequired: presentUpgradeOverlay)
-                }
-            }
-            .transition(.opacity)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: appState.selectedDestination)
-            .navigationTitle(appState.selectedDestination.rawValue)
-            .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    HStack(spacing: 6) {
-                        Button(action: { updateManager.checkForUpdates() }) {
-                            Label(updateManager.currentVersion, systemImage: "arrow.triangle.2.circlepath")
-                        }
-                        .buttonStyle(.plain)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .help("Current version — click to check for updates")
-                    }
-                }
-            }
-            .onAppear {
-                NotificationManager.shared.requestAuthorization()
-            }
+    private var mainLayout: some View {
+        ZStack(alignment: .bottom) {
+            contentForDestination(appState.selectedDestination)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .transition(.opacity)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: appState.selectedDestination)
+
+            FloatingTabSwitcher(
+                destinations: sidebarDestinations,
+                selected: appState.selectedDestination,
+                badge: { navBadge(for: $0) },
+                namespace: tabSwitcherGlass,
+                select: selectDestination
+            )
+            .padding(.bottom, 20)
+            .zIndex(10)
+        }
+        .onAppear {
+            NotificationManager.shared.requestAuthorization()
+        }
+    }
+
+    @ViewBuilder
+    private func contentForDestination(_ dest: NavDestination) -> some View {
+        switch dest {
+        case .home:
+            HomeView(appState: appState,
+                     megaRemotePath: megaRemotePath,
+                     gdriveRemoteName: gdriveRemoteName,
+                     gdriveRemotePath: gdriveRemotePath,
+                     seedboxTransferMode: seedboxTransferMode,
+                     seedboxRemoteName: seedboxRemoteName,
+                     seedboxRemotePath: seedboxRemotePath,
+                     seedboxWebdavURL: seedboxWebdavURL,
+                     seedboxWebdavUser: seedboxWebdavUser,
+                     seedboxWebdavPassword: seedboxWebdavPassword,
+                     onUpgradeRequired: presentUpgradeOverlay)
+                .padding()
+                .padding(.bottom, floatingTabContentInset)
+        case .library:
+            LibraryView(onUpgradeRequired: presentUpgradeOverlay)
+                .padding()
+                .padding(.bottom, floatingTabContentInset)
+        case .feed:
+            FeedView()
+                .padding()
+                .padding(.bottom, floatingTabContentInset)
+        case .favorites:
+            FavoritesView()
+                .padding()
+                .padding(.bottom, floatingTabContentInset)
+        case .files:
+            RemoteFilesView(
+                seedboxTransferMode: seedboxTransferMode,
+                seedboxRemoteName: seedboxRemoteName,
+                seedboxRemotePath: seedboxRemotePath,
+                seedboxWebdavURL: seedboxWebdavURL,
+                seedboxWebdavUser: seedboxWebdavUser,
+                seedboxWebdavPassword: seedboxWebdavPassword
+            )
+            .padding()
+            .padding(.bottom, floatingTabContentInset)
+        case .settings:
+            SettingsView(gdriveRemoteName: $gdriveRemoteName,
+                         gdriveRemotePath: $gdriveRemotePath,
+                         megaRemotePath: $megaRemotePath,
+                         seedboxTransferMode: $seedboxTransferMode,
+                         seedboxRemoteName: $seedboxRemoteName,
+                         seedboxRemotePath: $seedboxRemotePath,
+                         seedboxWebdavURL: $seedboxWebdavURL,
+                         seedboxWebdavUser: $seedboxWebdavUser,
+                         seedboxWebdavPassword: $seedboxWebdavPassword,
+                         onUpgradeRequired: presentUpgradeOverlay)
+                .padding()
+                .padding(.bottom, floatingTabContentInset)
         }
     }
 
@@ -179,28 +166,6 @@ struct ContentView: View {
         }
     }
 
-    private var upgradeButton: some View {
-        Button {
-            selectDestination(.settings)
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "crown.fill")
-                    .foregroundStyle(Theme.gold)
-                Text("Upgrade to Pro")
-                    .font(.caption.bold())
-                    .foregroundStyle(
-                        LinearGradient(colors: [Theme.gold, Theme.amber], startPoint: .leading, endPoint: .trailing)
-                    )
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .buttonStyle(.plain)
-        .glassCard(tint: Theme.gold, cornerRadius: 10)
-        .padding(.bottom, 8)
-    }
-
     private func selectDestination(_ destination: NavDestination) {
         withAnimation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7)) {
             appState.select(destination)
@@ -220,72 +185,130 @@ struct ContentView: View {
     }
 }
 
-// MARK: - SidebarNavItem
+// MARK: - FloatingTabSwitcher
 
-private struct SidebarNavItem: View {
-    let dest: NavDestination
-    let isSelected: Bool
-    let badge: Int?
+private struct FloatingTabSwitcher: View {
+    let destinations: [NavDestination]
+    let selected: NavDestination
+    let badge: (NavDestination) -> Int?
     let namespace: Namespace.ID
-    let action: () -> Void
+    let select: (NavDestination) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var destColor: Color { Theme.destinationColor(dest) }
-
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                // Colored icon bubble
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(destColor.opacity(isSelected ? 0.35 : 0.18))
-                        .frame(width: 30, height: 30)
+        HStack(spacing: 0) {
+            ForEach(destinations, id: \.self) { dest in
+                tabButton(dest)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+        .background { pillBackground }
+        .clipShape(Capsule())
+        .overlay(
+            Capsule().strokeBorder(
+                LinearGradient(
+                    colors: [.white.opacity(0.30), .white.opacity(0.06)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 1
+            )
+        )
+        .shadow(color: .black.opacity(0.55), radius: 24, x: 0, y: 8)
+    }
+
+    private func tabButton(_ dest: NavDestination) -> some View {
+        let isSelected = dest == selected
+        let color = Theme.destinationColor(dest)
+
+        return Button {
+            select(dest)
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                VStack(spacing: 3) {
                     Image(systemName: dest.icon)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(destColor)
+                        .font(.system(size: 16, weight: isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? color : .white.opacity(0.45))
+                        .scaleEffect(isSelected && !reduceMotion ? 1.08 : 1)
+
+                    Text(dest.rawValue)
+                        .font(.system(size: 9, weight: isSelected ? .semibold : .regular))
+                        .foregroundStyle(isSelected ? color : .white.opacity(0.38))
+                        .lineLimit(1)
                 }
+                .frame(width: 56, height: 44)
+                .background {
+                    if isSelected {
+                        if #available(macOS 26, *) {
+                            Capsule()
+                                .fill(.clear)
+                                .glassEffect(.regular.tint(color.opacity(0.5)), in: Capsule())
+                                .glassEffectID(dest.rawValue, in: namespace)
+                        } else {
+                            Capsule()
+                                .fill(color.opacity(0.20))
+                        }
+                    }
+                }
+                .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.72), value: isSelected)
 
-                Text(dest.rawValue)
-                    .font(.system(.body, design: .default).weight(isSelected ? .semibold : .regular))
-                    .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
-
-                Spacer()
-
-                if let badge {
-                    Text("\(badge)")
-                        .font(.system(size: 10, weight: .heavy))
+                if let count = badge(dest) {
+                    Text("\(count)")
+                        .font(.system(size: 8, weight: .heavy))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
+                        .padding(.horizontal, 4)
                         .padding(.vertical, 2)
-                        .background(destColor, in: Capsule())
+                        .background(color, in: Capsule())
+                        .offset(x: -2, y: 2)
                         .contentTransition(.numericText())
-                        .animation(.spring(response: 0.3), value: badge)
+                        .animation(reduceMotion ? nil : .spring(response: 0.3), value: count)
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(selectionBackground)
-            .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7), value: isSelected)
         }
         .buttonStyle(.plain)
         .pressEffect(scale: 0.96)
     }
 
     @ViewBuilder
-    private var selectionBackground: some View {
-        if isSelected {
-            if #available(macOS 26, *) {
-                Capsule()
-                    .fill(.clear)
-                    .glassEffect(.regular.tint(destColor), in: Capsule())
-                    .glassEffectID(dest.rawValue, in: namespace)
-            } else {
-                Capsule()
-                    .fill(destColor.opacity(0.18))
-            }
-        } else {
+    private var pillBackground: some View {
+        if #available(macOS 26, *) {
             Color.clear
+                .glassEffect(.regular.tint(Color.black.opacity(0.3)), in: Capsule())
+        } else {
+            PillBlurBackground()
+        }
+    }
+}
+
+private struct PillBlurBackground: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .popover
+        view.blendingMode = .behindWindow
+        view.state = .active
+        view.isEmphasized = true
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+}
+
+private struct WindowConfigurator: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        NSView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            guard let window = nsView.window else { return }
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.styleMask.insert(.fullSizeContentView)
+            window.backgroundColor = .clear
+            window.isOpaque = false
+            window.toolbar = nil
         }
     }
 }

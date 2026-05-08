@@ -13,7 +13,7 @@ struct VidDLApp: App {
                 .tint(Theme.coral)
                 .preferredColorScheme(.dark)
         }
-        .windowStyle(.automatic)
+        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Navigate") {

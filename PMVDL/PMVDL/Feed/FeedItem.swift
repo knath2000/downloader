@@ -6,12 +6,14 @@ struct FeedItem: Identifiable, Hashable {
     let url: String
     let thumbnailURL: String?
     let previewURLs: [String]
+    let previewVideoURL: String?
     let referer: String?
     let uploadDate: Date
     let uploadDateIsApproximate: Bool
     let viewCount: Int
     let siteName: String
     let studio: String?
+    let studioURL: String?
     let durationSeconds: Int?
     let categories: [String]
     let tags: [String]
@@ -25,12 +27,14 @@ struct FeedItem: Identifiable, Hashable {
         url: String,
         thumbnailURL: String?,
         previewURLs: [String] = [],
+        previewVideoURL: String? = nil,
         referer: String? = nil,
         uploadDate: Date,
         uploadDateIsApproximate: Bool = false,
         viewCount: Int,
         siteName: String,
         studio: String?,
+        studioURL: String? = nil,
         durationSeconds: Int? = nil,
         categories: [String] = [],
         tags: [String] = [],
@@ -43,12 +47,14 @@ struct FeedItem: Identifiable, Hashable {
         self.url = url
         self.thumbnailURL = thumbnailURL
         self.previewURLs = previewURLs
+        self.previewVideoURL = previewVideoURL
         self.referer = referer
         self.uploadDate = uploadDate
         self.uploadDateIsApproximate = uploadDateIsApproximate
         self.viewCount = viewCount
         self.siteName = siteName
         self.studio = studio
+        self.studioURL = studioURL
         self.durationSeconds = durationSeconds
         self.categories = categories
         self.tags = tags
@@ -64,12 +70,14 @@ struct FeedItem: Identifiable, Hashable {
             url: url,
             thumbnailURL: thumbnailURL,
             previewURLs: previewURLs,
+            previewVideoURL: previewVideoURL,
             referer: referer,
             uploadDate: date,
             uploadDateIsApproximate: isApproximate,
             viewCount: viewCount,
             siteName: siteName,
             studio: studio,
+            studioURL: studioURL,
             durationSeconds: durationSeconds,
             categories: categories,
             tags: tags,
@@ -86,6 +94,90 @@ enum FeedSourceKind: String, Hashable, CaseIterable, Identifiable {
     case searchResults
 
     var id: String { rawValue }
+}
+
+enum PornHubSection: String, CaseIterable, Identifiable {
+    case recommended
+    case hot
+    case subscriptions
+    case liked
+    case favorites
+    case playlists
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .recommended: return "Recommended"
+        case .hot: return "Hot"
+        case .subscriptions: return "Subscriptions"
+        case .liked: return "Liked"
+        case .favorites: return "Favorites"
+        case .playlists: return "Playlists"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .recommended: return "sparkles"
+        case .hot: return "flame.fill"
+        case .subscriptions: return "bell.fill"
+        case .liked: return "heart.fill"
+        case .favorites: return "star.fill"
+        case .playlists: return "list.bullet"
+        }
+    }
+
+    var requiresLogin: Bool {
+        switch self {
+        case .recommended, .hot:
+            return false
+        case .subscriptions, .liked, .favorites, .playlists:
+            return true
+        }
+    }
+
+    func feedURL(page: Int) -> URL? {
+        switch self {
+        case .recommended:
+            var components = URLComponents(string: "https://www.pornhub.com/recommended")!
+            if page > 1 {
+                components.queryItems = [URLQueryItem(name: "page", value: "\(page)")]
+            }
+            return components.url
+        case .hot:
+            var components = URLComponents(string: "https://www.pornhub.com/video")!
+            components.queryItems = [URLQueryItem(name: "o", value: "ht")]
+            if page > 1 {
+                components.queryItems?.append(URLQueryItem(name: "page", value: "\(page)"))
+            }
+            return components.url
+        case .subscriptions:
+            var components = URLComponents(string: "https://www.pornhub.com/subscriptions")!
+            if page > 1 {
+                components.queryItems = [URLQueryItem(name: "page", value: "\(page)")]
+            }
+            return components.url
+        case .liked:
+            var components = URLComponents(string: "https://www.pornhub.com/likedvideos")!
+            if page > 1 {
+                components.queryItems = [URLQueryItem(name: "page", value: "\(page)")]
+            }
+            return components.url
+        case .favorites:
+            var components = URLComponents(string: "https://www.pornhub.com/users/favorites")!
+            if page > 1 {
+                components.queryItems = [URLQueryItem(name: "page", value: "\(page)")]
+            }
+            return components.url
+        case .playlists:
+            var components = URLComponents(string: "https://www.pornhub.com/playlists")!
+            if page > 1 {
+                components.queryItems = [URLQueryItem(name: "page", value: "\(page)")]
+            }
+            return components.url
+        }
+    }
 }
 
 enum FeedDateFilter: String, CaseIterable, Identifiable {
@@ -194,6 +286,7 @@ struct FeedSiteCapabilities {
     let hasDuration: Bool
     let hasStudios: Bool
     let hasQualityLabels: Bool
+    let groupsByDate: Bool
 
     var availableSortModes: [FeedSortMode] {
         FeedSortMode.allCases.filter { mode in
@@ -217,7 +310,8 @@ struct FeedSiteCapabilities {
         hasViewCounts: true,
         hasDuration: false,
         hasStudios: true,
-        hasQualityLabels: false
+        hasQualityLabels: false,
+        groupsByDate: true
     )
 
     static let rentry = FeedSiteCapabilities(
@@ -225,7 +319,8 @@ struct FeedSiteCapabilities {
         hasViewCounts: false,
         hasDuration: false,
         hasStudios: true,
-        hasQualityLabels: false
+        hasQualityLabels: false,
+        groupsByDate: true
     )
 
     static let hqporner = FeedSiteCapabilities(
@@ -233,7 +328,17 @@ struct FeedSiteCapabilities {
         hasViewCounts: false,
         hasDuration: true,
         hasStudios: false,
-        hasQualityLabels: true
+        hasQualityLabels: true,
+        groupsByDate: true
+    )
+
+    static let pornhub = FeedSiteCapabilities(
+        hasRealDates: true,
+        hasViewCounts: true,
+        hasDuration: true,
+        hasStudios: true,
+        hasQualityLabels: false,
+        groupsByDate: false
     )
 
     static func capabilities(for site: String) -> FeedSiteCapabilities {
@@ -244,6 +349,8 @@ struct FeedSiteCapabilities {
             return .rentry
         case HQPornerFeedScraper.supportedHost:
             return .hqporner
+        case PornHubFeedScraper.supportedHost:
+            return .pornhub
         default:
             return .allPornStream
         }
@@ -281,6 +388,14 @@ struct FeedSiteTheme {
         logoText: ("HQ", "PORNER")
     )
 
+    static let pornhub = FeedSiteTheme(
+        accent: Color(hex: "#FF9000"),
+        backgroundTint: Color(hex: "#1A0F00"),
+        displayName: "PornHub",
+        icon: "play.circle.fill",
+        logoText: ("Porn", "Hub")
+    )
+
     static func theme(for site: String) -> FeedSiteTheme {
         switch site {
         case AllPornStreamFeedScraper.supportedHost:
@@ -289,6 +404,8 @@ struct FeedSiteTheme {
             return .rentry
         case HQPornerFeedScraper.supportedHost:
             return .hqporner
+        case PornHubFeedScraper.supportedHost:
+            return .pornhub
         default:
             return .allPornStream
         }

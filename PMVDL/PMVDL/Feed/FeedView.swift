@@ -76,6 +76,13 @@ struct FeedView: View {
                     clearFilters: model.clearFilters
                 )
 
+                if model.selectedSite == PornHubFeedScraper.supportedHost {
+                    PornHubSectionPicker(model: model, accent: siteTheme.accent)
+                    PornHubLoginBanner {
+                        Task { await model.refresh() }
+                    }
+                }
+
                 if !model.filters.activeChips.isEmpty {
                     FeedActiveFiltersRow(
                         chips: model.filters.activeChips,
@@ -116,7 +123,14 @@ struct FeedView: View {
         .onChange(of: model.selectedSite) { _, newSite in
             applySiteCapabilities(for: newSite)
             selectedItemIDs = []
+            if newSite != PornHubFeedScraper.supportedHost {
+                model.pornHubUploaderURL = nil
+                model.pornHubUploaderName = nil
+            }
             Task { await model.refresh() }
+        }
+        .onChange(of: model.selectedPornHubSection) { _, _ in
+            selectedItemIDs = []
         }
     }
 
@@ -146,43 +160,16 @@ struct FeedView: View {
             ScrollView {
                 let layout = FeedGridLayout(availableWidth: availableWidth)
                 LazyVStack(alignment: .leading, spacing: FeedLayout.sectionSpacing, pinnedViews: [.sectionHeaders]) {
-                    ForEach(model.dayBuckets) { bucket in
-                        Section {
-                            LazyVGrid(
-                                columns: layout.columns,
-                                alignment: .leading,
-                                spacing: layout.spacing
-                            ) {
-                                ForEach(bucket.items) { item in
-                                    FeedCardView(
-                                        item: item,
-                                        isFavorite: favorites.contains(url: item.url),
-                                        toggleFavorite: {
-                                            withAnimation {
-                                                favorites.toggle(feedItem: item)
-                                            }
-                                        },
-                                        extract: {
-                                            if isSelecting {
-                                                toggleSelection(item)
-                                            } else {
-                                                extract(item)
-                                            }
-                                        }
-                                    )
-                                    .overlay(alignment: .topTrailing) {
-                                        if isSelecting {
-                                            selectionBadge(for: item)
-                                        }
-                                    }
-                                    .contextMenu {
-                                        cardContextMenu(for: item)
-                                    }
-                                }
+                    if capabilities.groupsByDate {
+                        ForEach(model.dayBuckets) { bucket in
+                            Section {
+                                feedGrid(items: bucket.items, layout: layout)
+                            } header: {
+                                FeedDayHeader(date: bucket.date, count: bucket.items.count, accent: siteTheme.accent)
                             }
-                        } header: {
-                            FeedDayHeader(date: bucket.date, count: bucket.items.count, accent: siteTheme.accent)
                         }
+                    } else {
+                        feedGrid(items: model.filteredItems, layout: layout)
                     }
 
                     loadMoreRow
@@ -218,6 +205,41 @@ struct FeedView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .glassCard(tint: siteTheme.accent.opacity(0.14), cornerRadius: 14)
+    }
+
+    private func feedGrid(items: [FeedItem], layout: FeedGridLayout) -> some View {
+        LazyVGrid(
+            columns: layout.columns,
+            alignment: .leading,
+            spacing: layout.spacing
+        ) {
+            ForEach(items) { item in
+                FeedCardView(
+                    item: item,
+                    isFavorite: favorites.contains(url: item.url),
+                    toggleFavorite: {
+                        withAnimation {
+                            favorites.toggle(feedItem: item)
+                        }
+                    },
+                    extract: {
+                        if isSelecting {
+                            toggleSelection(item)
+                        } else {
+                            extract(item)
+                        }
+                    }
+                )
+                .overlay(alignment: .topTrailing) {
+                    if isSelecting {
+                        selectionBadge(for: item)
+                    }
+                }
+                .contextMenu {
+                    cardContextMenu(for: item)
+                }
+            }
+        }
     }
 
     private func selectionBadge(for item: FeedItem) -> some View {
@@ -324,6 +346,9 @@ struct FeedView: View {
 
     private func applySiteCapabilities(for site: String) {
         let caps = FeedSiteCapabilities.capabilities(for: site)
+        if site == PornHubFeedScraper.supportedHost {
+            model.sortMode = .newest
+        }
         if !caps.availableSortModes.contains(model.sortMode) {
             model.sortMode = caps.availableSortModes.first ?? .titleAZ
         }
@@ -524,6 +549,7 @@ private struct FeedToolbar: View {
                 Text(AllPornStreamFeedScraper.supportedHost).tag(AllPornStreamFeedScraper.supportedHost)
                 Text(RentryFeedScraper.supportedHost).tag(RentryFeedScraper.supportedHost)
                 Text(HQPornerFeedScraper.supportedHost).tag(HQPornerFeedScraper.supportedHost)
+                Text(PornHubFeedScraper.supportedHost).tag(PornHubFeedScraper.supportedHost)
             }
             .pickerStyle(.menu)
             .labelsHidden()
@@ -1099,10 +1125,120 @@ private enum FeedSiteDisplay {
             return "OnlyFan420"
         case HQPornerFeedScraper.supportedHost:
             return "HQPorner"
+        case PornHubFeedScraper.supportedHost:
+            return "PornHub"
         default:
             return site
                 .replacingOccurrences(of: "https://", with: "")
                 .replacingOccurrences(of: "http://", with: "")
+        }
+    }
+}
+
+private struct PornHubSectionPicker: View {
+    @ObservedObject var model: FeedViewModel
+    @StateObject private var session = PornHubSessionManager.shared
+
+    let accent: Color
+
+    @ViewBuilder
+    var body: some View {
+        if let uploaderName = model.pornHubUploaderName {
+            HStack(spacing: 10) {
+                Button {
+                    Task { await model.pornHubUploaderBack() }
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(accent)
+
+                Text(uploaderName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 4)
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(PornHubSection.allCases) { section in
+                        sectionButton(section)
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+        }
+    }
+
+    private func sectionButton(_ section: PornHubSection) -> some View {
+        let isSelected = model.selectedPornHubSection == section
+        let needsLogin = section.requiresLogin && !session.isLoggedIn
+
+        return Button {
+            Task { await model.selectPornHubSection(section) }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: needsLogin ? "lock.fill" : section.icon)
+                    .font(.system(size: 11, weight: .bold))
+                Text(section.title)
+            }
+            .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(isSelected ? accent.opacity(0.22) : Color.white.opacity(0.06), in: Capsule())
+            .foregroundStyle(isSelected ? accent : .white.opacity(needsLogin ? 0.50 : 0.65))
+            .overlay(Capsule().strokeBorder(isSelected ? accent.opacity(0.32) : .white.opacity(0.08), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .help(needsLogin ? "Log in to use \(section.title)" : section.title)
+    }
+}
+
+private struct PornHubLoginBanner: View {
+    @StateObject private var session = PornHubSessionManager.shared
+    @State private var showLogin = false
+
+    let refresh: () -> Void
+
+    var body: some View {
+        Group {
+            if !session.isLoggedIn {
+                HStack(spacing: 12) {
+                    Image(systemName: "person.crop.circle.badge.exclamationmark")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color(hex: "#FF9000"))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Not logged in to PornHub")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.textPrimary)
+                        Text("Log in to access Subscriptions, Liked, Favorites and Playlists.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                    Spacer()
+                    Button("Log In") {
+                        showLogin = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color(hex: "#FF9000"))
+                    .controlSize(.small)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .glassCard(tint: Color(hex: "#FF9000").opacity(0.12), cornerRadius: 14)
+            }
+        }
+        .sheet(isPresented: $showLogin) {
+            PornHubLoginView()
+        }
+        .onChange(of: session.isLoggedIn) { _, loggedIn in
+            if loggedIn {
+                refresh()
+            }
         }
     }
 }

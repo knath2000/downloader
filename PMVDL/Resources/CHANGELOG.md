@@ -15,6 +15,12 @@
 - Added site-capability-aware Feed filters and sort options
 - Added lazy HQPorner detail-page date resolution
 - Added site-specific Feed page theming for AllPornStream, OnlyFan420/Rentry, and HQPorner
+- Added PornHub as a Feed source with persisted WKWebView cookie login
+- Added PornHub section picker for Recommended, Hot, Subscriptions, Liked, Favorites, and Playlists
+- Added PornHub flat-grid source-order rendering with orange site theming
+- Added in-app PornHub uploader navigation through uploader `/videos` feeds
+- Added PornHub hover MP4 previews from `data-mediabook` with matching playback headers
+- Added live PornHub card parsing for `data-video-vkey`, thumbnails, views, duration, uploader, and relative upload dates
 - Added user-facing setup documentation in `README.md`
 
 ## v2.0.0 (Apr 2026)

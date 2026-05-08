@@ -1,4 +1,5 @@
 import AppKit
+import AVKit
 import SwiftUI
 
 private enum FeedCardLayout {
@@ -39,10 +40,11 @@ struct FeedCardView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            Button(action: extract) {
-                cardContent
-            }
-            .buttonStyle(.plain)
+            cardContent
+                .contentShape(RoundedRectangle(cornerRadius: FeedCardLayout.cornerRadius))
+                .onTapGesture {
+                    extract()
+                }
 
             favoriteButton
                 .padding(17)
@@ -156,7 +158,7 @@ struct FeedCardView: View {
 
     private var activePreviewIndex: Int? {
         let urls = previewURLs
-        guard urls.count > 1, let scrubFraction else { return nil }
+        guard item.previewVideoURL == nil, urls.count > 1, let scrubFraction else { return nil }
         let index = Int((scrubFraction * CGFloat(urls.count)).rounded(.down))
         return min(max(index, 0), urls.count - 1)
     }
@@ -173,17 +175,24 @@ struct FeedCardView: View {
             ZStack {
                 thumbnailImage
 
-                if isHovered && activePreviewIndex == nil {
-                    hoverOverlay
+                if isHovered,
+                   let previewVideoURL = item.previewVideoURL {
+                    PornHubVideoPreview(urlString: previewVideoURL)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .transition(.opacity)
-                }
+                } else {
+                    if isHovered && activePreviewIndex == nil {
+                        hoverOverlay
+                            .transition(.opacity)
+                    }
 
-                if activePreviewIndex != nil {
-                    scrubIndicator
-                        .padding(.horizontal, 7)
-                        .padding(.bottom, 4)
-                        .frame(maxHeight: .infinity, alignment: .bottom)
-                        .transition(.opacity)
+                    if activePreviewIndex != nil {
+                        scrubIndicator
+                            .padding(.horizontal, 7)
+                            .padding(.bottom, 4)
+                            .frame(maxHeight: .infinity, alignment: .bottom)
+                            .transition(.opacity)
+                    }
                 }
             }
             .onContinuousHover { phase in
@@ -299,6 +308,24 @@ struct FeedCardView: View {
     }
 
     private func studioBadge(_ studio: String) -> some View {
+        Group {
+            if let urlString = item.studioURL, let url = URL(string: urlString) {
+                Button {
+                    Task {
+                        await FeedViewModel.shared.navigateToPornHubUploader(url: url.absoluteString, name: studio)
+                    }
+                } label: {
+                    studioBadgeContent(studio)
+                }
+                .buttonStyle(.plain)
+                .help(urlString)
+            } else {
+                studioBadgeContent(studio)
+            }
+        }
+    }
+
+    private func studioBadgeContent(_ studio: String) -> some View {
         HStack(spacing: 5) {
             Circle()
                 .fill(tint)
@@ -353,7 +380,7 @@ struct FeedCardView: View {
     }
 
     private func updateScrub(_ phase: HoverPhase, width: CGFloat) {
-        guard previewURLs.count > 1 else { return }
+        guard item.previewVideoURL == nil, previewURLs.count > 1 else { return }
         switch phase {
         case .active(let location):
             guard width > 0 else { return }
@@ -387,6 +414,54 @@ struct FeedCardView: View {
         }
     }
 
+}
+
+private struct PornHubVideoPreview: View {
+    let urlString: String
+
+    @State private var player: AVPlayer?
+    @State private var endObserver: NSObjectProtocol?
+
+    var body: some View {
+        Group {
+            if let player {
+                VideoPlayer(player: player)
+                    .disabled(true)
+                    .clipped()
+            }
+        }
+        .onAppear {
+            guard player == nil, let url = URL(string: urlString) else { return }
+            let headers = [
+                "User-Agent": NetworkConstants.chromeUserAgent,
+                "Referer": "https://www.pornhub.com/",
+            ]
+            let asset = AVURLAsset(url: url, options: [
+                "AVURLAssetHTTPHeaderFieldsKey": headers,
+            ])
+            let item = AVPlayerItem(asset: asset)
+            let nextPlayer = AVPlayer(playerItem: item)
+            nextPlayer.isMuted = true
+            endObserver = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemDidPlayToEndTime,
+                object: item,
+                queue: .main
+            ) { [weak nextPlayer] _ in
+                nextPlayer?.seek(to: .zero)
+                nextPlayer?.play()
+            }
+            player = nextPlayer
+            nextPlayer.play()
+        }
+        .onDisappear {
+            player?.pause()
+            player = nil
+            if let endObserver {
+                NotificationCenter.default.removeObserver(endObserver)
+                self.endObserver = nil
+            }
+        }
+    }
 }
 
 private enum FeedStudioTint {

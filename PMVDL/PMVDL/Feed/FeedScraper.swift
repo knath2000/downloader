@@ -246,6 +246,196 @@ struct AllPornStreamFeedScraper: FeedScraper {
     }
 }
 
+struct PornHubFeedScraper: FeedScraper {
+    static let supportedHost = "pornhub.com"
+
+    private static let baseURL = URL(string: "https://www.pornhub.com")!
+
+    static func fetchPage(page: Int) async throws -> [FeedItem] {
+        let section = await MainActor.run { FeedViewModel.shared.selectedPornHubSection }
+        return try await fetchPage(page: page, section: section)
+    }
+
+    static func fetchPage(page: Int, section: PornHubSection) async throws -> [FeedItem] {
+        let html = try await fetchHTML(page: page, section: section)
+        return parseEntries(from: html)
+    }
+
+    private static func fetchHTML(page: Int, section: PornHubSection) async throws -> String {
+        let url: URL
+        if let uploaderBase = await MainActor.run(body: { FeedViewModel.shared.pornHubUploaderURL }) {
+            var raw = uploaderBase
+            if raw.hasSuffix("/") {
+                raw.removeLast()
+            }
+            let pageQuery = page > 1 ? "?page=\(page)" : ""
+            guard let uploaderURL = URL(string: "\(raw)/videos\(pageQuery)") else { throw FeedScraperError.invalidPage }
+            url = uploaderURL
+        } else {
+            guard let sectionURL = section.feedURL(page: page) else { throw FeedScraperError.invalidPage }
+            url = sectionURL
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("\(baseURL.absoluteString)/", forHTTPHeaderField: "Referer")
+        request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+        request.httpShouldHandleCookies = false
+        request.timeoutInterval = 20
+
+        let pornhubCookies = (HTTPCookieStorage.shared.cookies ?? [])
+            .filter { $0.domain.contains("pornhub.com") }
+        if !pornhubCookies.isEmpty,
+           let cookieHeader = HTTPCookie.requestHeaderFields(with: pornhubCookies)["Cookie"] {
+            request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw FeedScraperError.invalidPage }
+        guard (200...299).contains(http.statusCode) else { throw FeedScraperError.network(http.statusCode) }
+        guard let html = String(data: data, encoding: .utf8) else { throw FeedScraperError.invalidPage }
+        return html
+    }
+
+    static func parseEntries(from html: String) -> [FeedItem] {
+        let pattern = #"<li[^>]+class=["'][^"']*pcVideoListItem[^"']*["'][^>]*>.*?</li>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
+            return []
+        }
+        let range = NSRange(html.startIndex..<html.endIndex, in: html)
+        let segments = regex.matches(in: html, range: range).compactMap { match in
+            Range(match.range, in: html).map { String(html[$0]) }
+        }
+        return segments.compactMap { feedItem(from: $0) }
+    }
+
+    private static func feedItem(from segment: String) -> FeedItem? {
+        guard let viewkey = firstCapture(pattern: #"data-video-vkey=["']([^"']+)["']"#, in: segment) else { return nil }
+        let url = "\(baseURL.absoluteString)/view_video.php?viewkey=\(viewkey)"
+
+        let title = [
+            firstCapture(pattern: #"href=["']/view_video\.php[^"']+["'][^>]*title=["']([^"']+)["']"#, in: segment),
+            firstCapture(pattern: #"<a[^>]+title=["']([^"']+)["'][^>]*>"#, in: segment),
+        ].compactMap { $0 }.first
+            .map { decodeHTMLEntities($0) } ?? ""
+        guard !title.isEmpty else { return nil }
+
+        let thumbURL = [
+            firstCapture(pattern: #"data-image=["']([^"']+)["']"#, in: segment),
+            firstCapture(pattern: #"data-mediumthumb=["']([^"']+)["']"#, in: segment),
+            firstCapture(pattern: #"<img[^>]+src=["'](https://[^"']*phncdn\.com[^"']+)["']"#, in: segment),
+        ].compactMap { $0 }.compactMap(absoluteURL).first
+        let previewVideoURL = firstCapture(pattern: #"data-mediabook=["']([^"']+)["']"#, in: segment)
+            .map { decodeHTMLEntities($0) }
+            .flatMap { $0.hasPrefix("http") ? $0 : nil }
+
+        let durationRaw = firstCapture(pattern: #"<var[^>]+class=["'][^"']*duration[^"']*["'][^>]*>([^<]+)<"#, in: segment) ?? ""
+        let viewsRaw = firstCapture(pattern: #"<span[^>]+class=["'][^"']*views[^"']*["'][^>]*>\s*<var[^>]*>([^<]+)</var>"#, in: segment)
+            ?? firstCapture(pattern: #"class=["'][^"']*views[^"']*["'][^>]*>.*?<var[^>]*>([^<]+)<"#, in: segment)
+            ?? ""
+        let uploader = uploader(in: segment)
+        let addedRaw = firstCapture(pattern: #"<var[^>]+class=["'][^"']*added[^"']*["'][^>]*>([^<]+)</var>"#, in: segment)
+        let uploadDate = addedRaw.map { HQPornerFeedScraper.resolveUploadDate(from: decodeHTMLEntities($0)) } ?? Date()
+
+        return FeedItem(
+            id: "pornhub-\(viewkey)",
+            title: title,
+            url: url,
+            thumbnailURL: thumbURL,
+            previewURLs: [],
+            previewVideoURL: previewVideoURL,
+            referer: baseURL.absoluteString,
+            uploadDate: uploadDate,
+            uploadDateIsApproximate: addedRaw == nil,
+            viewCount: parseViews(viewsRaw),
+            siteName: supportedHost,
+            studio: uploader.name,
+            studioURL: uploader.url,
+            durationSeconds: parseDuration(durationRaw),
+            sourceKind: .siteFeed
+        )
+    }
+
+    private static func uploader(in segment: String) -> (name: String?, url: String?) {
+        let pattern = #"href=["'](/(?:model|pornstar|channels|user)/[^"']+)["'][^>]*>([^<]+)<"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return (nil, nil)
+        }
+        let range = NSRange(segment.startIndex..<segment.endIndex, in: segment)
+        guard let match = regex.firstMatch(in: segment, range: range),
+              match.numberOfRanges > 2,
+              let pathRange = Range(match.range(at: 1), in: segment),
+              let nameRange = Range(match.range(at: 2), in: segment) else {
+            return (nil, nil)
+        }
+        return (
+            decodeHTMLEntities(String(segment[nameRange])),
+            absoluteURL(String(segment[pathRange]))
+        )
+    }
+
+    private static func parseDuration(_ raw: String) -> Int? {
+        let parts = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: ":")
+            .compactMap { Int($0) }
+        switch parts.count {
+        case 2:
+            return parts[0] * 60 + parts[1]
+        case 3:
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        default:
+            return nil
+        }
+    }
+
+    private static func parseViews(_ raw: String) -> Int {
+        let value = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: ",", with: "")
+        if value.hasSuffix("m"), let number = Double(value.dropLast()) {
+            return Int(number * 1_000_000)
+        }
+        if value.hasSuffix("k"), let number = Double(value.dropLast()) {
+            return Int(number * 1_000)
+        }
+        return Int(value) ?? 0
+    }
+
+    private static func absoluteURL(_ raw: String) -> String? {
+        let decoded = decodeHTMLEntities(raw)
+        if decoded.hasPrefix("//") {
+            return "https:\(decoded)"
+        }
+        return URL(string: decoded, relativeTo: baseURL)?.absoluteURL.absoluteString
+    }
+
+    private static func firstCapture(pattern: String, in text: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
+            return nil
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: range),
+              match.numberOfRanges > 1,
+              let matchRange = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return String(text[matchRange])
+    }
+
+    private static func decodeHTMLEntities(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#34;", with: "\"")
+            .replacingOccurrences(of: "&#x27;", with: "'")
+            .replacingOccurrences(of: "&#39;", with: "'")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 private struct JSONLDItemList: Decodable {
     let itemListElement: [JSONLDVideoObject]
 }
