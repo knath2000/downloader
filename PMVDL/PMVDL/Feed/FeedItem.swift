@@ -88,6 +88,13 @@ struct FeedItem: Identifiable, Hashable {
     }
 }
 
+struct PornHubSubscription: Identifiable, Hashable {
+    let name: String
+    let url: String
+
+    var id: String { url.lowercased() }
+}
+
 enum FeedSourceKind: String, Hashable, CaseIterable, Identifiable {
     case siteFeed
     case linkList
@@ -129,6 +136,15 @@ enum PornHubSection: String, CaseIterable, Identifiable {
     }
 
     var requiresLogin: Bool {
+        switch self {
+        case .recommended, .hot:
+            return false
+        case .subscriptions, .liked, .favorites, .playlists:
+            return true
+        }
+    }
+
+    var preservesFeedOrder: Bool {
         switch self {
         case .recommended, .hot:
             return false
@@ -227,6 +243,7 @@ enum FeedDateFilter: String, CaseIterable, Identifiable {
 }
 
 enum FeedSortMode: String, CaseIterable, Identifiable {
+    case feedOrder
     case newest
     case oldest
     case mostViewed
@@ -240,6 +257,7 @@ enum FeedSortMode: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .feedOrder: return "Feed Order"
         case .newest: return "Newest"
         case .oldest: return "Oldest"
         case .mostViewed: return "Most Viewed"
@@ -253,6 +271,8 @@ enum FeedSortMode: String, CaseIterable, Identifiable {
 
     func sort(_ items: [FeedItem]) -> [FeedItem] {
         switch self {
+        case .feedOrder:
+            return items
         case .newest:
             return items.sorted { $0.uploadDate > $1.uploadDate }
         case .oldest:
@@ -295,6 +315,8 @@ struct FeedSiteCapabilities {
     var availableSortModes: [FeedSortMode] {
         FeedSortMode.allCases.filter { mode in
             switch mode {
+            case .feedOrder:
+                return !groupsByDate
             case .newest, .oldest:
                 return hasRealDates
             case .mostViewed:

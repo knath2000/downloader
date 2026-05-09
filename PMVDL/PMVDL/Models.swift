@@ -248,7 +248,7 @@ struct DownloadTransferMetrics: Codable, Equatable {
     var bytesPerSecond: Double?
 }
 
-struct DownloadQueueItem: Identifiable, Codable {
+struct DownloadQueueItem: Identifiable, Codable, Equatable {
     let id: UUID
     let url: String
     let filename: String

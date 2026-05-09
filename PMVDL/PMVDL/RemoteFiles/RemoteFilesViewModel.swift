@@ -13,6 +13,8 @@ final class RemoteFilesViewModel: ObservableObject {
     @Published var searchText = ""
 
     private var client: RemoteFileClient?
+    private var visibleCache: (items: [RemoteFileItem], query: String, sortMode: RemoteFileSortMode, result: [RemoteFileItem])?
+    private var summaryCache: (items: [RemoteFileItem], summary: RemoteFileSummary)?
 
     var filteredItems: [RemoteFileItem] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -20,6 +22,34 @@ final class RemoteFilesViewModel: ObservableObject {
         return items.filter {
             $0.name.lowercased().contains(query) || $0.path.lowercased().contains(query)
         }
+    }
+
+    func visibleItems(sortMode: RemoteFileSortMode) -> [RemoteFileItem] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let cache = visibleCache,
+           cache.items == items,
+           cache.query == query,
+           cache.sortMode == sortMode {
+            return cache.result
+        }
+
+        let result = RemoteFilesDisplay.filteredAndSorted(
+            items: items,
+            query: query,
+            sortMode: sortMode
+        )
+        visibleCache = (items, query, sortMode, result)
+        return result
+    }
+
+    func summary() -> RemoteFileSummary {
+        if let cache = summaryCache, cache.items == items {
+            return cache.summary
+        }
+
+        let summary = RemoteFilesDisplay.summary(for: items)
+        summaryCache = (items, summary)
+        return summary
     }
 
     func configure(client: RemoteFileClient) {

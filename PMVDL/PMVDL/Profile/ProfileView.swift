@@ -237,6 +237,25 @@ struct ProfileView: View {
                 .frame(width: 22, height: 22)
                 .overlay(Circle().strokeBorder(Theme.gold.opacity(0.72), lineWidth: 1))
 
+            if let profileURL = showsAvatar ? validPornHubProfileURL(for: entry) : nil {
+                Button {
+                    Task {
+                        await FeedViewModel.shared.openPornHubUploaderFromProfile(url: profileURL, name: entry.name)
+                        AppStateManager.shared.select(.feed)
+                    }
+                } label: {
+                    rankedRowContent(entry: entry, showsAvatar: showsAvatar, isClickable: true)
+                }
+                .buttonStyle(.plain)
+                .help(entry.name)
+            } else {
+                rankedRowContent(entry: entry, showsAvatar: showsAvatar, isClickable: false)
+            }
+        }
+    }
+
+    private func rankedRowContent(entry: ProfileStats.RankedEntry, showsAvatar: Bool, isClickable: Bool) -> some View {
+        HStack(alignment: .top, spacing: 9) {
             if showsAvatar {
                 ProfilePerformerAvatar(entry: entry)
             }
@@ -245,8 +264,13 @@ struct ProfileView: View {
                 HStack(spacing: 6) {
                     Text(entry.name)
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(Theme.textPrimary)
+                        .foregroundStyle(isClickable ? Theme.gold : Theme.textPrimary)
                         .lineLimit(1)
+                    if isClickable {
+                        Image(systemName: "arrow.up.right.circle.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Theme.gold.opacity(0.82))
+                    }
                     Spacer(minLength: 4)
                     Text("×\(entry.count)")
                         .font(.caption.weight(.heavy))
@@ -268,6 +292,11 @@ struct ProfileView: View {
                 }
             }
         }
+    }
+
+    private func validPornHubProfileURL(for entry: ProfileStats.RankedEntry) -> String? {
+        guard let profileURL = entry.profileURL else { return nil }
+        return PornHubFeedScraper.normalizedUploaderURL(profileURL)
     }
 
     private func tagsCard(_ entries: [ProfileStats.RankedEntry]) -> some View {

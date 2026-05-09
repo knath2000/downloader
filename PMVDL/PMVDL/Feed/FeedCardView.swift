@@ -14,20 +14,26 @@ struct FeedCardView: View {
     let item: FeedItem
     let isFavorite: Bool
     let downloadedMatch: DownloadedFeedMatch?
+    let isScrolling: Bool
     let toggleFavorite: () -> Void
     let extract: () -> Void
     let profileMatch: ProfileMatchReason?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject private var previewCoordinator = FeedPreviewCoordinator.shared
     @State private var isHovered = false
+    @State private var shouldShowVideoPreview = false
+    @State private var hoverPreviewTask: Task<Void, Never>?
     @State private var scrubFraction: CGFloat?
     @State private var previewImages: [String: NSImage] = [:]
     @State private var didRequestPreviewPrefetch = false
+    @State private var previewPrefetchTask: Task<Void, Never>?
 
     init(
         item: FeedItem,
         isFavorite: Bool = false,
         downloadedMatch: DownloadedFeedMatch? = nil,
+        isScrolling: Bool = false,
         toggleFavorite: @escaping () -> Void = {},
         extract: @escaping () -> Void,
         profileMatch: ProfileMatchReason? = nil
@@ -35,6 +41,7 @@ struct FeedCardView: View {
         self.item = item
         self.isFavorite = isFavorite
         self.downloadedMatch = downloadedMatch
+        self.isScrolling = isScrolling
         self.toggleFavorite = toggleFavorite
         self.extract = extract
         self.profileMatch = profileMatch
@@ -62,9 +69,23 @@ struct FeedCardView: View {
             }
         }
         .onHover { hovering in
-            isHovered = hovering
-            if !hovering {
-                scrubFraction = nil
+            handleHover(hovering)
+        }
+        .onChange(of: previewCoordinator.activeURL) { _, activeURL in
+            if activeURL != item.previewVideoURL {
+                shouldShowVideoPreview = false
+            }
+        }
+        .onChange(of: isScrolling) { _, scrolling in
+            guard scrolling else { return }
+            cancelTransientPreviewWork()
+        }
+        .onDisappear {
+            hoverPreviewTask?.cancel()
+            hoverPreviewTask = nil
+            cancelPreviewPrefetch()
+            if previewCoordinator.activeURL == item.previewVideoURL {
+                previewCoordinator.clear(url: item.previewVideoURL)
             }
         }
         .accessibilityElement(children: .combine)
@@ -124,9 +145,18 @@ struct FeedCardView: View {
         .padding(FeedCardLayout.padding)
         .background(cardBackground)
         .overlay(cardBorder)
-        .shadow(color: .black.opacity(isHovered ? 0.30 : 0.16), radius: isHovered ? 14 : 7, x: 0, y: isHovered ? 7 : 3)
-        .scaleEffect(isHovered && !reduceMotion ? 1.01 : 1)
-        .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.76), value: isHovered)
+        .shadow(
+            color: .black.opacity(allowsHoverEffects ? 0.30 : 0.16),
+            radius: allowsHoverEffects ? 14 : 7,
+            x: 0,
+            y: allowsHoverEffects ? 7 : 3
+        )
+        .scaleEffect(allowsHoverEffects && !reduceMotion ? 1.01 : 1)
+        .animation(isScrolling || reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.76), value: isHovered)
+    }
+
+    private var allowsHoverEffects: Bool {
+        isHovered && !isScrolling
     }
 
     private var cardBackground: some View {
@@ -134,13 +164,13 @@ struct FeedCardView: View {
             .fill(Theme.surface1.opacity(0.64))
             .overlay(
                 RoundedRectangle(cornerRadius: FeedCardLayout.cornerRadius)
-                    .fill(tint.opacity(isHovered ? 0.14 : 0.07))
+                    .fill(tint.opacity(allowsHoverEffects ? 0.14 : 0.07))
             )
     }
 
     private var cardBorder: some View {
         RoundedRectangle(cornerRadius: FeedCardLayout.cornerRadius)
-            .strokeBorder(isHovered ? tint.opacity(0.52) : .white.opacity(0.10), lineWidth: isHovered ? 1.1 : 0.7)
+            .strokeBorder(allowsHoverEffects ? tint.opacity(0.52) : .white.opacity(0.10), lineWidth: allowsHoverEffects ? 1.1 : 0.7)
     }
 
     private var metadataText: String {
@@ -190,8 +220,9 @@ struct FeedCardView: View {
             ZStack {
                 thumbnailImage
 
-                if isHovered,
-                   let previewVideoURL = item.previewVideoURL {
+                if shouldShowVideoPreview,
+                   let previewVideoURL = item.previewVideoURL,
+                   previewCoordinator.activeURL == previewVideoURL {
                     PornHubVideoPreview(urlString: previewVideoURL)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .transition(.opacity)
@@ -442,18 +473,55 @@ struct FeedCardView: View {
         case .active(let location):
             guard width > 0 else { return }
             scrubFraction = min(max(location.x / width, 0), 1)
-            prefetchPreviewImagesIfNeeded()
+            if !isScrolling {
+                prefetchPreviewImagesIfNeeded()
+            }
         case .ended:
             scrubFraction = nil
+            cancelPreviewPrefetch()
+        }
+    }
+
+    private func handleHover(_ hovering: Bool) {
+        isHovered = hovering
+
+        if isScrolling {
+            cancelTransientPreviewWork()
+            return
+        }
+
+        guard let previewVideoURL = item.previewVideoURL else {
+            if !hovering {
+                scrubFraction = nil
+                cancelPreviewPrefetch()
+            }
+            return
+        }
+
+        hoverPreviewTask?.cancel()
+        hoverPreviewTask = nil
+
+        if hovering {
+            hoverPreviewTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                guard !Task.isCancelled, isHovered else { return }
+                previewCoordinator.activate(url: previewVideoURL)
+                shouldShowVideoPreview = true
+            }
+        } else {
+            shouldShowVideoPreview = false
+            previewCoordinator.clear(url: previewVideoURL)
+            scrubFraction = nil
+            cancelPreviewPrefetch()
         }
     }
 
     private func prefetchPreviewImagesIfNeeded() {
-        guard !didRequestPreviewPrefetch else { return }
+        guard !didRequestPreviewPrefetch, previewPrefetchTask == nil else { return }
         didRequestPreviewPrefetch = true
         let urls = previewURLs
         let referer = item.referer
-        Task {
+        previewPrefetchTask = Task {
             for url in urls {
                 guard !Task.isCancelled else { return }
                 if let cached = await ThumbnailCache.shared.cachedImage(forIdentity: url) {
@@ -463,14 +531,50 @@ struct FeedCardView: View {
                 if let image = try? await ThumbnailCache.downloadAndCacheImage(
                     fromImageURL: url,
                     cacheIdentity: url,
-                    referer: referer
+                    referer: referer,
+                    maxPixelSize: 640
                 ) {
                     await MainActor.run { previewImages[url] = image }
                 }
             }
+            await MainActor.run {
+                previewPrefetchTask = nil
+            }
         }
     }
 
+    private func cancelPreviewPrefetch() {
+        previewPrefetchTask?.cancel()
+        previewPrefetchTask = nil
+    }
+
+    private func cancelTransientPreviewWork() {
+        hoverPreviewTask?.cancel()
+        hoverPreviewTask = nil
+        shouldShowVideoPreview = false
+        scrubFraction = nil
+        cancelPreviewPrefetch()
+        if let previewVideoURL = item.previewVideoURL {
+            previewCoordinator.clear(url: previewVideoURL)
+        }
+    }
+
+}
+
+@MainActor
+private final class FeedPreviewCoordinator: ObservableObject {
+    static let shared = FeedPreviewCoordinator()
+
+    @Published private(set) var activeURL: String?
+
+    func activate(url: String) {
+        activeURL = url
+    }
+
+    func clear(url: String?) {
+        guard activeURL == url else { return }
+        activeURL = nil
+    }
 }
 
 private struct PornHubVideoPreview: View {

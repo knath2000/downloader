@@ -37,15 +37,11 @@ struct RemoteFilesView: View {
     }
 
     private var visibleItems: [RemoteFileItem] {
-        RemoteFilesDisplay.filteredAndSorted(
-            items: model.items,
-            query: model.searchText,
-            sortMode: sortMode
-        )
+        model.visibleItems(sortMode: sortMode)
     }
 
     private var summary: RemoteFileSummary {
-        RemoteFilesDisplay.summary(for: model.items)
+        model.summary()
     }
 
     private var selectedItems: [RemoteFileItem] {

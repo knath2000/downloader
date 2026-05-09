@@ -102,6 +102,109 @@ final class FeedFilterTests: XCTestCase {
         XCTAssertEqual(FeedSortMode.longest.sort([unknown, short, long]).map(\.title), ["Long", "Short", "Unknown"])
     }
 
+    func testFeedOrderSortPreservesIncomingOrder() {
+        let old = feedItem(title: "Old", uploadDate: Date(timeIntervalSince1970: 100))
+        let new = feedItem(title: "New", uploadDate: Date(timeIntervalSince1970: 300))
+        let middle = feedItem(title: "Middle", uploadDate: Date(timeIntervalSince1970: 200))
+
+        XCTAssertEqual(FeedSortMode.feedOrder.sort([old, new, middle]).map(\.title), ["Old", "New", "Middle"])
+        XCTAssertEqual(FeedSortMode.newest.sort([old, new, middle]).map(\.title), ["New", "Middle", "Old"])
+    }
+
+    func testPornHubPersonalFeedDoesNotExhaustPaginationOnDateMiss() {
+        var filters = FeedFilterState()
+        filters.date = .today
+        let oldItem = feedItem(uploadDate: Date(timeIntervalSince1970: 100))
+
+        XCTAssertFalse(FeedViewModel.shouldStopPaginationForDateMiss(
+            selectedSite: PornHubFeedScraper.supportedHost,
+            selectedPornHubSection: .liked,
+            pornHubUploaderURL: nil,
+            filters: filters,
+            pageItems: [oldItem]
+        ))
+
+        XCTAssertTrue(FeedViewModel.shouldStopPaginationForDateMiss(
+            selectedSite: HQPornerFeedScraper.supportedHost,
+            selectedPornHubSection: .recommended,
+            pornHubUploaderURL: nil,
+            filters: filters,
+            pageItems: [oldItem]
+        ))
+    }
+
+    func testPornHubUploaderLoadBypassesStaleLoginRequiredSection() {
+        XCTAssertFalse(FeedViewModel.shouldBlockPornHubLoadForLogin(
+            selectedSite: PornHubFeedScraper.supportedHost,
+            selectedPornHubSection: .subscriptions,
+            pornHubUploaderURL: "https://www.pornhub.com/model/fixture",
+            isLoggedIn: false
+        ))
+
+        XCTAssertTrue(FeedViewModel.shouldBlockPornHubLoadForLogin(
+            selectedSite: PornHubFeedScraper.supportedHost,
+            selectedPornHubSection: .subscriptions,
+            pornHubUploaderURL: nil,
+            isLoggedIn: false
+        ))
+    }
+
+    @MainActor
+    func testPornHubUploaderBackRestoresPreviousFeedState() {
+        let model = FeedViewModel()
+        let first = feedItem(id: "liked-1", title: "Liked 1", siteName: PornHubFeedScraper.supportedHost)
+        let second = feedItem(id: "liked-2", title: "Liked 2", siteName: PornHubFeedScraper.supportedHost)
+
+        model.selectedSite = PornHubFeedScraper.supportedHost
+        model.selectedPornHubSection = .liked
+        model.sortMode = .feedOrder
+        model.items = [first, second]
+        model.currentPage = 4
+        model.hasMore = true
+        model.recordVisibleFeedAnchor(second.id)
+        model.capturePornHubReturnStateIfNeeded()
+
+        model.pornHubUploaderURL = "https://www.pornhub.com/model/fixture"
+        model.pornHubUploaderName = "Fixture"
+        model.items = [feedItem(id: "uploader-1", title: "Uploader", siteName: PornHubFeedScraper.supportedHost)]
+        model.currentPage = 1
+        model.hasMore = false
+
+        XCTAssertTrue(model.restorePornHubReturnState())
+        XCTAssertNil(model.pornHubUploaderURL)
+        XCTAssertNil(model.pornHubUploaderName)
+        XCTAssertEqual(model.selectedPornHubSection, .liked)
+        XCTAssertEqual(model.sortMode, .feedOrder)
+        XCTAssertEqual(model.items.map(\.id), ["liked-1", "liked-2"])
+        XCTAssertEqual(model.currentPage, 4)
+        XCTAssertTrue(model.hasMore)
+        XCTAssertEqual(model.pendingScrollRestoreID, second.id)
+    }
+
+    @MainActor
+    func testProfileUploaderNavigationConfiguresPornHubUploaderContext() {
+        let model = FeedViewModel()
+        model.selectedSite = PornHubFeedScraper.supportedHost
+        model.selectedPornHubSection = .liked
+        model.filters.query = "old"
+        model.sortMode = .newest
+        model.items = [feedItem(id: "old", title: "Old", siteName: PornHubFeedScraper.supportedHost)]
+        model.capturePornHubReturnStateIfNeeded()
+
+        XCTAssertTrue(model.configurePornHubUploaderFromProfile(
+            url: "https://www.pornhub.com/pornstar/fixture-performer/videos?page=2",
+            name: "Fixture Performer"
+        ))
+
+        XCTAssertEqual(model.selectedSite, PornHubFeedScraper.supportedHost)
+        XCTAssertEqual(model.selectedPornHubSection, .recommended)
+        XCTAssertEqual(model.pornHubUploaderURL, "https://www.pornhub.com/pornstar/fixture-performer")
+        XCTAssertEqual(model.pornHubUploaderName, "Fixture Performer")
+        XCTAssertTrue(model.filters.isDefault)
+        XCTAssertEqual(model.sortMode, .feedOrder)
+        XCTAssertFalse(model.restorePornHubReturnState())
+    }
+
     func testActiveFilterChipsAndRemoval() {
         var filters = FeedFilterState()
         filters.date = .last7Days
@@ -133,13 +236,98 @@ final class FeedFilterTests: XCTestCase {
         XCTAssertEqual(FeedGridLayout(availableWidth: 1900).columnMinWidth, 320)
         XCTAssertEqual(FeedGridLayout(availableWidth: 900).spacing, 12)
         XCTAssertEqual(FeedGridLayout(availableWidth: 1200).spacing, 18)
+        XCTAssertEqual(FeedGridLayout(availableWidth: 900).prefetchItemThreshold, 12)
+        XCTAssertEqual(FeedGridLayout(availableWidth: 1500).prefetchItemThreshold, 16)
+    }
+
+    func testViewportPrefetchTriggerIDsUsesTrailingVisibleWindow() {
+        XCTAssertEqual(
+            FeedViewModel.viewportPrefetchTriggerIDs(for: ["1", "2", "3", "4", "5"], threshold: 2),
+            ["4", "5"]
+        )
+
+        XCTAssertEqual(
+            FeedViewModel.viewportPrefetchTriggerIDs(for: ["1", "2", "3"], threshold: 10),
+            ["3"]
+        )
+
+        XCTAssertEqual(
+            FeedViewModel.viewportPrefetchTriggerIDs(for: [], threshold: 4),
+            []
+        )
+    }
+
+    @MainActor
+    func testFeedViewModelDerivedStateUpdatesWhenItemsFiltersAndSortChange() {
+        let model = FeedViewModel()
+        let old = feedItem(
+            id: "old",
+            title: "Old Feature",
+            uploadDate: Date(timeIntervalSince1970: 100),
+            studio: "Studio B",
+            categories: ["Action"],
+            tags: ["outdoor"],
+            quality: ["720p"]
+        )
+        let new = feedItem(
+            id: "new",
+            title: "New Feature",
+            uploadDate: Date(timeIntervalSince1970: 300),
+            studio: "Studio A",
+            categories: ["Drama"],
+            tags: ["studio"],
+            quality: ["1080p"]
+        )
+
+        model.items = [old, new]
+
+        XCTAssertEqual(model.filteredItems.map(\.id), ["new", "old"])
+        XCTAssertEqual(model.dayBuckets.flatMap(\.items).map(\.id), ["new", "old"])
+        XCTAssertEqual(model.availableStudios, ["Studio A", "Studio B"])
+        XCTAssertEqual(model.availableCategories, ["Action", "Drama"])
+        XCTAssertEqual(model.availableQualityLabels, ["1080p", "720p"])
+
+        model.sortMode = .feedOrder
+        XCTAssertEqual(model.filteredItems.map(\.id), ["old", "new"])
+
+        model.filters.query = "New"
+        XCTAssertEqual(model.filteredItems.map(\.id), ["new"])
+    }
+
+    func testPornHubSubscriptionParserExtractsUniqueUploaderLinks() {
+        let html = """
+        <div>
+          <a href="/user/discover">Discover</a>
+          <a href="/user/search">Search</a>
+          <a href="/user/edit">Edit</a>
+          <a href="/user/logout">Logout</a>
+          <a href="/model/avatar-only"><img alt="Model Avatar"></a>
+          <a href="/channels/fixture-channel"><img alt="Channel Avatar"></a>
+          <a href="/model/fixture-model/videos"><img alt="Model Avatar"></a>
+          <a href="/model/fixture-model" title="Fixture Model">Videos</a>
+          <a href="/channels/fixture-channel">Fixture Channel</a>
+          <a href="/model/fixture-model">Duplicate</a>
+          <a href="/user/plain-user?from=feed">Plain User</a>
+        </div>
+        """
+
+        let subscriptions = PornHubFeedScraper.parseSubscriptions(from: html)
+
+        XCTAssertEqual(subscriptions.map(\.name), ["Fixture Model", "Fixture Channel", "Plain User"])
+        XCTAssertEqual(subscriptions.map(\.url), [
+            "https://www.pornhub.com/model/fixture-model",
+            "https://www.pornhub.com/channels/fixture-channel",
+            "https://www.pornhub.com/user/plain-user"
+        ])
     }
 
     private func feedItem(
+        id: String = UUID().uuidString,
         title: String = "Fixture",
         uploadDate: Date = Date(),
         viewCount: Int = 0,
         duration: Int? = nil,
+        siteName: String = "example.test",
         studio: String? = nil,
         categories: [String] = [],
         tags: [String] = [],
@@ -147,13 +335,13 @@ final class FeedFilterTests: XCTestCase {
         quality: [String] = []
     ) -> FeedItem {
         FeedItem(
-            id: UUID().uuidString,
+            id: id,
             title: title,
-            url: "https://example.test/\(UUID().uuidString)",
+            url: "https://example.test/\(id)",
             thumbnailURL: nil,
             uploadDate: uploadDate,
             viewCount: viewCount,
-            siteName: "example.test",
+            siteName: siteName,
             studio: studio,
             durationSeconds: duration,
             categories: categories,

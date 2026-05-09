@@ -254,6 +254,8 @@ final class FeedFavoritesTests: XCTestCase {
         XCTAssertNil(result.stats.topPerformers.first?.imageURL)
         XCTAssertNil(result.stats.topPerformers.first?.imageReferer)
         XCTAssertNil(result.stats.topPerformers.first?.imageSource)
+        XCTAssertNil(result.stats.topPerformers.first?.profileURL)
+        XCTAssertNil(result.stats.topPerformers.first?.profileReferer)
         XCTAssertNil(result.audit)
     }
 
@@ -282,6 +284,57 @@ final class FeedFavoritesTests: XCTestCase {
         XCTAssertEqual(performer?.imageURL, "https://cdn.example.test/headshot.jpg")
         XCTAssertEqual(performer?.imageReferer, "https://www.pornhub.com/model/fixture-performer")
         XCTAssertEqual(performer?.imageSource, "profile")
+        XCTAssertEqual(performer?.profileURL, "https://www.pornhub.com/model/fixture-performer")
+        XCTAssertEqual(performer?.profileReferer, "https://www.pornhub.com/")
+    }
+
+    func testProfileEnrichmentAttachesPornHubUploaderURLWithoutProfileImage() async {
+        let evidence = profileEvidence(
+            title: "Fixture Performer Scene",
+            url: "https://www.pornhub.com/view_video.php?viewkey=profilelink",
+            uploaderName: "Fixture Performer",
+            uploaderURL: "https://www.pornhub.com/pornstar/fixture-performer/videos?page=2",
+            thumbnailURL: nil,
+            thumbnailReferer: "https://www.pornhub.com/"
+        )
+        let stats = profileStats(performerName: "Fixture Performer")
+        let enriched = await ProfileImageResolver.enrichedStats(
+            stats,
+            input: profileInput(items: [evidence], uploaderSignals: [
+                profileSignal(name: "Fixture Performer", url: evidence.url)
+            ])
+        ) { _, _ in
+            nil
+        }
+
+        let performer = enriched.topPerformers.first
+        XCTAssertNil(performer?.imageURL)
+        XCTAssertEqual(performer?.profileURL, "https://www.pornhub.com/pornstar/fixture-performer")
+        XCTAssertEqual(performer?.profileReferer, "https://www.pornhub.com/")
+    }
+
+    func testProfileEnrichmentIgnoresNonPornHubUploaderURLForClickableProfile() async {
+        let evidence = profileEvidence(
+            title: "Fixture Performer Scene",
+            url: "https://example.test/video",
+            uploaderName: "Fixture Performer",
+            uploaderURL: "https://example.test/model/fixture-performer",
+            thumbnailURL: "https://cdn.example.test/evidence.jpg",
+            thumbnailReferer: "https://example.test/video"
+        )
+        let stats = profileStats(performerName: "Fixture Performer")
+        let enriched = await ProfileImageResolver.enrichedStats(
+            stats,
+            input: profileInput(items: [evidence], uploaderSignals: [
+                profileSignal(name: "Fixture Performer", url: evidence.url)
+            ])
+        ) { _, _ in
+            nil
+        }
+
+        let performer = enriched.topPerformers.first
+        XCTAssertNil(performer?.profileURL)
+        XCTAssertNil(performer?.profileReferer)
     }
 
     func testProfileImageEnrichmentFallsBackToEvidenceThumbnailForLibraryUploader() async {

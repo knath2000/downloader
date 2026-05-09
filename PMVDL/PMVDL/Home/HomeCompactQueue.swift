@@ -77,6 +77,10 @@ struct HomeCompactQueue: View {
         items.filter { $0.status == .completed }
     }
 
+    private var resumableItems: [DownloadQueueItem] {
+        activeItems.filter { $0.status == .paused && $0.retryPayload != nil }
+    }
+
     private var counts: HomeQueueCounts {
         HomeQueueCounts(items: items)
     }
@@ -102,6 +106,7 @@ struct HomeCompactQueue: View {
                                 process: { process(item, preset: $0) },
                                 onUpgradeRequired: onUpgradeRequired
                             )
+                            .equatable()
                         }
 
                         if activeItems.count > activeVisibleLimit {
@@ -125,6 +130,7 @@ struct HomeCompactQueue: View {
                                     process: { process(item, preset: $0) },
                                     onUpgradeRequired: onUpgradeRequired
                                 )
+                                .equatable()
                             }
                         }
                     }
@@ -155,45 +161,66 @@ struct HomeCompactQueue: View {
     }
 
     private var header: some View {
-        Button {
-            withAnimation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.78)) {
-                isExpanded.toggle()
+        HStack(spacing: 8) {
+            Button {
+                toggleExpanded()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Theme.electricLime)
+
+                    Text("Downloads")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Theme.textPrimary)
+
+                    Text("\(items.count)")
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(Theme.surface0)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Theme.electricLime, in: Capsule())
+                        .contentTransition(.numericText())
+
+                    Text(counts.summaryText)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+                .contentShape(Rectangle())
             }
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "arrow.down.circle.fill")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Theme.electricLime)
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(isExpanded ? "Collapse downloads" : "Expand downloads"))
 
-                Text("Downloads")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Theme.textPrimary)
+            Spacer(minLength: 8)
 
-                Text("\(items.count)")
-                    .font(.system(size: 10, weight: .heavy))
-                    .foregroundStyle(Theme.surface0)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Theme.electricLime, in: Capsule())
-                    .contentTransition(.numericText())
+            if counts.paused > 0 {
+                Button {
+                    resumeAll()
+                } label: {
+                    Label("Resume All", systemImage: "play.fill")
+                        .font(.caption.weight(.bold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(Theme.electricLime)
+                .disabled(resumableItems.isEmpty)
+                .help(resumableItems.isEmpty ? "Paused downloads cannot be resumed" : "Resume all paused downloads")
+            }
 
-                Text(counts.summaryText)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-
-                Spacer()
-
+            Button {
+                toggleExpanded()
+            } label: {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 22, height: 22)
                     .rotationEffect(.degrees(isExpanded ? 0 : -90))
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(isExpanded ? "Collapse downloads" : "Expand downloads"))
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(isExpanded ? "Collapse downloads" : "Expand downloads"))
     }
 
     private var completedHeader: some View {
@@ -234,6 +261,31 @@ struct HomeCompactQueue: View {
             payload: payload,
             seedboxWebdavPassword: seedboxWebdavPassword
         )
+    }
+
+    private func resumeAll() {
+        var blockedByPro = false
+        for item in resumableItems {
+            guard let payload = item.retryPayload else { continue }
+            guard ProFeatureGate.canDownloadAudio || !payload.resolution.isAudio else {
+                blockedByPro = true
+                continue
+            }
+            DownloadJobRunner.shared.startResume(
+                queueId: item.id,
+                payload: payload,
+                seedboxWebdavPassword: seedboxWebdavPassword
+            )
+        }
+        if blockedByPro {
+            onUpgradeRequired()
+        }
+    }
+
+    private func toggleExpanded() {
+        withAnimation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.78)) {
+            isExpanded.toggle()
+        }
     }
 
     private func retry(_ item: DownloadQueueItem) {
@@ -294,7 +346,7 @@ struct HomeCompactQueue: View {
     }
 }
 
-private struct HomeCompactQueueRow: View {
+private struct HomeCompactQueueRow: View, Equatable {
     let item: DownloadQueueItem
     let pause: () -> Void
     let resume: () -> Void
@@ -306,6 +358,10 @@ private struct HomeCompactQueueRow: View {
     let copyError: () -> Void
     let process: (VideoProcessingPreset) -> Void
     let onUpgradeRequired: () -> Void
+
+    static func == (lhs: HomeCompactQueueRow, rhs: HomeCompactQueueRow) -> Bool {
+        lhs.item == rhs.item
+    }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 

@@ -16,6 +16,7 @@ struct SettingsView: View {
     @AppStorage("downloadSubtitles") private var downloadSubtitles = false
     @AppStorage("embeddedSubsMode") private var embeddedSubsMode = false
     @AppStorage("xaiAPIKey") private var xaiAPIKey = ""
+    @AppStorage(AppPreferenceKeys.preventSleepWhileRunning) private var preventSleepWhileRunning = false
 
     @StateObject private var license = LicenseManager.shared
     @StateObject private var updater = UpdateManager.shared
@@ -444,6 +445,16 @@ struct SettingsView: View {
         )
     }
 
+    private var preventSleepBinding: Binding<Bool> {
+        Binding(
+            get: { preventSleepWhileRunning },
+            set: { newValue in
+                preventSleepWhileRunning = newValue
+                SleepPreventionManager.shared.update()
+            }
+        )
+    }
+
     private var selectedUploadRuleTargets: [CloudProviderID] {
         var targets: [CloudProviderID] = []
         if uploadRuleMega { targets.append(.mega) }
@@ -592,7 +603,19 @@ struct SettingsView: View {
                         isOn: subtitleBinding
                     )
 
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: "Prevent sleep while running",
+                        subtitle: "Keep this Mac awake while downloads, uploads, or processing jobs are active.",
+                        systemImage: "moon.zzz.fill",
+                        tint: Theme.lavender,
+                        isOn: preventSleepBinding
+                    )
+
                     if downloadSubtitles && ProFeatureGate.canDownloadSubtitles {
+                        SettingsDivider()
+
                         SettingsFieldRow("Subtitle mode") {
                             Picker("Subtitle mode", selection: Binding(
                                 get: { embeddedSubsMode ? 1 : 0 },

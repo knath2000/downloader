@@ -69,6 +69,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.setActivationPolicy(.regular)
         MegaManager.cleanupTempFiles()
         NotificationManager.shared.requestAuthorization()
+        SleepPreventionManager.shared.start()
         Task { await LicenseManager.shared.bootstrap() }
         Task { @MainActor in
             let seedboxWebdavPassword = UserDefaults.standard.string(forKey: "seedboxWebdavPassword") ?? ""
@@ -108,6 +109,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         MegaManager.cancelAllOperations()
         MegaManager.cleanupTempFiles()
+        SleepPreventionManager.shared.stop()
         DownloadQueue.shared.save()
         VideoLibrary.shared.save()
         FeedFavoritesStore.shared.save()

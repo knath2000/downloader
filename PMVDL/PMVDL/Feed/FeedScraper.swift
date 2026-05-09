@@ -266,6 +266,11 @@ struct PornHubFeedScraper: FeedScraper {
         return parseEntries(from: html)
     }
 
+    static func fetchSubscriptions() async throws -> [PornHubSubscription] {
+        let html = try await fetchHTML(page: 1, section: .subscriptions, usesActiveUploader: false)
+        return parseSubscriptions(from: html)
+    }
+
     private static func fetchHTML(page: Int, section: PornHubSection, usesActiveUploader: Bool) async throws -> String {
         let url: URL
         if usesActiveUploader,
@@ -313,6 +318,41 @@ struct PornHubFeedScraper: FeedScraper {
             Range(match.range, in: html).map { String(html[$0]) }
         }
         return segments.compactMap { feedItem(from: $0) }
+    }
+
+    static func parseSubscriptions(from html: String) -> [PornHubSubscription] {
+        let pattern = #"<a[^>]+href=["'](/(?:model|pornstar|channels|user)/[^"']+)["'][^>]*>(.*?)</a>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
+            return []
+        }
+
+        let range = NSRange(html.startIndex..<html.endIndex, in: html)
+        var order: [String] = []
+        var subscriptionsByURL: [String: PornHubSubscription] = [:]
+
+        for match in regex.matches(in: html, range: range) {
+            guard match.numberOfRanges > 2,
+                  let pathRange = Range(match.range(at: 1), in: html),
+                  let anchorRange = Range(match.range, in: html) else { continue }
+
+            guard let url = normalizedUploaderURL(String(html[pathRange])) else { continue }
+
+            let anchorHTML = String(html[anchorRange])
+            guard let name = subscriptionName(from: anchorHTML) else { continue }
+
+            let key = url.lowercased()
+            let subscription = PornHubSubscription(name: name, url: url)
+            if let existing = subscriptionsByURL[key] {
+                if subscriptionNameScore(name) > subscriptionNameScore(existing.name) {
+                    subscriptionsByURL[key] = subscription
+                }
+            } else {
+                order.append(key)
+                subscriptionsByURL[key] = subscription
+            }
+        }
+
+        return order.compactMap { subscriptionsByURL[$0] }
     }
 
     private static func feedItem(from segment: String) -> FeedItem? {
@@ -380,10 +420,100 @@ struct PornHubFeedScraper: FeedScraper {
         let path = String(segment[pathRange])
         return (
             decodeHTMLEntities(String(segment[nameRange])),
-            absoluteURL(path),
+            normalizedUploaderURL(path),
             path.hasPrefix("/pornstar/") || path.hasPrefix("/model/") || path.hasPrefix("/user/")
         )
     }
+
+    static func normalizedUploaderURL(_ raw: String) -> String? {
+        guard let path = normalizedUploaderPath(raw),
+              isAllowedUploaderPath(path) else { return nil }
+        return "\(baseURL.absoluteString)\(path)"
+    }
+
+    private static func normalizedUploaderPath(_ raw: String) -> String? {
+        let decoded = decodeHTMLEntities(raw)
+        guard let url = URL(string: decoded, relativeTo: baseURL)?.absoluteURL,
+              let host = url.host?.lowercased(),
+              host == "pornhub.com" || host.hasSuffix(".pornhub.com") else { return nil }
+
+        let trimmed = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        var parts = trimmed.split(separator: "/").map(String.init)
+        if parts.last == "videos" {
+            parts.removeLast()
+        }
+        guard parts.count >= 2 else { return nil }
+        return "/" + parts.prefix(2).joined(separator: "/")
+    }
+
+    private static func isAllowedUploaderPath(_ path: String) -> Bool {
+        let parts = path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).split(separator: "/").map(String.init)
+        guard parts.count == 2 else { return false }
+        switch parts[0].lowercased() {
+        case "model", "pornstar", "channels":
+            return true
+        case "user":
+            return !blockedUserPaths.contains(parts[1].lowercased())
+        default:
+            return false
+        }
+    }
+
+    private static func subscriptionName(from html: String) -> String? {
+        let imageAlt = firstCapture(pattern: #"<img[^>]+alt=["']([^"']+)["']"#, in: html)
+        let title = firstCapture(pattern: #"title=["']([^"']+)["']"#, in: html)
+        let ariaLabel = firstCapture(pattern: #"aria-label=["']([^"']+)["']"#, in: html)
+        let text = html.replacingOccurrences(of: #"<[^>]+>"#, with: " ", options: .regularExpression)
+        return [imageAlt, title, ariaLabel, text]
+            .compactMap { $0 }
+            .map(decodeHTMLEntities)
+            .map { $0.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression) }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .compactMap(sanitizedSubscriptionName)
+            .max { subscriptionNameScore($0) < subscriptionNameScore($1) }
+    }
+
+    private static func sanitizedSubscriptionName(_ value: String) -> String? {
+        var name = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return nil }
+        guard !genericSubscriptionLabels.contains(name.lowercased()) else { return nil }
+
+        for suffix in ["'s Avatar", "’s Avatar"] where name.localizedCaseInsensitiveContains(suffix) {
+            name = name.replacingOccurrences(of: suffix, with: "", options: [.caseInsensitive])
+        }
+        if name.lowercased().hasSuffix(" avatar"), name.count > " avatar".count {
+            name.removeLast(" avatar".count)
+            name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        guard !name.isEmpty,
+              !genericSubscriptionLabels.contains(name.lowercased()) else { return nil }
+        return name
+    }
+
+    private static func subscriptionNameScore(_ value: String) -> Int {
+        var score = min(value.count, 80)
+        if value.contains(" ") { score += 20 }
+        if value.contains("-") || value.contains("_") { score -= 10 }
+        return score
+    }
+
+    private static let blockedUserPaths: Set<String> = [
+        "discover",
+        "edit",
+        "logout",
+        "search"
+    ]
+
+    private static let genericSubscriptionLabels: Set<String> = [
+        "avatar",
+        "channel avatar",
+        "gifs",
+        "model avatar",
+        "photos",
+        "playlists",
+        "videos"
+    ]
 
     private static func parseCategories(from segment: String) -> [String] {
         linkedLabels(pattern: #"href=["']/category/[^"']+["'][^>]*>([^<]+)<"#, in: segment)

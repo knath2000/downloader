@@ -136,6 +136,12 @@ struct YtDlpExtractor: VideoSiteExtractor {
             }
         }
 
+        var sourceHeaders = bestUrl.flatMap { bestUrl in
+            qualities.first(where: { $0.url == bestUrl })?.headers
+        } ?? stringHeaders(json["http_headers"])
+        ensureHeader("Referer", value: url.absoluteString, in: &sourceHeaders)
+        ensureHeader("User-Agent", value: NetworkConstants.chromeUserAgent, in: &sourceHeaders)
+
         return VideoSource(
             mp4: bestUrl,
             hls: qualities,
@@ -145,7 +151,8 @@ struct YtDlpExtractor: VideoSiteExtractor {
             uploader: metadata.uploader,
             uploaderURL: metadata.uploaderURL,
             siteName: siteName,
-            isAudio: isAudio
+            isAudio: isAudio,
+            headers: sourceHeaders
         )
     }
 

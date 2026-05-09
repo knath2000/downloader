@@ -1,9 +1,10 @@
 import AppKit
+import Combine
 import SwiftUI
 
 struct ContentView: View {
     @StateObject private var appState = AppStateManager.shared
-    @StateObject private var downloadQueue = DownloadQueue.shared
+    @StateObject private var activeQueueBadge = DownloadQueueActiveCountProjection(queue: .shared)
     @StateObject private var favorites = FeedFavoritesStore.shared
     @AppStorage("megaRemotePath") var megaRemotePath = "/Cloud/VidDL/"
     @AppStorage("gdriveRemoteName") var gdriveRemoteName = "gdrive"
@@ -15,14 +16,19 @@ struct ContentView: View {
     @AppStorage("seedboxWebdavUser") var seedboxWebdavUser = ""
     @AppStorage("seedboxWebdavPassword") var seedboxWebdavPassword = ""
     @State private var showUpgradeOverlay = false
+    @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
     @Namespace private var tabSwitcherGlass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     private let floatingTabContentInset: CGFloat = 0
+
+    private var performanceProfile: PerformanceProfile {
+        reduceMotion || isLowPowerModeEnabled ? .reducedEffects : .normal
+    }
 
     var body: some View {
         ZStack {
-            // Animated mesh gradient background
-            MeshGradientBackground()
+            MeshGradientBackground(isActive: scenePhase == .active)
                 .ignoresSafeArea()
                 .zIndex(-1)
 
@@ -36,10 +42,15 @@ struct ContentView: View {
             }
         }
         .background(WindowConfigurator())
+        .environment(\.performanceProfile, performanceProfile)
         .onAppear {
+            isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
             if !favorites.hasFavorites && appState.selectedDestination == .favorites {
                 appState.select(.feed)
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSProcessInfoPowerStateDidChange)) { _ in
+            isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
         }
         .onChange(of: favorites.hasFavorites) { _, hasFavorites in
             if !hasFavorites && appState.selectedDestination == .favorites {
@@ -154,15 +165,7 @@ struct ContentView: View {
     private func navBadge(for dest: NavDestination) -> Int? {
         switch dest {
         case .home:
-            let q = downloadQueue.queue.filter {
-                switch $0.status {
-                case .downloading, .verifying, .uploading, .processing:
-                    return true
-                default:
-                    return false
-                }
-            }
-            return q.isEmpty ? nil : q.count
+            return activeQueueBadge.activeCount == 0 ? nil : activeQueueBadge.activeCount
         case .favorites:
             return favorites.count == 0 ? nil : favorites.count
         default:
@@ -199,6 +202,19 @@ private struct FloatingTabSwitcher: View {
     let select: (NavDestination) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.performanceProfile) private var performanceProfile
+
+    private var shadowOpacity: Double {
+        performanceProfile == .reducedEffects ? 0.30 : 0.55
+    }
+
+    private var shadowRadius: CGFloat {
+        performanceProfile == .reducedEffects ? 12 : 24
+    }
+
+    private var shadowY: CGFloat {
+        performanceProfile == .reducedEffects ? 4 : 8
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -220,7 +236,7 @@ private struct FloatingTabSwitcher: View {
                 lineWidth: 1
             )
         )
-        .shadow(color: .black.opacity(0.55), radius: 24, x: 0, y: 8)
+        .shadow(color: .black.opacity(shadowOpacity), radius: shadowRadius, x: 0, y: shadowY)
     }
 
     private func tabButton(_ dest: NavDestination) -> some View {
@@ -281,8 +297,30 @@ private struct FloatingTabSwitcher: View {
             Color.clear
                 .glassEffect(.regular.tint(Color.black.opacity(0.3)), in: Capsule())
         } else {
-            PillBlurBackground()
+            if performanceProfile == .normal {
+                PillBlurBackground()
+            } else {
+                Capsule()
+                    .fill(Theme.surface0.opacity(0.76))
+            }
         }
+    }
+}
+
+@MainActor
+private final class DownloadQueueActiveCountProjection: ObservableObject {
+    @Published private(set) var activeCount: Int
+
+    private var cancellable: AnyCancellable?
+
+    init(queue: DownloadQueue) {
+        activeCount = queue.activeDownloadCount
+        cancellable = queue.$queue
+            .map { _ in queue.activeDownloadCount }
+            .removeDuplicates()
+            .sink { [weak self] count in
+                self?.activeCount = count
+            }
     }
 }
 

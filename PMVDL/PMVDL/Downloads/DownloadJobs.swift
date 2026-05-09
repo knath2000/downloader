@@ -667,7 +667,7 @@ final class DownloadJobRunner {
     ) async -> Bool {
         guard !shouldStop(queueId: queueId) else { return false }
 
-        let resolution = payload.resolution
+        var resolution = payload.resolution
         let target = payload.target
         let context = payload.context.materialize(seedboxWebdavPassword: seedboxWebdavPassword)
 
@@ -683,13 +683,28 @@ final class DownloadJobRunner {
 
         do {
             try validate(target: target, context: context)
+            if DownloadResolver.needsDownloadTimeRefresh(resolution) {
+                DownloadQueue.shared.update(
+                    id: queueId,
+                    status: .pending,
+                    progress: 0,
+                    message: "Refreshing PornHub source..."
+                )
+                resolution = try await DownloadResolver.refreshForDownloadIfNeeded(resolution)
+            }
             try validateProFeatures(for: resolution)
         } catch {
             fail(queueId: queueId, title: resolution.title, error: error)
             return false
         }
 
-        let job = makeJob(queueId: queueId, payload: payload, context: context)
+        let runPayload = DownloadRetryPayload(
+            resolution: resolution,
+            target: payload.target,
+            context: payload.context,
+            gdriveMegaRemotePath: payload.gdriveMegaRemotePath
+        )
+        let job = makeJob(queueId: queueId, payload: runPayload, context: context)
         do {
             let completion = try await job.run { event in
                 Task { @MainActor in

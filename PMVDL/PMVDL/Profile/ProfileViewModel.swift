@@ -21,6 +21,8 @@ struct ProfileStats: Codable, Hashable {
         let imageURL: String?
         let imageReferer: String?
         let imageSource: String?
+        let profileURL: String?
+        let profileReferer: String?
 
         init(
             name: String,
@@ -28,7 +30,9 @@ struct ProfileStats: Codable, Hashable {
             sources: [ProfileSourceCount],
             imageURL: String? = nil,
             imageReferer: String? = nil,
-            imageSource: String? = nil
+            imageSource: String? = nil,
+            profileURL: String? = nil,
+            profileReferer: String? = nil
         ) {
             self.name = name
             self.count = count
@@ -36,6 +40,8 @@ struct ProfileStats: Codable, Hashable {
             self.imageURL = imageURL
             self.imageReferer = imageReferer
             self.imageSource = imageSource
+            self.profileURL = profileURL
+            self.profileReferer = profileReferer
         }
 
         var id: String { name }
@@ -1187,8 +1193,10 @@ enum ProfileImageResolver {
         pageImageProvider: (String, String?) async -> String?
     ) async -> ProfileStats.RankedEntry {
         let candidates = matchingEvidence(for: performer.name, input: input)
+        let profileLink = candidates.compactMap(profileLink).first
         for candidate in candidates {
-            guard let pageURL = clean(candidate.item.uploaderURL) else { continue }
+            guard let rawPageURL = clean(candidate.item.uploaderURL) else { continue }
+            let pageURL = PornHubFeedScraper.normalizedUploaderURL(rawPageURL) ?? rawPageURL
             if let imageURL = await pageImageProvider(pageURL, candidate.item.thumbnailReferer) {
                 return ProfileStats.RankedEntry(
                     name: performer.name,
@@ -1196,7 +1204,9 @@ enum ProfileImageResolver {
                     sources: performer.sources,
                     imageURL: imageURL,
                     imageReferer: pageURL,
-                    imageSource: "profile"
+                    imageSource: "profile",
+                    profileURL: profileLink?.url,
+                    profileReferer: profileLink?.referer
                 )
             }
         }
@@ -1208,7 +1218,22 @@ enum ProfileImageResolver {
                 sources: performer.sources,
                 imageURL: fallback.url,
                 imageReferer: fallback.referer,
-                imageSource: "evidenceThumbnail"
+                imageSource: "evidenceThumbnail",
+                profileURL: profileLink?.url,
+                profileReferer: profileLink?.referer
+            )
+        }
+
+        if let profileLink {
+            return ProfileStats.RankedEntry(
+                name: performer.name,
+                count: performer.count,
+                sources: performer.sources,
+                imageURL: performer.imageURL,
+                imageReferer: performer.imageReferer,
+                imageSource: performer.imageSource,
+                profileURL: profileLink.url,
+                profileReferer: profileLink.referer
             )
         }
 
@@ -1265,6 +1290,12 @@ enum ProfileImageResolver {
     private static func evidenceThumbnail(_ candidate: ProfileImageCandidate) -> (url: String, referer: String?)? {
         guard let url = clean(candidate.item.thumbnailURL) else { return nil }
         return (url, clean(candidate.item.thumbnailReferer) ?? clean(candidate.item.url))
+    }
+
+    private static func profileLink(_ candidate: ProfileImageCandidate) -> (url: String, referer: String?)? {
+        guard let url = clean(candidate.item.uploaderURL),
+              let profileURL = PornHubFeedScraper.normalizedUploaderURL(url) else { return nil }
+        return (profileURL, clean(candidate.item.thumbnailReferer) ?? clean(candidate.item.url))
     }
 
     private static func fetchProfileImage(pageURL: String, referer: String?) async -> String? {

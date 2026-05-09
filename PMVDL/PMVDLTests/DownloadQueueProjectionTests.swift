@@ -184,6 +184,47 @@ final class DownloadQueueProjectionTests: XCTestCase {
     }
 
     @MainActor
+    func testActiveDownloadCountOnlyIncludesRunningWork() {
+        let queue = DownloadQueue.shared
+        let original = queue.queue
+        queue.queue = [
+            queueItem(status: .pending),
+            queueItem(status: .downloading),
+            queueItem(status: .verifying),
+            queueItem(status: .uploading),
+            queueItem(status: .processing),
+            queueItem(status: .paused),
+            queueItem(status: .completed),
+            queueItem(status: .failed("Network"))
+        ]
+        defer {
+            queue.queue = original
+            queue.save()
+        }
+
+        XCTAssertEqual(queue.activeDownloadCount, 4)
+    }
+
+    func testSleepPreventionPolicyOnlyKeepsAwakeForRunningWorkWhenEnabled() {
+        let idleItems = [
+            queueItem(status: .pending),
+            queueItem(status: .paused),
+            queueItem(status: .completed),
+            queueItem(status: .failed("Network"))
+        ]
+        let runningItems = idleItems + [
+            queueItem(status: .downloading),
+            queueItem(status: .verifying),
+            queueItem(status: .uploading),
+            queueItem(status: .processing)
+        ]
+
+        XCTAssertFalse(SleepPreventionPolicy.shouldPreventSleep(isEnabled: false, items: runningItems))
+        XCTAssertFalse(SleepPreventionPolicy.shouldPreventSleep(isEnabled: true, items: idleItems))
+        XCTAssertTrue(SleepPreventionPolicy.shouldPreventSleep(isEnabled: true, items: runningItems))
+    }
+
+    @MainActor
     func testSeedboxHLSLocalMaterializationStaysActiveUntilFinalCompletion() {
         let queue = DownloadQueue.shared
         let original = queue.queue

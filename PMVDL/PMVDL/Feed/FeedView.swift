@@ -7,6 +7,15 @@ private enum FeedLayout {
     static let sectionSpacing: CGFloat = 14
     static let toolbarCornerRadius: CGFloat = 18
     static let gridBottomPadding: CGFloat = 18
+    static let scrollCoordinateSpace = "FeedScrollView"
+}
+
+private struct FeedScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
 }
 
 struct FeedGridLayout: Equatable {
@@ -27,6 +36,14 @@ struct FeedGridLayout: Equatable {
 
     var columns: [GridItem] {
         [GridItem(.adaptive(minimum: columnMinWidth), spacing: spacing)]
+    }
+
+    var estimatedColumnCount: Int {
+        max(1, Int((availableWidth + spacing) / (columnMinWidth + spacing)))
+    }
+
+    var prefetchItemThreshold: Int {
+        max(estimatedColumnCount * 4, 8)
     }
 }
 
@@ -117,8 +134,11 @@ struct FeedView: View {
     @StateObject private var favorites = FeedFavoritesStore.shared
     @StateObject private var profileVM = ProfileViewModel.shared
     @StateObject private var library = VideoLibrary.shared
+    @StateObject private var pornHubSession = PornHubSessionManager.shared
     @State private var showsAdvancedFilters = false
     @State private var selectedItemIDs: Set<String> = []
+    @State private var isScrollingFeed = false
+    @State private var scrollIdleTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isSelecting: Bool { !selectedItemIDs.isEmpty }
@@ -127,6 +147,15 @@ struct FeedView: View {
     }
     private var siteTheme: FeedSiteTheme {
         FeedSiteTheme.theme(for: model.selectedSite)
+    }
+
+    private var sortModeBinding: Binding<FeedSortMode> {
+        Binding {
+            model.sortMode
+        } set: { value in
+            model.discardPornHubReturnState()
+            model.sortMode = value
+        }
     }
 
     var body: some View {
@@ -149,7 +178,7 @@ struct FeedView: View {
                 FeedToolbar(
                     selectedSite: $model.selectedSite,
                     filters: $model.filters,
-                    sortMode: $model.sortMode,
+                    sortMode: sortModeBinding,
                     showsAdvancedFilters: $showsAdvancedFilters,
                     capabilities: capabilities,
                     theme: siteTheme,
@@ -188,7 +217,7 @@ struct FeedView: View {
                     }
                 }
 
-                content(availableWidth: availableWidth)
+                contentArea(availableWidth: availableWidth)
 
                 if isSelecting {
                     batchSelectionBar
@@ -205,22 +234,63 @@ struct FeedView: View {
         }
         .task {
             await model.loadInitial()
+            await model.loadPornHubSubscriptionsIfNeeded()
         }
         .onChange(of: model.filters.date) { _, _ in
             model.resetPaginationForFilter()
+        }
+        .onChange(of: model.filters) { _, _ in
+            model.discardPornHubReturnState()
         }
         .onChange(of: model.selectedSite) { _, newSite in
             applySiteCapabilities(for: newSite)
             selectedItemIDs = []
             if newSite != PornHubFeedScraper.supportedHost {
-                model.pornHubUploaderURL = nil
-                model.pornHubUploaderName = nil
+                model.clearPornHubContext()
+            } else {
+                Task { await model.loadPornHubSubscriptionsIfNeeded() }
             }
             Task { await model.refresh() }
         }
         .onChange(of: model.selectedPornHubSection) { _, _ in
             selectedItemIDs = []
         }
+        .onReceive(profileVM.$state) { _ in
+            model.rebuildDerivedState()
+        }
+        .onChange(of: pornHubSession.isLoggedIn) { _, isLoggedIn in
+            if isLoggedIn && model.selectedSite == PornHubFeedScraper.supportedHost {
+                Task { await model.loadPornHubSubscriptionsIfNeeded() }
+            } else if !isLoggedIn {
+                model.pornHubSubscriptions = []
+                model.pornHubSubscriptionsError = nil
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func contentArea(availableWidth: CGFloat) -> some View {
+        let railWidth = min(max(availableWidth * 0.18, 190), 240)
+        if shouldShowSubscriptionRail(availableWidth: availableWidth) {
+            HStack(alignment: .top, spacing: 12) {
+                PornHubSubscriptionRail(
+                    model: model,
+                    accent: siteTheme.accent
+                )
+                .frame(width: railWidth)
+                .frame(maxHeight: .infinity)
+
+                content(availableWidth: max(availableWidth - railWidth - 12, 0))
+            }
+        } else {
+            content(availableWidth: availableWidth)
+        }
+    }
+
+    private func shouldShowSubscriptionRail(availableWidth: CGFloat) -> Bool {
+        model.selectedSite == PornHubFeedScraper.supportedHost &&
+            pornHubSession.isLoggedIn &&
+            availableWidth >= 1040
     }
 
     @ViewBuilder
@@ -232,40 +302,112 @@ struct FeedView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if model.isLoading && model.items.isEmpty {
             ScrollView {
-                FeedSkeletonGrid(layout: FeedGridLayout(availableWidth: availableWidth), accent: siteTheme.accent)
-                    .padding(.bottom, FeedLayout.gridBottomPadding)
-            }
-        } else if model.filteredItems.isEmpty {
-            FeedEmptyState(
-                filters: model.filters,
-                hasMore: model.hasMore,
-                accent: siteTheme.accent,
-                clearFilters: model.clearFilters,
-                loadMore: { Task { await model.loadMore() } },
-                refresh: { Task { await model.refresh() } }
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            ScrollView {
-                let layout = FeedGridLayout(availableWidth: availableWidth)
-                LazyVStack(alignment: .leading, spacing: FeedLayout.sectionSpacing, pinnedViews: [.sectionHeaders]) {
-                    if capabilities.groupsByDate {
-                        ForEach(model.dayBuckets) { bucket in
-                            Section {
-                                feedGrid(items: bucket.items, layout: layout)
-                            } header: {
-                                FeedDayHeader(date: bucket.date, count: bucket.items.count, accent: siteTheme.accent)
-                            }
-                        }
-                    } else {
-                        feedGrid(items: model.filteredItems, layout: layout)
-                    }
-
-                    loadMoreRow
+                LazyVStack(alignment: .leading, spacing: FeedLayout.sectionSpacing) {
+                    inlineSubscriptionPicker
+                    FeedSkeletonGrid(layout: FeedGridLayout(availableWidth: availableWidth), accent: siteTheme.accent)
                 }
                 .padding(.bottom, FeedLayout.gridBottomPadding)
             }
+        } else if model.filteredItems.isEmpty {
+            VStack(alignment: .leading, spacing: FeedLayout.sectionSpacing) {
+                inlineSubscriptionPicker
+                FeedEmptyState(
+                    filters: model.filters,
+                    accent: siteTheme.accent,
+                    clearFilters: model.clearFilters,
+                    refresh: { Task { await model.refresh() } }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .bottom) {
+                FeedAutoLoadSentinel(
+                    hasMore: model.hasMore,
+                    isLoading: model.isLoading,
+                    currentPage: model.currentPage,
+                    visibleCount: model.filteredItems.count,
+                    action: { Task { await model.loadMoreMatchingCurrentFilters(pageBudget: 3) } }
+                )
+                .frame(width: 0, height: 0)
+            }
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    let layout = FeedGridLayout(availableWidth: availableWidth)
+                    let downloadedIndex = DownloadedFeedIndex(items: library.items)
+                    let favoriteIDs = Set(favorites.items.map(\.id))
+                    let prefetchThreshold = layout.prefetchItemThreshold
+                    LazyVStack(alignment: .leading, spacing: FeedLayout.sectionSpacing, pinnedViews: [.sectionHeaders]) {
+                        scrollOffsetTracker
+                        inlineSubscriptionPicker
+
+                        if capabilities.groupsByDate {
+                            ForEach(model.dayBuckets) { bucket in
+                                Section {
+                                    feedGrid(
+                                        items: bucket.items,
+                                        layout: layout,
+                                        downloadedIndex: downloadedIndex,
+                                        favoriteIDs: favoriteIDs,
+                                        prefetchThreshold: prefetchThreshold
+                                    )
+                                } header: {
+                                    FeedDayHeader(date: bucket.date, count: bucket.items.count, accent: siteTheme.accent)
+                                }
+                            }
+                        } else {
+                            feedGrid(
+                                items: model.filteredItems,
+                                layout: layout,
+                                downloadedIndex: downloadedIndex,
+                                favoriteIDs: favoriteIDs,
+                                prefetchThreshold: prefetchThreshold
+                            )
+                        }
+
+                        autoLoadMoreRow
+                    }
+                    .padding(.bottom, FeedLayout.gridBottomPadding)
+                }
+                .coordinateSpace(name: FeedLayout.scrollCoordinateSpace)
+                .onPreferenceChange(FeedScrollOffsetPreferenceKey.self, perform: updateScrollActivity)
+                .onAppear {
+                    restorePendingScrollIfNeeded(proxy, anchorID: model.pendingScrollRestoreID)
+                }
+                .onChange(of: model.pendingScrollRestoreID) { _, anchorID in
+                    restorePendingScrollIfNeeded(proxy, anchorID: anchorID)
+                }
+                .onDisappear {
+                    scrollIdleTask?.cancel()
+                    scrollIdleTask = nil
+                    isScrollingFeed = false
+                }
+            }
         }
+    }
+
+    private var scrollOffsetTracker: some View {
+        GeometryReader { proxy in
+            Color.clear.preference(
+                key: FeedScrollOffsetPreferenceKey.self,
+                value: proxy.frame(in: .named(FeedLayout.scrollCoordinateSpace)).minY
+            )
+        }
+        .frame(height: 0)
+    }
+
+    @ViewBuilder
+    private var inlineSubscriptionPicker: some View {
+        if shouldShowInlineSubscriptionPicker {
+            PornHubSubscriptionsInlinePicker(model: model, accent: siteTheme.accent)
+        }
+    }
+
+    private var shouldShowInlineSubscriptionPicker: Bool {
+        model.selectedSite == PornHubFeedScraper.supportedHost &&
+            pornHubSession.isLoggedIn &&
+            model.selectedPornHubSection == .subscriptions &&
+            model.pornHubUploaderURL == nil
     }
 
     private var profileCuratedNoBanner: some View {
@@ -316,9 +458,14 @@ struct FeedView: View {
         .glassCard(tint: siteTheme.accent.opacity(0.14), cornerRadius: 14)
     }
 
-    private func feedGrid(items: [FeedItem], layout: FeedGridLayout) -> some View {
+    private func feedGrid(
+        items: [FeedItem],
+        layout: FeedGridLayout,
+        downloadedIndex: DownloadedFeedIndex,
+        favoriteIDs: Set<String>,
+        prefetchThreshold: Int
+    ) -> some View {
         let profileMatchReasons = model.sortMode == .profileCurated ? model.profileMatchReasons : [:]
-        let downloadedIndex = DownloadedFeedIndex(items: library.items)
 
         return LazyVGrid(
             columns: layout.columns,
@@ -329,8 +476,9 @@ struct FeedView: View {
                 let downloadedMatch = downloadedIndex.match(for: item)
                 FeedCardView(
                     item: item,
-                    isFavorite: favorites.contains(url: item.url),
+                    isFavorite: favoriteIDs.contains(FeedFavoriteItem.normalizedURL(item.url)),
                     downloadedMatch: downloadedMatch,
+                    isScrolling: isScrollingFeed,
                     toggleFavorite: {
                         withAnimation {
                             favorites.toggle(feedItem: item)
@@ -345,6 +493,16 @@ struct FeedView: View {
                     },
                     profileMatch: profileMatchReasons[item.id]
                 )
+                .id(item.id)
+                .onAppear {
+                    model.recordVisibleFeedAnchor(item.id)
+                    Task {
+                        await model.prefetchMoreIfNeeded(
+                            appearedItemID: item.id,
+                            threshold: prefetchThreshold
+                        )
+                    }
+                }
                 .overlay(alignment: .topTrailing) {
                     if isSelecting {
                         selectionBadge(for: item)
@@ -397,25 +555,18 @@ struct FeedView: View {
         Button("Open in Browser") { openInBrowser(item) }
     }
 
-    private var loadMoreRow: some View {
+    private var autoLoadMoreRow: some View {
         HStack {
             Spacer()
             if model.hasMore {
-                Button {
-                    Task { await model.loadMore() }
-                } label: {
-                    if model.isLoading {
-                        ProgressView()
-                            .controlSize(.small)
-                            .scaleEffect(0.7)
-                    } else {
-                        Label("Load More", systemImage: "plus")
-                    }
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.7)
+                    Text(model.isLoading ? "Loading more videos" : "More videos available")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
                 }
-                .buttonStyle(.bordered)
-                .tint(siteTheme.accent)
-                .controlSize(.small)
-                .disabled(model.isLoading)
             } else {
                 Text("No more videos for this filter")
                     .font(.caption)
@@ -424,6 +575,15 @@ struct FeedView: View {
             Spacer()
         }
         .padding(.top, 2)
+        .background(
+            FeedAutoLoadSentinel(
+                hasMore: model.hasMore,
+                isLoading: model.isLoading,
+                currentPage: model.currentPage,
+                visibleCount: model.filteredItems.count,
+                action: { Task { await model.loadMoreMatchingCurrentFilters(pageBudget: 3) } }
+            )
+        )
     }
 
     private func removeActiveFilter(id: String) {
@@ -470,7 +630,7 @@ struct FeedView: View {
     private func applySiteCapabilities(for site: String) {
         let caps = FeedSiteCapabilities.capabilities(for: site)
         if site == PornHubFeedScraper.supportedHost {
-            model.sortMode = .newest
+            model.applyPornHubDefaultSortForCurrentContext()
         }
         if !caps.availableSortModes.contains(model.sortMode) {
             model.sortMode = caps.availableSortModes.first ?? .titleAZ
@@ -491,6 +651,59 @@ struct FeedView: View {
         if !caps.hasQualityLabels {
             model.filters.selectedQualityLabels = []
         }
+    }
+
+    private func updateScrollActivity(_ offset: CGFloat) {
+        scrollIdleTask?.cancel()
+        if !isScrollingFeed {
+            isScrollingFeed = true
+        }
+        scrollIdleTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 160_000_000)
+            guard !Task.isCancelled else { return }
+            isScrollingFeed = false
+        }
+    }
+
+    private func restorePendingScrollIfNeeded(_ proxy: ScrollViewProxy, anchorID: String?) {
+        guard let anchorID else { return }
+        DispatchQueue.main.async {
+            proxy.scrollTo(anchorID, anchor: .top)
+            model.clearPendingScrollRestoreID(anchorID)
+        }
+    }
+}
+
+private struct FeedAutoLoadSentinel: View {
+    let hasMore: Bool
+    let isLoading: Bool
+    let currentPage: Int
+    let visibleCount: Int
+    let action: () -> Void
+
+    @State private var lastTriggeredToken: String?
+
+    private var token: String {
+        "\(currentPage)-\(visibleCount)-\(hasMore)"
+    }
+
+    var body: some View {
+        Color.clear
+            .frame(width: 1, height: 1)
+            .onAppear(perform: triggerIfNeeded)
+            .onChange(of: token) { _, _ in
+                triggerIfNeeded()
+            }
+            .onChange(of: isLoading) { _, loading in
+                guard !loading else { return }
+                triggerIfNeeded()
+            }
+    }
+
+    private func triggerIfNeeded() {
+        guard hasMore, !isLoading, lastTriggeredToken != token else { return }
+        lastTriggeredToken = token
+        action()
     }
 }
 
@@ -1132,10 +1345,8 @@ private struct FeedSkeletonGrid: View {
 
 private struct FeedEmptyState: View {
     let filters: FeedFilterState
-    let hasMore: Bool
     let accent: Color
     let clearFilters: () -> Void
-    let loadMore: () -> Void
     let refresh: () -> Void
 
     var body: some View {
@@ -1163,13 +1374,6 @@ private struct FeedEmptyState: View {
                         .tint(accent)
                         .controlSize(.small)
                 }
-
-                if hasMore {
-                    Button("Load More", action: loadMore)
-                        .buttonStyle(.bordered)
-                        .tint(accent)
-                        .controlSize(.small)
-                }
             }
         }
     }
@@ -1183,9 +1387,9 @@ private struct FeedEmptyState: View {
 
     private var emptyDetail: String {
         if !filters.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return "No videos match \"\(filters.query)\" in the current source."
+            return "No loaded videos match \"\(filters.query)\" in the current source."
         }
-        return "Try clearing filters, changing the date range, or loading more from the source."
+        return "Try clearing filters, changing the date range, or refreshing the source."
     }
 }
 
@@ -1254,6 +1458,182 @@ private enum FeedSiteDisplay {
             return site
                 .replacingOccurrences(of: "https://", with: "")
                 .replacingOccurrences(of: "http://", with: "")
+        }
+    }
+}
+
+private struct PornHubSubscriptionRail: View {
+    @ObservedObject var model: FeedViewModel
+
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "bell.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(accent)
+                Text("Subscriptions")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Theme.textPrimary)
+                Spacer()
+                Button {
+                    Task { await model.refreshPornHubSubscriptions() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.textSecondary)
+                .disabled(model.isLoadingPornHubSubscriptions)
+                .help("Refresh subscriptions")
+            }
+
+            allSubscriptionsButton
+
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 5) {
+                    if model.isLoadingPornHubSubscriptions {
+                        subscriptionLoadingRow
+                    } else if model.pornHubSubscriptions.isEmpty {
+                        subscriptionEmptyRow
+                    } else {
+                        ForEach(model.pornHubSubscriptions) { subscription in
+                            subscriptionButton(subscription)
+                        }
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .padding(10)
+        .glassCard(tint: accent.opacity(0.08), cornerRadius: 16)
+        .task {
+            await model.loadPornHubSubscriptionsIfNeeded()
+        }
+    }
+
+    private var allSubscriptionsButton: some View {
+        let isSelected = model.pornHubUploaderURL == nil && model.selectedPornHubSection == .subscriptions
+        return Button {
+            Task {
+                if model.pornHubUploaderURL != nil {
+                    await model.pornHubUploaderBack()
+                } else {
+                    await model.selectPornHubSection(.subscriptions)
+                }
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "rectangle.stack.fill")
+                    .font(.system(size: 10, weight: .bold))
+                Text("All")
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .font(.system(size: 12, weight: isSelected ? .bold : .semibold))
+            .foregroundStyle(isSelected ? accent : Theme.textSecondary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+            .background(isSelected ? accent.opacity(0.18) : Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var subscriptionLoadingRow: some View {
+        HStack(spacing: 7) {
+            ProgressView()
+                .controlSize(.small)
+                .scaleEffect(0.62)
+            Text("Loading")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+    }
+
+    private var subscriptionEmptyRow: some View {
+        Text(model.pornHubSubscriptionsError ?? "None found")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(Theme.textSecondary)
+            .lineLimit(2)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+    }
+
+    private func subscriptionButton(_ subscription: PornHubSubscription) -> some View {
+        let isSelected = model.pornHubUploaderURL?.lowercased() == subscription.url.lowercased()
+        return Button {
+            Task {
+                await model.navigateToPornHubUploader(url: subscription.url, name: subscription.name)
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "person.crop.circle")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(subscription.name)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+            }
+            .font(.system(size: 12, weight: isSelected ? .bold : .regular))
+            .foregroundStyle(isSelected ? accent : Theme.textPrimary.opacity(0.84))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+            .background(isSelected ? accent.opacity(0.18) : Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isSelected ? accent.opacity(0.28) : .white.opacity(0.05), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .help(subscription.name)
+    }
+}
+
+private struct PornHubSubscriptionsInlinePicker: View {
+    @ObservedObject var model: FeedViewModel
+
+    let accent: Color
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                if model.isLoadingPornHubSubscriptions {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.65)
+                        .padding(.horizontal, 8)
+                } else if model.pornHubSubscriptions.isEmpty {
+                    Text(model.pornHubSubscriptionsError ?? "No subscriptions found")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .padding(.horizontal, 2)
+                } else {
+                    ForEach(model.pornHubSubscriptions) { subscription in
+                        Button {
+                            Task {
+                                await model.navigateToPornHubUploader(url: subscription.url, name: subscription.name)
+                            }
+                        } label: {
+                            Text(subscription.name)
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(Theme.textPrimary)
+                                .lineLimit(1)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.white.opacity(0.06), in: Capsule())
+                                .overlay(Capsule().strokeBorder(accent.opacity(0.18), lineWidth: 0.5))
+                        }
+                        .buttonStyle(.plain)
+                        .help(subscription.name)
+                    }
+                }
+            }
+            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .task {
+            await model.loadPornHubSubscriptionsIfNeeded()
         }
     }
 }

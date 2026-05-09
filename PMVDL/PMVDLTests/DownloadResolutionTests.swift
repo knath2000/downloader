@@ -359,6 +359,112 @@ final class DownloadResolutionTests: XCTestCase {
         XCTAssertEqual(resolution.headers?["Referer"], "https://vidara.so/")
         XCTAssertEqual(resolution.sourcePageUrl, sourcePageUrl)
     }
+
+    func testPornHubResolutionRefreshesStaleDirectURLAtDownloadTime() async throws {
+        let pageURL = "https://www.pornhub.com/view_video.php?viewkey=phfixture"
+        let staleURL = "https://ev-phncdn.example.test/videos/stale-720.mp4?ttl=old"
+        let freshURL = "https://ev-phncdn.example.test/videos/fresh-720.mp4?ttl=new"
+        let staleQuality = VideoSource.Quality(
+            label: "720p MP4",
+            url: staleURL,
+            kind: .direct,
+            headers: ["Referer": pageURL],
+            sourcePageUrl: pageURL
+        )
+        let staleSource = VideoSource(
+            mp4: staleURL,
+            hls: [staleQuality],
+            title: "Old PornHub Source",
+            siteName: "PornHub"
+        )
+        let resolution = try await DownloadResolver.resolve(
+            requestedUrl: staleURL,
+            in: [ExtractResult(url: pageURL, source: staleSource, error: nil)]
+        )
+
+        let freshQuality = VideoSource.Quality(
+            label: "720p MP4",
+            url: freshURL,
+            kind: .direct,
+            headers: [
+                "Referer": pageURL,
+                "User-Agent": NetworkConstants.chromeUserAgent
+            ],
+            sourcePageUrl: pageURL
+        )
+        let freshSource = VideoSource(
+            mp4: freshURL,
+            hls: [freshQuality],
+            title: "Fresh PornHub Source",
+            siteName: "PornHub"
+        )
+        var extractorCalls: [String] = []
+
+        let refreshed = try await DownloadResolver.refreshForDownloadIfNeeded(resolution) { url in
+            extractorCalls.append(url)
+            return freshSource
+        }
+
+        XCTAssertEqual(extractorCalls, [pageURL])
+        XCTAssertEqual(refreshed.requestedUrl, staleURL)
+        XCTAssertEqual(refreshed.finalUrl, freshURL)
+        XCTAssertEqual(refreshed.mediaKind, .direct)
+        XCTAssertEqual(refreshed.headers?["Referer"], pageURL)
+        XCTAssertEqual(refreshed.headers?["User-Agent"], NetworkConstants.chromeUserAgent)
+        XCTAssertEqual(refreshed.sourcePageUrl, pageURL)
+        XCTAssertEqual(refreshed.title, "Fresh PornHub Source")
+    }
+
+    func testNonPornHubResolutionDoesNotRefreshAtDownloadTime() async throws {
+        let source = VideoSource(
+            mp4: "https://video.example.test/file.mp4",
+            hls: [],
+            title: "Example",
+            siteName: "Example"
+        )
+        let resolution = try await DownloadResolver.resolve(
+            requestedUrl: "https://video.example.test/file.mp4",
+            in: [ExtractResult(url: "https://example.test/watch", source: source, error: nil)]
+        )
+        var didCallExtractor = false
+
+        let refreshed = try await DownloadResolver.refreshForDownloadIfNeeded(resolution) { _ in
+            didCallExtractor = true
+            return source
+        }
+
+        XCTAssertFalse(didCallExtractor)
+        XCTAssertEqual(refreshed, resolution)
+    }
+
+    func testPornHubRefreshFailureReturnsUserReadableError() async throws {
+        let pageURL = "https://www.pornhub.com/view_video.php?viewkey=phfixture"
+        let staleURL = "https://ev-phncdn.example.test/videos/stale-720.mp4?ttl=old"
+        let source = VideoSource(
+            mp4: staleURL,
+            hls: [],
+            title: "Old PornHub Source",
+            siteName: "PornHub"
+        )
+        let resolution = try await DownloadResolver.resolve(
+            requestedUrl: staleURL,
+            in: [ExtractResult(url: pageURL, source: source, error: nil)]
+        )
+
+        do {
+            _ = try await DownloadResolver.refreshForDownloadIfNeeded(resolution) { _ in
+                throw VideoExtractorError.noVideoSources
+            }
+            XCTFail("Expected PornHub refresh to fail")
+        } catch DownloadResolutionError.pornHubSourceRefreshFailed {
+            XCTAssertEqual(
+                DownloadResolutionError.pornHubSourceRefreshFailed.localizedDescription,
+                "PornHub source expired; refresh the video and try again."
+            )
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
 }
 
 final class SeedboxHLSUploadStrategyTests: XCTestCase {

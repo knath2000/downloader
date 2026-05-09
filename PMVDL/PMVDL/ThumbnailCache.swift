@@ -2,12 +2,17 @@ import AppKit
 import AVKit
 import CryptoKit
 import Foundation
+import ImageIO
 
 actor ThumbnailCache {
     static let shared = ThumbnailCache()
 
     private let memoryCache = NSCache<NSString, NSImage>()
     private let diskDirectory: URL
+    private let maxConcurrentLoads = 3
+    private var activeLoads = 0
+    private var loadWaiters: [CheckedContinuation<Void, Never>] = []
+    private var inFlightImages: [String: Task<NSImage, Error>] = [:]
 
     private init() {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
@@ -76,6 +81,59 @@ actor ThumbnailCache {
             try? jpeg.write(to: fileURL)
         }
     }
+
+    func image(
+        forIdentity identity: String,
+        load: @escaping @Sendable () async throws -> NSImage
+    ) async throws -> NSImage {
+        if let cached = cachedImage(forIdentity: identity) {
+            return cached
+        }
+
+        if let task = inFlightImages[identity] {
+            return try await task.value
+        }
+
+        let task = Task { [weak self] in
+            guard let self else { throw CancellationError() }
+            try await self.acquireLoadSlot()
+            defer {
+                Task { await self.releaseLoadSlot() }
+            }
+            return try await load()
+        }
+        inFlightImages[identity] = task
+
+        do {
+            let image = try await task.value
+            store(image, forIdentity: identity)
+            inFlightImages[identity] = nil
+            return image
+        } catch {
+            inFlightImages[identity] = nil
+            throw error
+        }
+    }
+
+    private func acquireLoadSlot() async throws {
+        try Task.checkCancellation()
+        if activeLoads < maxConcurrentLoads {
+            activeLoads += 1
+            return
+        }
+        await withCheckedContinuation { continuation in
+            loadWaiters.append(continuation)
+        }
+        try Task.checkCancellation()
+    }
+
+    private func releaseLoadSlot() {
+        if loadWaiters.isEmpty {
+            activeLoads = max(0, activeLoads - 1)
+        } else {
+            loadWaiters.removeFirst().resume()
+        }
+    }
 }
 
 // MARK: - Synchronous local-file thumbnail generation (called from upload flows)
@@ -127,95 +185,103 @@ extension ThumbnailCache {
     }
 
     static func generateAndCacheImage(fromLocalFile localPath: String, forRemoteUrl url: String) async -> NSImage? {
-        if let cached = await shared.cachedImage(for: url) { return cached }
+        try? await shared.image(forIdentity: url) {
+            let fileURL = URL(fileURLWithPath: localPath)
+            let asset = AVAsset(url: fileURL)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 320, height: 180)
 
-        let fileURL = URL(fileURLWithPath: localPath)
-        let asset = AVAsset(url: fileURL)
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 320, height: 180)
+            let duration = try await asset.load(.duration)
+            let time = CMTime(seconds: min(1.0, duration.seconds * 0.05), preferredTimescale: 600)
 
-        guard let duration = try? await asset.load(.duration) else { return nil }
-        let time = CMTime(seconds: min(1.0, duration.seconds * 0.05), preferredTimescale: 600)
-
-        guard let (cgImage, _) = try? await generator.image(at: time) else { return nil }
-        let image = NSImage(cgImage: cgImage, size: CGSize(width: cgImage.width, height: cgImage.height))
-
-        await shared.store(image, for: url)
-        return image
+            let (cgImage, _) = try await generator.image(at: time)
+            return NSImage(cgImage: cgImage, size: CGSize(width: cgImage.width, height: cgImage.height))
+        }
     }
 
     /// Download first 2 MB of a remote video and generate a thumbnail (for backfill).
     static func generateAndCache(fromRemoteURL url: String, headers: [String: String]? = nil) async throws -> NSImage {
-        // Check cache first
-        if let cached = await shared.cachedImage(for: url) { return cached }
+        try await shared.image(forIdentity: url) {
+            guard let remoteURL = URL(string: url) else { throw ThumbnailError.invalidURL(url) }
+            var request = URLRequest(url: remoteURL)
+            request.setValue("bytes=0-2097151", forHTTPHeaderField: "Range")
+            request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
+            headers?.forEach { field, value in
+                guard field.caseInsensitiveCompare("Range") != .orderedSame else { return }
+                request.setValue(value, forHTTPHeaderField: field)
+            }
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse,
+               !(200...299).contains(http.statusCode) {
+                throw ThumbnailError.httpStatus(http.statusCode)
+            }
+            guard !data.isEmpty else { throw ThumbnailError.emptyResponse }
 
-        guard let remoteURL = URL(string: url) else { throw ThumbnailError.invalidURL(url) }
-        var request = URLRequest(url: remoteURL)
-        request.setValue("bytes=0-2097151", forHTTPHeaderField: "Range")
-        request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
-        headers?.forEach { field, value in
-            guard field.caseInsensitiveCompare("Range") != .orderedSame else { return }
-            request.setValue(value, forHTTPHeaderField: field)
+            let tempBase = ThumbnailCache.cacheKey(for: url).replacingOccurrences(of: ".jpg", with: "")
+            let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("\(tempBase).mp4")
+            try data.write(to: tempFile)
+            defer { try? FileManager.default.removeItem(at: tempFile) }
+
+            let asset = AVAsset(url: tempFile)
+            let generator = AVAssetImageGenerator(asset: asset)
+            generator.appliesPreferredTrackTransform = true
+            generator.maximumSize = CGSize(width: 320, height: 180)
+
+            let duration = try await asset.load(.duration)
+            let time = CMTime(seconds: min(1.0, duration.seconds * 0.05), preferredTimescale: 600)
+            let (cgImage, _) = try await generator.image(at: time)
+            return NSImage(cgImage: cgImage, size: CGSize(width: cgImage.width, height: cgImage.height))
         }
-        let (data, response) = try await URLSession.shared.data(for: request)
-        if let http = response as? HTTPURLResponse,
-           !(200...299).contains(http.statusCode) {
-            throw ThumbnailError.httpStatus(http.statusCode)
-        }
-        guard !data.isEmpty else { throw ThumbnailError.emptyResponse }
-
-        let tempBase = ThumbnailCache.cacheKey(for: url).replacingOccurrences(of: ".jpg", with: "")
-        let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("\(tempBase).mp4")
-        try data.write(to: tempFile)
-        defer { try? FileManager.default.removeItem(at: tempFile) }
-
-        let asset = AVAsset(url: tempFile)
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 320, height: 180)
-
-        let duration = try await asset.load(.duration)
-        let time = CMTime(seconds: min(1.0, duration.seconds * 0.05), preferredTimescale: 600)
-        let (cgImage, _) = try await generator.image(at: time)
-        let image = NSImage(cgImage: cgImage, size: CGSize(width: cgImage.width, height: cgImage.height))
-
-        await shared.store(image, for: url)
-        return image
     }
 
     static func downloadAndCacheImage(
         fromImageURL imageURLString: String,
         cacheIdentity: String? = nil,
-        referer: String? = nil
+        referer: String? = nil,
+        maxPixelSize: CGFloat = 640
     ) async throws -> NSImage {
         let trimmed = imageURLString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let imageURL = URL(string: trimmed) else {
             throw ThumbnailError.invalidURL(trimmed)
         }
 
-        let identity = cacheIdentity ?? trimmed
-        if let cached = await shared.cachedImage(forIdentity: identity) {
-            return cached
-        }
+        return try await shared.image(forIdentity: cacheIdentity ?? trimmed) {
+            var request = URLRequest(url: imageURL)
+            request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
+            if let referer, !referer.isEmpty {
+                request.setValue(referer, forHTTPHeaderField: "Referer")
+            }
 
-        var request = URLRequest(url: imageURL)
-        request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
-        if let referer, !referer.isEmpty {
-            request.setValue(referer, forHTTPHeaderField: "Referer")
-        }
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse,
+               !(200...299).contains(http.statusCode) {
+                throw ThumbnailError.httpStatus(http.statusCode)
+            }
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        if let http = response as? HTTPURLResponse,
-           !(200...299).contains(http.statusCode) {
-            throw ThumbnailError.httpStatus(http.statusCode)
+            return try decodedImage(from: data, maxPixelSize: maxPixelSize)
+        }
+    }
+
+    private static func decodedImage(from data: Data, maxPixelSize: CGFloat) throws -> NSImage {
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: max(Int(maxPixelSize), 1)
+        ]
+
+        if let source = CGImageSourceCreateWithData(data as CFData, nil),
+           let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) {
+            return NSImage(
+                cgImage: cgImage,
+                size: CGSize(width: cgImage.width, height: cgImage.height)
+            )
         }
 
         guard let image = NSImage(data: data) else {
             throw ThumbnailError.invalidImage
         }
-
-        await shared.store(image, forIdentity: identity)
         return image
     }
 }

@@ -1,10 +1,16 @@
-# Latest Session - 2026-05-07 PornHub Feed, Login, and Preview
+# Latest Session - 2026-05-09 Feed/Profile/PornHub Downloads/Home Controls
+
+See `docs/SESSION_2026_05_09_FEED_PROFILE_PORNHUB_DOWNLOADS_HOME.md` for the durable summary of Feed lazy loading, smoother scrolling, PornHub subscription picker/parser fixes, Profile performer links to PornHub uploaders, PornHub stale CDN download refresh for HTTP 472, Home Resume All, Settings prevent-sleep behavior, validation, and launch work.
+
+---
+
+# Previous Session - 2026-05-07 PornHub Feed, Login, and Preview
 
 See `docs/SESSION_2026_05_07_PORNHUB_FEED.md` for the durable summary of the PornHub feed source, WKWebView cookie login, section picker, flat source-order grid, in-app uploader navigation, hover MP4 previews, parser corrections, and validation.
 
 ---
 
-# Previous Session - 2026-05-07 Floating Navigation
+# Earlier Session - 2026-05-07 Floating Navigation
 
 See `docs/SESSION_2026_05_07_FLOATING_NAVIGATION.md` for the durable summary of the full-window shell, floating bottom pill navigation, bottom-strip diagnostics, final zero-inset fix, validation, and launch work.
 

@@ -1,6 +1,22 @@
 import AppKit
 import SwiftUI
 
+enum PerformanceProfile: Equatable {
+    case normal
+    case reducedEffects
+}
+
+private struct PerformanceProfileKey: EnvironmentKey {
+    static let defaultValue: PerformanceProfile = .normal
+}
+
+extension EnvironmentValues {
+    var performanceProfile: PerformanceProfile {
+        get { self[PerformanceProfileKey.self] }
+        set { self[PerformanceProfileKey.self] = newValue }
+    }
+}
+
 struct RefererAwareAsyncImage<Content: View>: View {
     let url: URL
     let referer: String?
@@ -19,14 +35,10 @@ struct RefererAwareAsyncImage<Content: View>: View {
     }
 
     var body: some View {
-        if let referer = normalizedReferer {
-            content(phase)
-                .task(id: "\(url.absoluteString)|\(referer)") {
-                    await load(referer: referer)
-                }
-        } else {
-            AsyncImage(url: url, content: content)
-        }
+        content(phase)
+            .task(id: "\(url.absoluteString)|\(normalizedReferer ?? "")") {
+                await load(referer: normalizedReferer)
+            }
     }
 
     private var normalizedReferer: String? {
@@ -35,7 +47,7 @@ struct RefererAwareAsyncImage<Content: View>: View {
     }
 
     @MainActor
-    private func load(referer: String) async {
+    private func load(referer: String?) async {
         phase = .empty
 
         do {
@@ -61,15 +73,26 @@ struct RefererAwareAsyncImage<Content: View>: View {
 
 // MARK: - MeshGradientBackground
 
-/// Animated organic mesh gradient that sits behind the entire window.
 struct MeshGradientBackground: View {
+    let isActive: Bool
+
+    @Environment(\.performanceProfile) private var performanceProfile
+
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate * 0.12
-            meshContent(t: t)
+        if shouldAnimate {
+            TimelineView(.animation(minimumInterval: 1 / 8)) { timeline in
+                let t = timeline.date.timeIntervalSinceReferenceDate * 0.06
+                meshContent(t: t)
+            }
+            .ignoresSafeArea()
+        } else {
+            meshContent(t: 0)
+                .ignoresSafeArea()
         }
-        .ignoresSafeArea()
-        .drawingGroup()
+    }
+
+    private var shouldAnimate: Bool {
+        isActive && performanceProfile == .normal
     }
 
     @ViewBuilder
@@ -106,13 +129,26 @@ struct MeshGradientBackground: View {
 
 // MARK: - GlassCard
 
-/// Floating glass card with optional marketplace color tint.
 struct GlassCard: ViewModifier {
     var tint: Color = .clear
     var cornerRadius: CGFloat = 16
 
+    @Environment(\.performanceProfile) private var performanceProfile
+
     func body(content: Content) -> some View {
         glassBody(content: content)
+    }
+
+    private var shadowOpacity: Double {
+        performanceProfile == .reducedEffects ? 0.24 : 0.45
+    }
+
+    private var shadowRadius: CGFloat {
+        performanceProfile == .reducedEffects ? 7 : 14
+    }
+
+    private var shadowY: CGFloat {
+        performanceProfile == .reducedEffects ? 3 : 6
     }
 
     @ViewBuilder
@@ -129,18 +165,22 @@ struct GlassCard: ViewModifier {
             content
                 .glassEffect(.regular.tint(tint), in: shape)
                 .overlay(border)
-                .shadow(color: .black.opacity(0.45), radius: 14, x: 0, y: 6)
+                .shadow(color: .black.opacity(shadowOpacity), radius: shadowRadius, x: 0, y: shadowY)
         } else {
             content
                 .background(
                     ZStack {
-                        shape.fill(.ultraThinMaterial)
+                        if performanceProfile == .normal {
+                            shape.fill(.ultraThinMaterial)
+                        } else {
+                            shape.fill(Theme.surface0.opacity(0.72))
+                        }
                         shape.fill(tint.opacity(0.14))
                     }
                 )
                 .clipShape(shape)
                 .overlay(border)
-                .shadow(color: .black.opacity(0.45), radius: 14, x: 0, y: 6)
+                .shadow(color: .black.opacity(shadowOpacity), radius: shadowRadius, x: 0, y: shadowY)
         }
     }
 }

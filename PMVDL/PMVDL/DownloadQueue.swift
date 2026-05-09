@@ -1,4 +1,87 @@
+import Combine
 import Foundation
+
+enum AppPreferenceKeys {
+    static let preventSleepWhileRunning = "preventSleepWhileRunning"
+}
+
+enum SleepPreventionPolicy {
+    static func shouldPreventSleep(isEnabled: Bool, items: [DownloadQueueItem]) -> Bool {
+        isEnabled && items.contains { isRunningStatus($0.status) }
+    }
+
+    static func isRunningStatus(_ status: QueueStatus) -> Bool {
+        switch status {
+        case .downloading, .verifying, .uploading, .processing:
+            return true
+        case .pending, .completed, .paused, .failed:
+            return false
+        }
+    }
+}
+
+@MainActor
+final class SleepPreventionManager {
+    static let shared = SleepPreventionManager()
+
+    private var activity: NSObjectProtocol?
+    private var cancellables: Set<AnyCancellable> = []
+
+    private init() {}
+
+    func start() {
+        guard cancellables.isEmpty else {
+            update()
+            return
+        }
+
+        DownloadQueue.shared.$queue
+            .sink { [weak self] _ in
+                self?.update()
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            .sink { [weak self] _ in
+                self?.update()
+            }
+            .store(in: &cancellables)
+
+        update()
+    }
+
+    func update() {
+        let shouldPreventSleep = SleepPreventionPolicy.shouldPreventSleep(
+            isEnabled: UserDefaults.standard.bool(forKey: AppPreferenceKeys.preventSleepWhileRunning),
+            items: DownloadQueue.shared.queue
+        )
+
+        if shouldPreventSleep {
+            begin()
+        } else {
+            end()
+        }
+    }
+
+    func stop() {
+        end()
+        cancellables.removeAll()
+    }
+
+    private func begin() {
+        guard activity == nil else { return }
+        activity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .idleSystemSleepDisabled],
+            reason: "VidDL downloads are running"
+        )
+    }
+
+    private func end() {
+        guard let activity else { return }
+        ProcessInfo.processInfo.endActivity(activity)
+        self.activity = nil
+    }
+}
 
 @MainActor
 class DownloadQueue: ObservableObject {
@@ -400,7 +483,7 @@ class DownloadQueue: ObservableObject {
         }
     }
 
-    private var activeCount: Int {
+    var activeDownloadCount: Int {
         queue.filter { item in
             switch item.status {
             case .downloading, .verifying, .uploading, .processing: return true
