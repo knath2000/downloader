@@ -3,9 +3,9 @@ import AVKit
 import SwiftUI
 
 private enum FeedCardLayout {
-    static let cornerRadius: CGFloat = 16
-    static let thumbnailRadius: CGFloat = 13
-    static let padding: CGFloat = 10
+    static let cornerRadius: CGFloat = 12
+    static let thumbnailRadius: CGFloat = 10
+    static let padding: CGFloat = 9
     static let titleFontSize: CGFloat = 13
     static let titleLineLimit = 2
 }

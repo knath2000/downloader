@@ -27,6 +27,8 @@ struct UpgradeOverlay: View {
                     FeatureRow(icon: "checkmark.seal.fill", text: "\(LicenseManager.freeDownloadLimit) → unlimited total downloads")
                     FeatureRow(icon: "checkmark.seal.fill", text: "\(ProFeatureGate.freeConcurrentDownloadLimit) → \(ProFeatureGate.proConcurrentDownloadLimit) concurrent downloads")
                     FeatureRow(icon: "checkmark.seal.fill", text: "Batch download more than \(ProFeatureGate.freeBatchLimit) items")
+                    FeatureRow(icon: "checkmark.seal.fill", text: "Feed discovery and saved favorites")
+                    FeatureRow(icon: "checkmark.seal.fill", text: "AI Profile analysis")
                     FeatureRow(icon: "checkmark.seal.fill", text: "Upload to multiple clouds at once")
                     FeatureRow(icon: "checkmark.seal.fill", text: "Video processing tools")
                     FeatureRow(icon: "checkmark.seal.fill", text: "Audio downloads and subtitles")

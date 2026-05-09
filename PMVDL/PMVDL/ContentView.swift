@@ -6,6 +6,7 @@ struct ContentView: View {
     @StateObject private var appState = AppStateManager.shared
     @StateObject private var activeQueueBadge = DownloadQueueActiveCountProjection(queue: .shared)
     @StateObject private var favorites = FeedFavoritesStore.shared
+    @StateObject private var license = LicenseManager.shared
     @AppStorage("megaRemotePath") var megaRemotePath = "/Cloud/VidDL/"
     @AppStorage("gdriveRemoteName") var gdriveRemoteName = "gdrive"
     @AppStorage("gdriveRemotePath") var gdriveRemotePath = "VidDL/"
@@ -17,6 +18,7 @@ struct ContentView: View {
     @AppStorage("seedboxWebdavPassword") var seedboxWebdavPassword = ""
     @State private var showUpgradeOverlay = false
     @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
+    @State private var lastAccessibleDestination: NavDestination = .home
     @Namespace private var tabSwitcherGlass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -24,6 +26,14 @@ struct ContentView: View {
 
     private var performanceProfile: PerformanceProfile {
         reduceMotion || isLowPowerModeEnabled ? .reducedEffects : .normal
+    }
+
+    private var displayedDestination: NavDestination {
+        ProFeatureGate.canAccess(appState.selectedDestination) ? appState.selectedDestination : fallbackDestination
+    }
+
+    private var fallbackDestination: NavDestination {
+        ProFeatureGate.canAccess(lastAccessibleDestination) ? lastAccessibleDestination : .home
     }
 
     var body: some View {
@@ -46,15 +56,24 @@ struct ContentView: View {
         .onAppear {
             isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
             if !favorites.hasFavorites && appState.selectedDestination == .favorites {
-                appState.select(.feed)
+                selectDestination(.feed)
             }
+            enforceAccess(to: appState.selectedDestination)
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSProcessInfoPowerStateDidChange)) { _ in
             isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
         }
         .onChange(of: favorites.hasFavorites) { _, hasFavorites in
             if !hasFavorites && appState.selectedDestination == .favorites {
-                appState.select(.feed)
+                selectDestination(.feed)
+            }
+        }
+        .onChange(of: appState.selectedDestination) { _, destination in
+            enforceAccess(to: destination)
+        }
+        .onChange(of: license.isPro) { _, isPro in
+            if !isPro {
+                enforceAccess(to: appState.selectedDestination)
             }
         }
     }
@@ -71,14 +90,14 @@ struct ContentView: View {
 
     private var mainLayout: some View {
         ZStack(alignment: .bottom) {
-            contentForDestination(appState.selectedDestination)
+            contentForDestination(displayedDestination)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .transition(.opacity)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: appState.selectedDestination)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: displayedDestination)
 
             FloatingTabSwitcher(
                 destinations: sidebarDestinations,
-                selected: appState.selectedDestination,
+                selected: displayedDestination,
                 badge: { navBadge(for: $0) },
                 namespace: tabSwitcherGlass,
                 select: selectDestination
@@ -174,9 +193,27 @@ struct ContentView: View {
     }
 
     private func selectDestination(_ destination: NavDestination) {
+        guard ProFeatureGate.canAccess(destination) else {
+            presentUpgradeOverlay()
+            return
+        }
+
         withAnimation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7)) {
             appState.select(destination)
         }
+    }
+
+    private func enforceAccess(to destination: NavDestination) {
+        guard ProFeatureGate.canAccess(destination) else {
+            presentUpgradeOverlay()
+            let fallback = fallbackDestination
+            if appState.selectedDestination != fallback {
+                appState.select(fallback)
+            }
+            return
+        }
+
+        lastAccessibleDestination = destination
     }
 
     private func presentUpgradeOverlay() {
@@ -242,6 +279,7 @@ private struct FloatingTabSwitcher: View {
     private func tabButton(_ dest: NavDestination) -> some View {
         let isSelected = dest == selected
         let color = Theme.destinationColor(dest)
+        let isLocked = dest.requiresPro && !ProFeatureGate.canAccess(dest)
 
         return Button {
             select(dest)
@@ -274,7 +312,14 @@ private struct FloatingTabSwitcher: View {
                 }
                 .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.72), value: isSelected)
 
-                if let count = badge(dest) {
+                if isLocked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 8, weight: .heavy))
+                        .foregroundStyle(Theme.surface0)
+                        .frame(width: 16, height: 16)
+                        .background(Theme.gold.opacity(0.95), in: Circle())
+                        .offset(x: -2, y: 2)
+                } else if let count = badge(dest) {
                     Text("\(count)")
                         .font(.system(size: 8, weight: .heavy))
                         .foregroundStyle(.white)

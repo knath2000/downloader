@@ -129,6 +129,7 @@
 	T10019 /* RemoteFilesDisplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20019 /* RemoteFilesDisplayTests.swift */; };
 	T10020 /* VideoProcessingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20020 /* VideoProcessingTests.swift */; };
 	T10021 /* ProfileNarrativeFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20021 /* ProfileNarrativeFormatterTests.swift */; };
+	T10022 /* NavigationGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20022 /* NavigationGateTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -259,6 +260,7 @@
 	T20019 /* RemoteFilesDisplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesDisplayTests.swift; sourceTree = "<group>"; };
 	T20020 /* VideoProcessingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoProcessingTests.swift; sourceTree = "<group>"; };
 	T20021 /* ProfileNarrativeFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileNarrativeFormatterTests.swift; sourceTree = "<group>"; };
+	T20022 /* NavigationGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationGateTests.swift; sourceTree = "<group>"; };
 	T30001 /* VidDLTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VidDLTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -503,6 +505,7 @@
 			T20019 /* RemoteFilesDisplayTests.swift */,
 			T20020 /* VideoProcessingTests.swift */,
 			T20021 /* ProfileNarrativeFormatterTests.swift */,
+			T20022 /* NavigationGateTests.swift */,
 		);
 		path = PMVDLTests;
 		sourceTree = "<group>";
@@ -762,6 +765,7 @@
 			T10019 /* RemoteFilesDisplayTests.swift in Sources */,
 			T10020 /* VideoProcessingTests.swift in Sources */,
 			T10021 /* ProfileNarrativeFormatterTests.swift in Sources */,
+			T10022 /* NavigationGateTests.swift in Sources */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};

@@ -3,9 +3,9 @@ import SwiftUI
 
 private enum FeedLayout {
     static let contentMaxWidth: CGFloat = 1760
-    static let outerSpacing: CGFloat = 16
-    static let sectionSpacing: CGFloat = 14
-    static let toolbarCornerRadius: CGFloat = 18
+    static let outerSpacing: CGFloat = 12
+    static let sectionSpacing: CGFloat = 10
+    static let toolbarCornerRadius: CGFloat = 14
     static let gridBottomPadding: CGFloat = 18
     static let scrollCoordinateSpace = "FeedScrollView"
 }
@@ -31,7 +31,7 @@ struct FeedGridLayout: Equatable {
     }
 
     var spacing: CGFloat {
-        availableWidth < 980 ? 12 : 18
+        availableWidth < 980 ? 12 : 16
     }
 
     var columns: [GridItem] {
@@ -186,6 +186,8 @@ struct FeedView: View {
                     availableCategories: model.availableCategories,
                     availableTags: model.availableTags,
                     availableQualityLabels: model.availableQualityLabels,
+                    activeChips: model.filters.activeChips,
+                    removeActiveFilter: removeActiveFilter,
                     clearFilters: model.clearFilters
                 )
 
@@ -199,16 +201,6 @@ struct FeedView: View {
                 if model.sortMode == .profileCurated,
                    case .idle = profileVM.state {
                     profileCuratedNoBanner
-                }
-
-                if !model.filters.activeChips.isEmpty {
-                    FeedActiveFiltersRow(
-                        chips: model.filters.activeChips,
-                        accent: siteTheme.accent,
-                        remove: removeActiveFilter,
-                        clearAll: model.clearFilters
-                    )
-                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
                 }
 
                 if let error = model.error, !model.items.isEmpty {
@@ -726,9 +718,9 @@ private struct FeedPageHeader: View {
             Image(systemName: theme.icon)
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(theme.accent)
-                .frame(width: 36, height: 36)
-                .background(theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(theme.accent.opacity(0.24), lineWidth: 0.5))
+                .frame(width: 34, height: 34)
+                .background(theme.accent.opacity(0.14), in: RoundedRectangle(cornerRadius: 9))
+                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(theme.accent.opacity(0.24), lineWidth: 0.5))
 
             VStack(alignment: .leading, spacing: 3) {
                 logo
@@ -758,8 +750,8 @@ private struct FeedPageHeader: View {
             .keyboardShortcut("r", modifiers: [.command])
             .help("Refresh feed")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
         .glassCard(tint: theme.accent.opacity(0.10), cornerRadius: FeedLayout.toolbarCornerRadius)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: selectedSite)
         .accessibilityElement(children: .combine)
@@ -804,14 +796,26 @@ private struct FeedToolbar: View {
     let availableCategories: [String]
     let availableTags: [String]
     let availableQualityLabels: [String]
+    let activeChips: [FeedActiveFilterChip]
+    let removeActiveFilter: (String) -> Void
     let clearFilters: () -> Void
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 7) {
                 ViewThatFits(in: .horizontal) {
-                    horizontal
-                    vertical
+                    wideControls
+                    compactControls
+                }
+
+                if !activeChips.isEmpty {
+                    FeedActiveFiltersRow(
+                        chips: activeChips,
+                        accent: theme.accent,
+                        remove: removeActiveFilter,
+                        clearAll: clearFilters
+                    )
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
                 }
 
                 if showsAdvancedFilters {
@@ -836,8 +840,8 @@ private struct FeedToolbar: View {
             .opacity(0)
             .accessibilityHidden(true)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
         .glassCard(tint: theme.accent.opacity(0.10), cornerRadius: 16)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: selectedSite)
         .onExitCommand {
@@ -850,12 +854,12 @@ private struct FeedToolbar: View {
         }
     }
 
-    private var horizontal: some View {
-        HStack(spacing: 10) {
+    private var wideControls: some View {
+        HStack(spacing: 8) {
             sitePicker
                 .layoutPriority(2)
             searchField
-                .layoutPriority(3)
+                .layoutPriority(5)
             datePicker
             sortPicker
             filterToggle
@@ -864,18 +868,17 @@ private struct FeedToolbar: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var vertical: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private var compactControls: some View {
+        VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
                 sitePicker
+                datePicker
+                sortPicker
+                Spacer(minLength: 0)
                 filterToggle
                 clearButton
             }
-            HStack(spacing: 8) {
-                searchField
-                datePicker
-                sortPicker
-            }
+            searchField
         }
     }
 
@@ -889,13 +892,13 @@ private struct FeedToolbar: View {
             }
             .pickerStyle(.menu)
             .labelsHidden()
-            .frame(width: 210)
+            .frame(width: 214)
         }
         .accessibilityLabel(Text("Feed source"))
     }
 
     private var searchField: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 7) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(Theme.textSecondary)
@@ -904,12 +907,22 @@ private struct FeedToolbar: View {
                 .font(.caption)
                 .foregroundStyle(Theme.textPrimary)
                 .focused($searchFocused)
+            if !filters.query.isEmpty {
+                Button {
+                    filters.query = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .help("Clear search")
+            }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(theme.accent.opacity(0.12), in: Capsule())
-        .overlay(Capsule().strokeBorder(theme.accent.opacity(0.20), lineWidth: 0.5))
-        .frame(minWidth: 220, idealWidth: 270, maxWidth: 320)
+        .frame(minWidth: 300, idealWidth: 460, maxWidth: .infinity, minHeight: 34, maxHeight: 34)
+        .background(theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(theme.accent.opacity(0.20), lineWidth: 0.5))
         .accessibilityLabel(Text("Search feed"))
     }
 
@@ -924,7 +937,7 @@ private struct FeedToolbar: View {
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
-                .frame(width: 132)
+                .frame(width: 134)
             }
             .accessibilityLabel(Text("Date filter"))
         }
@@ -939,7 +952,7 @@ private struct FeedToolbar: View {
             }
             .pickerStyle(.menu)
             .labelsHidden()
-            .frame(width: 154)
+            .frame(width: 174)
         }
         .accessibilityLabel(Text("Sort feed"))
     }
@@ -953,10 +966,15 @@ private struct FeedToolbar: View {
                 Text(filters.activeCount == 0 ? "Filters" : "Filters \(filters.activeCount)")
             }
             .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
         }
-        .buttonStyle(.bordered)
-        .tint(theme.accent)
-        .controlSize(.small)
+        .buttonStyle(.plain)
+        .foregroundStyle(Theme.textPrimary)
+        .padding(.horizontal, 10)
+        .frame(height: 34)
+        .background(theme.accent.opacity(showsAdvancedFilters ? 0.20 : 0.10), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(theme.accent.opacity(showsAdvancedFilters ? 0.34 : 0.20), lineWidth: 0.5))
         .help("Show advanced feed filters")
         .accessibilityLabel(Text(showsAdvancedFilters ? "Hide advanced filters" : "Show advanced filters"))
     }
@@ -965,9 +983,15 @@ private struct FeedToolbar: View {
     private var clearButton: some View {
         if !filters.isDefault {
             Button("Clear", action: clearFilters)
-                .buttonStyle(.bordered)
-                .tint(theme.accent)
-                .controlSize(.small)
+                .buttonStyle(.plain)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(.horizontal, 10)
+                .frame(height: 34)
+                .background(theme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(theme.accent.opacity(0.20), lineWidth: 0.5))
                 .help("Clear feed filters")
         }
     }
@@ -1033,12 +1057,15 @@ private struct FeedMenuPicker<Content: View>: View {
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Theme.textSecondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
             content
+                .fixedSize(horizontal: true, vertical: false)
         }
         .padding(.horizontal, 9)
-        .padding(.vertical, 6)
-        .background(accent.opacity(0.12), in: Capsule())
-        .overlay(Capsule().strokeBorder(accent.opacity(0.20), lineWidth: 0.5))
+        .frame(height: 34)
+        .background(accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(accent.opacity(0.20), lineWidth: 0.5))
         .tint(accent)
     }
 }
@@ -1054,7 +1081,7 @@ private struct FeedAdvancedFilterPanel: View {
     let availableQualityLabels: [String]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 12, weight: .bold))
@@ -1062,10 +1089,6 @@ private struct FeedAdvancedFilterPanel: View {
                 Text("Advanced filters")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Theme.textPrimary)
-                Text("Narrow by metrics, source metadata, and discovery tags.")
-                    .font(.caption2)
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineLimit(1)
             }
 
             ViewThatFits(in: .horizontal) {
@@ -1081,9 +1104,9 @@ private struct FeedAdvancedFilterPanel: View {
                 }
             }
         }
-        .padding(12)
-        .background(Theme.surface1.opacity(0.34), in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(accent.opacity(0.16), lineWidth: 0.8))
+        .padding(10)
+        .background(Theme.surface1.opacity(0.28), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(accent.opacity(0.16), lineWidth: 0.8))
     }
 
     @ViewBuilder

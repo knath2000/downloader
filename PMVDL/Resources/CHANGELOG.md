@@ -1,6 +1,8 @@
 # VidDL Changelog
 
 ## Unreleased
+- Polished Feed spacing, card density, and the top filter toolbar layout
+- Gated Feed, Favorites, and Profile behind VidDL Pro
 - Simplified Settings Cloud Destinations into one selector-driven setup section
 - Removed legacy upload automation rules, updater integration, and companion-entrypoint scope
 - Fixed AI Profile narrative rendering for flattened cached analysis text

@@ -404,6 +404,15 @@ enum NavDestination: String, Codable, CaseIterable {
         case .settings: return "gearshape.fill"
         }
     }
+
+    var requiresPro: Bool {
+        switch self {
+        case .feed, .favorites, .profile:
+            return true
+        case .home, .library, .files, .settings:
+            return false
+        }
+    }
 }
 
 struct ExtractResult: Codable, Equatable {

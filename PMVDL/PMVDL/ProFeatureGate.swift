@@ -24,12 +24,28 @@ struct ProFeatureGate {
     static var canUseVideoProcessing: Bool { isPro }
     static var canDownloadAudio: Bool { isPro }
     static var canDownloadSubtitles: Bool { isPro }
+    static var canUseFeed: Bool { isPro }
+    static var canUseFavorites: Bool { isPro }
+    static var canUseProfile: Bool { isPro }
 
     nonisolated static var canDownloadAudioInBackground: Bool { storedIsPro }
     nonisolated static var canDownloadSubtitlesInBackground: Bool { storedIsPro }
 
     static var concurrentDownloadLimit: Int {
         canDownloadConcurrent ? proConcurrentDownloadLimit : freeConcurrentDownloadLimit
+    }
+
+    static func canAccess(_ destination: NavDestination) -> Bool {
+        switch destination {
+        case .feed:
+            return canUseFeed
+        case .favorites:
+            return canUseFavorites
+        case .profile:
+            return canUseProfile
+        case .home, .library, .files, .settings:
+            return true
+        }
     }
 
     /// Free downloads after the trial allotment require Pro.

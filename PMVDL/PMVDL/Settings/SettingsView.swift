@@ -381,6 +381,10 @@ struct SettingsView: View {
                 HStack {
                     Spacer()
                     Button {
+                        guard ProFeatureGate.canUseProfile else {
+                            onUpgradeRequired()
+                            return
+                        }
                         AppStateManager.shared.select(.profile)
                         Task { await ProfileViewModel.shared.generate() }
                     } label: {
@@ -564,6 +568,8 @@ struct SettingsView: View {
                     SettingsFeatureLine("Unlimited total downloads", tint: Theme.success)
                     SettingsFeatureLine("\(ProFeatureGate.proConcurrentDownloadLimit) concurrent downloads", tint: Theme.success)
                     SettingsFeatureLine("Batch download more than \(ProFeatureGate.freeBatchLimit) items", tint: Theme.success)
+                    SettingsFeatureLine("Feed discovery and saved favorites", tint: Theme.success)
+                    SettingsFeatureLine("AI Profile analysis", tint: Theme.success)
                     SettingsFeatureLine("Multi-cloud simultaneous upload", tint: Theme.success)
                     SettingsFeatureLine("Video processing tools", tint: Theme.success)
                     SettingsFeatureLine("Audio downloads and subtitles", tint: Theme.success)
@@ -608,6 +614,8 @@ struct SettingsView: View {
                     SettingsFeatureLine("\(LicenseManager.freeDownloadLimit) → unlimited total downloads", tint: Theme.gold)
                     SettingsFeatureLine("\(ProFeatureGate.freeConcurrentDownloadLimit) → \(ProFeatureGate.proConcurrentDownloadLimit) concurrent downloads", tint: Theme.electricLime)
                     SettingsFeatureLine("Batch download more than \(ProFeatureGate.freeBatchLimit) items", tint: Theme.gold)
+                    SettingsFeatureLine("Feed discovery and saved favorites", tint: Theme.lavender)
+                    SettingsFeatureLine("AI Profile analysis", tint: Theme.gold)
                     SettingsFeatureLine("Multi-cloud simultaneous upload", tint: Theme.skyBlue)
                     SettingsFeatureLine("Video processing tools", tint: Theme.coral)
                     SettingsFeatureLine("Audio downloads and subtitles", tint: Theme.lavender)
