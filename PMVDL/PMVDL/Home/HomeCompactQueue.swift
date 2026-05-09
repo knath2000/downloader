@@ -1,13 +1,65 @@
 import AppKit
 import SwiftUI
 
+struct HomeQueueCounts: Equatable {
+    let total: Int
+    let remaining: Int
+    let active: Int
+    let queued: Int
+    let paused: Int
+    let completed: Int
+    let failed: Int
+
+    init(items: [DownloadQueueItem]) {
+        total = items.count
+        active = items.filter { Self.isActive($0.status) }.count
+        queued = items.filter { $0.status == .pending }.count
+        paused = items.filter { $0.status == .paused }.count
+        completed = items.filter { $0.status == .completed }.count
+        failed = items.filter {
+            if case .failed = $0.status { return true }
+            return false
+        }.count
+        remaining = active + queued + paused
+    }
+
+    var summaryText: String {
+        var pieces = [Self.countText(remaining, singular: "remaining", plural: "remaining")]
+        if active > 0 {
+            pieces.append(Self.countText(active, singular: "active", plural: "active"))
+        }
+        if queued > 0 {
+            pieces.append(Self.countText(queued, singular: "queued", plural: "queued"))
+        }
+        if paused > 0 {
+            pieces.append(Self.countText(paused, singular: "paused", plural: "paused"))
+        }
+        return pieces.joined(separator: " · ")
+    }
+
+    private static func isActive(_ status: QueueStatus) -> Bool {
+        switch status {
+        case .downloading, .verifying, .uploading, .processing:
+            return true
+        case .pending, .completed, .paused, .failed:
+            return false
+        }
+    }
+
+    private static func countText(_ count: Int, singular: String, plural: String) -> String {
+        "\(count) \(count == 1 ? singular : plural)"
+    }
+}
+
 struct HomeCompactQueue: View {
     @StateObject private var queue = DownloadQueue.shared
     @State private var isExpanded = true
+    @State private var showAllActive = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let seedboxWebdavPassword: String
     let onUpgradeRequired: () -> Void
+    private let activeVisibleLimit = 5
 
     private var items: [DownloadQueueItem] {
         queue.queue.filter(\.isVisibleInDownloads)
@@ -17,8 +69,16 @@ struct HomeCompactQueue: View {
         items.filter { $0.status != .completed }
     }
 
+    private var visibleActiveItems: [DownloadQueueItem] {
+        showAllActive ? activeItems : Array(activeItems.prefix(activeVisibleLimit))
+    }
+
     private var completedItems: [DownloadQueueItem] {
         items.filter { $0.status == .completed }
+    }
+
+    private var counts: HomeQueueCounts {
+        HomeQueueCounts(items: items)
     }
 
     var body: some View {
@@ -28,7 +88,7 @@ struct HomeCompactQueue: View {
 
                 if isExpanded {
                     VStack(spacing: 6) {
-                        ForEach(activeItems) { item in
+                        ForEach(visibleActiveItems) { item in
                             HomeCompactQueueRow(
                                 item: item,
                                 pause: { queue.pause(item) },
@@ -42,6 +102,10 @@ struct HomeCompactQueue: View {
                                 process: { process(item, preset: $0) },
                                 onUpgradeRequired: onUpgradeRequired
                             )
+                        }
+
+                        if activeItems.count > activeVisibleLimit {
+                            activeOverflowButton
                         }
 
                         if !completedItems.isEmpty {
@@ -74,6 +138,22 @@ struct HomeCompactQueue: View {
         }
     }
 
+    private var activeOverflowButton: some View {
+        Button {
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
+                showAllActive.toggle()
+            }
+        } label: {
+            Text(showAllActive ? "Show fewer active downloads" : "Show all \(activeItems.count) active downloads")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Theme.electricLime)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+        }
+        .buttonStyle(.plain)
+    }
+
     private var header: some View {
         Button {
             withAnimation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.78)) {
@@ -96,6 +176,12 @@ struct HomeCompactQueue: View {
                     .padding(.vertical, 2)
                     .background(Theme.electricLime, in: Capsule())
                     .contentTransition(.numericText())
+
+                Text(counts.summaryText)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
 
                 Spacer()
 
@@ -245,8 +331,6 @@ private struct HomeCompactQueueRow: View {
                     .foregroundStyle(tint)
                     .lineLimit(1)
                     .frame(width: 52, alignment: .trailing)
-                    .contentTransition(.numericText())
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: item.progress)
 
                 primaryActionButton
 
@@ -258,7 +342,7 @@ private struct HomeCompactQueueRow: View {
                 )
             }
 
-            GradientProgressBar(progress: min(max(item.progress / 100, 0), 1), height: 4)
+            GradientProgressBar(progress: min(max(item.progress / 100, 0), 1), height: 4, isAnimated: false)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 7)
@@ -268,7 +352,6 @@ private struct HomeCompactQueueRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(accessibilityLabel))
         .contextMenu { contextMenu }
-        .animation(reduceMotion ? nil : .default, value: item.status)
     }
 
     @ViewBuilder

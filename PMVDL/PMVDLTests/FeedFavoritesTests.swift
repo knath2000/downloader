@@ -104,6 +104,251 @@ final class FeedFavoritesTests: XCTestCase {
         XCTAssertEqual(FavoritesDisplay.sorted([older, newer], by: .site).map(\.id), ["b", "a"])
     }
 
+    func testProfileStatsPromotesHighCountIgnoredLibraryUploader() throws {
+        let input = profileInput(uploaderSignals: [
+            ProfileEvidenceSignal(
+                name: "niquuiok",
+                count: 19,
+                sources: [ProfileSourceCount(source: "Download History", count: 19)],
+                sampleTitles: ["Fixture"],
+                sampleURLs: ["https://example.test/video"],
+                signalKind: "libraryUploader"
+            )
+        ])
+        let response = try profileResponse("""
+        {
+          "narrativeMarkdown": "Profile",
+          "topPerformers": [],
+          "topCategories": [],
+          "topTags": [],
+          "topStudios": [],
+          "preferredQuality": [],
+          "ignoredSignals": [
+            {
+              "name": "niquuiok",
+              "count": 19,
+              "sources": [{"source": "Download History", "count": 19}],
+              "reason": "Uploader account, not enough title evidence."
+            }
+          ]
+        }
+        """)
+
+        let stats = response.stats(derivedFrom: input)
+
+        XCTAssertEqual(stats.topPerformers.map(\.name), ["niquuiok"])
+        XCTAssertEqual(stats.topPerformers.first?.count, 19)
+        XCTAssertEqual(stats.topPerformers.first?.sources, [ProfileSourceCount(source: "Download History", count: 19)])
+        XCTAssertEqual(stats.ignoredSignals.map(\.name), ["niquuiok"])
+    }
+
+    func testProfileStatsKeepsLowCountIgnoredUploaderOutOfPerformers() throws {
+        let input = profileInput(uploaderSignals: [
+            ProfileEvidenceSignal(
+                name: "Michell Bunny7",
+                count: 2,
+                sources: [ProfileSourceCount(source: "Download History", count: 2)],
+                sampleTitles: ["Fixture"],
+                sampleURLs: ["https://example.test/video"],
+                signalKind: "libraryUploader"
+            )
+        ])
+        let response = try profileResponse("""
+        {
+          "narrativeMarkdown": "Profile",
+          "topPerformers": [],
+          "topCategories": [],
+          "topTags": [],
+          "topStudios": [],
+          "preferredQuality": [],
+          "ignoredSignals": [
+            {
+              "name": "Michell Bunny7",
+              "count": 2,
+              "sources": [{"source": "Download History", "count": 2}],
+              "reason": "Uploader account, not enough evidence for performer or studio."
+            }
+          ]
+        }
+        """)
+
+        let stats = response.stats(derivedFrom: input)
+
+        XCTAssertTrue(stats.topPerformers.isEmpty)
+        XCTAssertTrue(stats.topStudios.isEmpty)
+        XCTAssertEqual(stats.ignoredSignals.first?.name, "Michell Bunny7")
+        XCTAssertEqual(stats.ignoredSignals.first?.count, 2)
+    }
+
+    func testProfileStatsDoesNotDuplicateHighCountLibraryUploaderClassifiedAsStudio() throws {
+        let input = profileInput(uploaderSignals: [
+            ProfileEvidenceSignal(
+                name: "Studio Handle",
+                count: 12,
+                sources: [ProfileSourceCount(source: "Download History", count: 12)],
+                sampleTitles: ["Fixture"],
+                sampleURLs: ["https://example.test/video"],
+                signalKind: "libraryUploader"
+            )
+        ])
+        let response = try profileResponse("""
+        {
+          "narrativeMarkdown": "Profile",
+          "topPerformers": [],
+          "topCategories": [],
+          "topTags": [],
+          "topStudios": [
+            {"name": "Studio Handle", "count": 12, "sources": [{"source": "Download History", "count": 12}]}
+          ],
+          "preferredQuality": [],
+          "ignoredSignals": []
+        }
+        """)
+
+        let stats = response.stats(derivedFrom: input)
+
+        XCTAssertTrue(stats.topPerformers.isEmpty)
+        XCTAssertEqual(stats.topStudios.map(\.name), ["Studio Handle"])
+    }
+
+    func testProfileStatsExcludesSourceSitesFromRankings() throws {
+        let response = try profileResponse("""
+        {
+          "narrativeMarkdown": "Profile",
+          "topPerformers": [{"name": "PornHub", "count": 9, "sources": [{"source": "Download History", "count": 9}]}],
+          "topCategories": [],
+          "topTags": [],
+          "topStudios": [{"name": "www.pornhub.com", "count": 5, "sources": [{"source": "PornHub Liked", "count": 5}]}],
+          "preferredQuality": [],
+          "ignoredSignals": []
+        }
+        """)
+
+        let stats = response.stats(derivedFrom: profileInput(uploaderSignals: []))
+
+        XCTAssertTrue(stats.topPerformers.isEmpty)
+        XCTAssertTrue(stats.topStudios.isEmpty)
+    }
+
+    func testOldProfileResultDecodesWithoutImageFields() throws {
+        let json = """
+        {
+          "narrative": "Profile",
+          "generatedAt": 0,
+          "stats": {
+            "topPerformers": [
+              {"name": "Fixture Performer", "count": 3, "sources": [{"source": "Download History", "count": 3}]}
+            ],
+            "topCategories": [],
+            "topTags": [],
+            "topStudios": [],
+            "preferredQuality": []
+          }
+        }
+        """
+
+        let result = try JSONDecoder().decode(ProfileResult.self, from: Data(json.utf8))
+
+        XCTAssertEqual(result.narrative, "Profile")
+        XCTAssertEqual(result.stats.topPerformers.first?.name, "Fixture Performer")
+        XCTAssertNil(result.stats.topPerformers.first?.imageURL)
+        XCTAssertNil(result.stats.topPerformers.first?.imageReferer)
+        XCTAssertNil(result.stats.topPerformers.first?.imageSource)
+        XCTAssertNil(result.audit)
+    }
+
+    func testProfileImageEnrichmentPrefersProfileHeadshotOverEvidenceThumbnail() async {
+        let evidence = profileEvidence(
+            title: "Fixture Performer Scene",
+            url: "https://www.pornhub.com/view_video.php?viewkey=headshot",
+            uploaderName: "Fixture Performer",
+            uploaderURL: "https://www.pornhub.com/model/fixture-performer",
+            thumbnailURL: "https://cdn.example.test/evidence.jpg",
+            thumbnailReferer: "https://www.pornhub.com/"
+        )
+        let stats = profileStats(performerName: "Fixture Performer")
+        let enriched = await ProfileImageResolver.enrichedStats(
+            stats,
+            input: profileInput(items: [evidence], uploaderSignals: [
+                profileSignal(name: "Fixture Performer", url: evidence.url)
+            ])
+        ) { pageURL, referer in
+            XCTAssertEqual(pageURL, "https://www.pornhub.com/model/fixture-performer")
+            XCTAssertEqual(referer, "https://www.pornhub.com/")
+            return "https://cdn.example.test/headshot.jpg"
+        }
+
+        let performer = enriched.topPerformers.first
+        XCTAssertEqual(performer?.imageURL, "https://cdn.example.test/headshot.jpg")
+        XCTAssertEqual(performer?.imageReferer, "https://www.pornhub.com/model/fixture-performer")
+        XCTAssertEqual(performer?.imageSource, "profile")
+    }
+
+    func testProfileImageEnrichmentFallsBackToEvidenceThumbnailForLibraryUploader() async {
+        let evidence = profileEvidence(
+            source: "Download History",
+            title: "Library Fixture",
+            url: "https://www.pornhub.com/view_video.php?viewkey=library",
+            uploaderName: "Library Performer",
+            uploaderURL: nil,
+            thumbnailURL: "https://cdn.example.test/library-thumb.jpg",
+            thumbnailReferer: "https://www.pornhub.com/view_video.php?viewkey=library"
+        )
+        let stats = profileStats(performerName: "Library Performer")
+        let enriched = await ProfileImageResolver.enrichedStats(
+            stats,
+            input: profileInput(items: [evidence], uploaderSignals: [
+                profileSignal(name: "Library Performer", url: evidence.url, count: 8)
+            ])
+        ) { _, _ in
+            XCTFail("Library-only fallback should not fetch a missing profile page")
+            return nil
+        }
+
+        let performer = enriched.topPerformers.first
+        XCTAssertEqual(performer?.imageURL, "https://cdn.example.test/library-thumb.jpg")
+        XCTAssertEqual(performer?.imageReferer, "https://www.pornhub.com/view_video.php?viewkey=library")
+        XCTAssertEqual(performer?.imageSource, "evidenceThumbnail")
+    }
+
+    func testDownloadedFeedIndexMatchesPornHubViewkey() {
+        let libraryID = UUID()
+        let libraryItem = LibraryItem(
+            id: libraryID,
+            url: "https://www.pornhub.com/view_video.php?viewkey=ABC123&extra=1",
+            title: "Downloaded PornHub Video",
+            mp4Url: nil,
+            hlsUrls: [],
+            extractedAt: Date(timeIntervalSince1970: 100)
+        )
+        let feedItem = feedItem(
+            url: "https://www.pornhub.com/view_video.php?foo=bar&viewkey=abc123",
+            siteName: PornHubFeedScraper.supportedHost
+        )
+
+        let match = DownloadedFeedIndex(items: [libraryItem]).match(for: feedItem)
+
+        XCTAssertEqual(match?.libraryID, libraryID)
+        XCTAssertEqual(match?.title, "Downloaded PornHub Video")
+    }
+
+    func testDownloadedFeedIndexMatchesNonPornHubNormalizedURL() {
+        let libraryID = UUID()
+        let libraryItem = LibraryItem(
+            id: libraryID,
+            url: " HTTPS://Example.test/Video?a=1#ignored ",
+            title: "Downloaded Example Video",
+            mp4Url: nil,
+            hlsUrls: [],
+            extractedAt: Date(timeIntervalSince1970: 100)
+        )
+        let feedItem = feedItem(url: "https://example.test/Video?a=1", siteName: "example.test")
+
+        let match = DownloadedFeedIndex(items: [libraryItem]).match(for: feedItem)
+
+        XCTAssertEqual(match?.libraryID, libraryID)
+    }
+
     private func favorite(
         id: String = UUID().uuidString,
         title: String = "Favorite",
@@ -136,6 +381,111 @@ final class FeedFavoritesTests: XCTestCase {
             performers: performers,
             qualityLabels: qualityLabels,
             sourceKind: "siteFeed"
+        )
+    }
+
+    private func profileResponse(_ json: String) throws -> ProfileAIResponse {
+        try JSONDecoder().decode(ProfileAIResponse.self, from: Data(json.utf8))
+    }
+
+    private func profileStats(performerName: String) -> ProfileStats {
+        ProfileStats(
+            topPerformers: [
+                ProfileStats.RankedEntry(
+                    name: performerName,
+                    count: 3,
+                    sources: [ProfileSourceCount(source: "Download History", count: 3)]
+                )
+            ],
+            topCategories: [],
+            topTags: [],
+            topStudios: [],
+            preferredQuality: [],
+            favoritesCount: 0,
+            pornhubLikedCount: 0,
+            pornhubFavoritesCount: 0,
+            libraryCount: 3,
+            libraryTitleSample: [],
+            titleSamples: [],
+            avgDurationMinutes: nil,
+            durationSampleCount: 0,
+            durationSources: []
+        )
+    }
+
+    private func profileSignal(name: String, url: String, count: Int = 3) -> ProfileEvidenceSignal {
+        ProfileEvidenceSignal(
+            name: name,
+            count: count,
+            sources: [ProfileSourceCount(source: "Download History", count: count)],
+            sampleTitles: ["Fixture"],
+            sampleURLs: [url],
+            signalKind: "libraryUploader"
+        )
+    }
+
+    private func profileEvidence(
+        source: String = "PornHub Liked",
+        title: String,
+        url: String,
+        uploaderName: String?,
+        uploaderURL: String?,
+        thumbnailURL: String?,
+        thumbnailReferer: String?
+    ) -> ProfileEvidenceItem {
+        ProfileEvidenceItem(
+            id: url,
+            source: source,
+            title: title,
+            url: url,
+            uploaderName: uploaderName,
+            uploaderURL: uploaderURL,
+            uploaderPath: nil,
+            scraperPerformers: uploaderName.map { [$0] } ?? [],
+            categories: [],
+            tags: [],
+            metadataStudio: nil,
+            sourceSiteName: PornHubFeedScraper.supportedHost,
+            durationSeconds: nil,
+            qualityLabels: [],
+            eventDate: Date(timeIntervalSince1970: 100),
+            thumbnailURL: thumbnailURL,
+            thumbnailReferer: thumbnailReferer
+        )
+    }
+
+    private func feedItem(url: String, siteName: String) -> FeedItem {
+        FeedItem(
+            id: url,
+            title: "Feed Fixture",
+            url: url,
+            thumbnailURL: nil,
+            uploadDate: Date(timeIntervalSince1970: 0),
+            viewCount: 0,
+            siteName: siteName,
+            studio: nil
+        )
+    }
+
+    private func profileInput(
+        items: [ProfileEvidenceItem] = [],
+        uploaderSignals: [ProfileEvidenceSignal]
+    ) -> ProfileGenerationInput {
+        ProfileGenerationInput(
+            items: items,
+            uploaderSignals: uploaderSignals,
+            explicitPerformerSignals: [],
+            titleNameSignals: [],
+            favoritesCount: 0,
+            pornhubLikedCount: 0,
+            pornhubFavoritesCount: 0,
+            libraryCount: uploaderSignals.reduce(0) { $0 + $1.count },
+            libraryTitleSample: [],
+            titleSamples: [],
+            avgDurationMinutes: nil,
+            durationSampleCount: 0,
+            durationSources: [],
+            qualitySignals: []
         )
     }
 }

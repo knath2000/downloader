@@ -271,6 +271,7 @@ struct MarketplaceButton: View {
 struct GradientProgressBar: View {
     var progress: Double  // 0.0 – 1.0
     var height: CGFloat = 6
+    var isAnimated = true
 
     @State private var stripeOffset: CGFloat = 0
 
@@ -291,13 +292,18 @@ struct GradientProgressBar: View {
                 RoundedRectangle(cornerRadius: height / 2)
                     .fill(gradient)
                     .frame(width: fillWidth, height: height)
-                    .overlay(stripeLayer(width: fillWidth))
+                    .overlay {
+                        if isAnimated {
+                            stripeLayer(width: fillWidth)
+                        }
+                    }
                     .clipShape(RoundedRectangle(cornerRadius: height / 2))
-                    .animation(.spring(response: 0.4, dampingFraction: 0.8), value: progress)
+                    .animation(isAnimated ? .spring(response: 0.4, dampingFraction: 0.8) : nil, value: progress)
             }
         }
         .frame(height: height)
         .onAppear {
+            guard isAnimated else { return }
             withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
                 stripeOffset = 24
             }

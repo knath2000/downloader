@@ -52,16 +52,24 @@ class ActiveWorkTracker: ObservableObject {
         guard let state = DownloadQueue.shared.projectedState(for: item) else { return }
         switch item.targetCloud {
         case .local:
-            localDownloads[item.url] = state
+            if localDownloads[item.url] != state {
+                localDownloads[item.url] = state
+            }
         case .mega:
-            megaUploads[item.url] = state
+            if megaUploads[item.url] != state {
+                megaUploads[item.url] = state
+            }
             if item.status == .completed, let finalPath = item.finalPath {
                 megaFilenames[item.url] = finalPath
             }
         case .gdrive:
-            gdriveUploads[item.url] = state
+            if gdriveUploads[item.url] != state {
+                gdriveUploads[item.url] = state
+            }
         case .seedbox:
-            seedboxUploads[item.url] = state
+            if seedboxUploads[item.url] != state {
+                seedboxUploads[item.url] = state
+            }
         }
     }
 

@@ -33,6 +33,33 @@ enum RemotePath {
         normalizeDirectory(path).split(separator: "/").last.map(String.init) ?? ""
     }
 
+    static func isDescendant(_ child: String, of parent: String) -> Bool {
+        let cleanParent = normalizeDirectory(parent)
+        let cleanChild = normalizeDirectory(child)
+        guard cleanParent != "/", cleanChild != cleanParent else { return false }
+        return cleanChild.hasPrefix(cleanParent + "/")
+    }
+
+    static func duplicateName(for name: String, existingNames: Set<String>) -> String {
+        let cleanName = sanitizeNameComponent(name)
+        let lowercasedExisting = Set(existingNames.map { $0.lowercased() })
+        guard lowercasedExisting.contains(cleanName.lowercased()) else {
+            return cleanName
+        }
+
+        let (base, ext) = splitName(cleanName)
+        var index = 1
+
+        while true {
+            let suffix = index == 1 ? " copy" : " copy \(index)"
+            let candidate = ext.isEmpty ? "\(base)\(suffix)" : "\(base)\(suffix).\(ext)"
+            if !lowercasedExisting.contains(candidate.lowercased()) {
+                return candidate
+            }
+            index += 1
+        }
+    }
+
     static func sanitizeNameComponent(_ raw: String) -> String {
         raw.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "/", with: "")
@@ -52,5 +79,20 @@ enum RemotePath {
             return "\(remoteName):"
         }
         return "\(remoteName):\(String(normalized.dropFirst()))"
+    }
+
+    private static func splitName(_ name: String) -> (base: String, ext: String) {
+        guard let dotIndex = name.lastIndex(of: "."), dotIndex != name.startIndex else {
+            return (name, "")
+        }
+
+        let base = String(name[..<dotIndex])
+        let extStart = name.index(after: dotIndex)
+        let ext = String(name[extStart...])
+        guard !base.isEmpty, !ext.isEmpty else {
+            return (name, "")
+        }
+
+        return (base, ext)
     }
 }

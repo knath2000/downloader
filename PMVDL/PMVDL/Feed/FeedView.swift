@@ -30,10 +30,93 @@ struct FeedGridLayout: Equatable {
     }
 }
 
+struct DownloadedFeedMatch: Hashable, Identifiable {
+    let libraryID: UUID
+    let title: String
+    let url: String
+    let downloadedAt: Date
+
+    var id: UUID { libraryID }
+
+    var tooltip: String {
+        "Downloaded as \(title) on \(downloadedAt.formatted(date: .abbreviated, time: .shortened))"
+    }
+}
+
+struct DownloadedFeedIndex: Equatable {
+    private let urlMatches: [String: DownloadedFeedMatch]
+    private let pornHubViewkeyMatches: [String: DownloadedFeedMatch]
+
+    init(items: [LibraryItem]) {
+        var urlMatches: [String: DownloadedFeedMatch] = [:]
+        var pornHubViewkeyMatches: [String: DownloadedFeedMatch] = [:]
+
+        for item in items {
+            let match = DownloadedFeedMatch(
+                libraryID: item.id,
+                title: LibraryDisplayTitle.title(for: item),
+                url: item.url,
+                downloadedAt: item.extractedAt
+            )
+            let normalized = Self.normalizedURL(item.url)
+            if !normalized.isEmpty, urlMatches[normalized] == nil {
+                urlMatches[normalized] = match
+            }
+            if let viewkey = Self.pornHubViewkey(item.url),
+               pornHubViewkeyMatches[viewkey] == nil {
+                pornHubViewkeyMatches[viewkey] = match
+            }
+        }
+
+        self.urlMatches = urlMatches
+        self.pornHubViewkeyMatches = pornHubViewkeyMatches
+    }
+
+    func match(for item: FeedItem) -> DownloadedFeedMatch? {
+        if let viewkey = Self.pornHubViewkey(item.url),
+           let match = pornHubViewkeyMatches[viewkey] {
+            return match
+        }
+        return urlMatches[Self.normalizedURL(item.url)]
+    }
+
+    static func normalizedURL(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              var components = URLComponents(string: trimmed) else { return trimmed }
+        components.scheme = components.scheme?.lowercased()
+        components.host = components.host?.lowercased()
+        components.fragment = nil
+        return components.string ?? trimmed
+    }
+
+    static func pornHubViewkey(_ raw: String) -> String? {
+        let lower = raw.lowercased()
+        guard lower.contains("pornhub.com") else { return nil }
+        guard let components = URLComponents(string: raw),
+              let value = components.queryItems?.first(where: { $0.name.caseInsensitiveCompare("viewkey") == .orderedSame })?.value,
+              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
+private enum LibraryDisplayTitle {
+    static func title(for item: LibraryItem) -> String {
+        let stripped = item.title.replacingOccurrences(
+            of: #"_[0-9A-Fa-f][0-9A-Fa-f_-]{10,}.*$"#,
+            with: "",
+            options: .regularExpression
+        )
+        let trimmed = stripped.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? item.url : trimmed
+    }
+}
+
 struct FeedView: View {
     @StateObject private var model = FeedViewModel.shared
     @StateObject private var favorites = FeedFavoritesStore.shared
     @StateObject private var profileVM = ProfileViewModel.shared
+    @StateObject private var library = VideoLibrary.shared
     @State private var showsAdvancedFilters = false
     @State private var selectedItemIDs: Set<String> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -235,6 +318,7 @@ struct FeedView: View {
 
     private func feedGrid(items: [FeedItem], layout: FeedGridLayout) -> some View {
         let profileMatchReasons = model.sortMode == .profileCurated ? model.profileMatchReasons : [:]
+        let downloadedIndex = DownloadedFeedIndex(items: library.items)
 
         return LazyVGrid(
             columns: layout.columns,
@@ -242,9 +326,11 @@ struct FeedView: View {
             spacing: layout.spacing
         ) {
             ForEach(items) { item in
+                let downloadedMatch = downloadedIndex.match(for: item)
                 FeedCardView(
                     item: item,
                     isFavorite: favorites.contains(url: item.url),
+                    downloadedMatch: downloadedMatch,
                     toggleFavorite: {
                         withAnimation {
                             favorites.toggle(feedItem: item)
@@ -265,7 +351,7 @@ struct FeedView: View {
                     }
                 }
                 .contextMenu {
-                    cardContextMenu(for: item)
+                    cardContextMenu(for: item, downloadedMatch: downloadedMatch)
                 }
             }
         }
@@ -280,7 +366,7 @@ struct FeedView: View {
     }
 
     @ViewBuilder
-    private func cardContextMenu(for item: FeedItem) -> some View {
+    private func cardContextMenu(for item: FeedItem, downloadedMatch: DownloadedFeedMatch?) -> some View {
         Button(selectedItemIDs.contains(item.id) ? "Deselect" : "Select") {
             toggleSelection(item)
         }
@@ -298,6 +384,9 @@ struct FeedView: View {
         }
         Divider()
         Button("Extract") { extract(item) }
+        if let downloadedMatch {
+            Button("Open in Library") { openInLibrary(downloadedMatch) }
+        }
         Button(favorites.contains(url: item.url) ? "Remove from Favorites" : "Add to Favorites") {
             withAnimation {
                 favorites.toggle(feedItem: item)
@@ -371,6 +460,11 @@ struct FeedView: View {
     private func openInBrowser(_ item: FeedItem) {
         guard let url = URL(string: item.url) else { return }
         NSWorkspace.shared.open(url)
+    }
+
+    private func openInLibrary(_ match: DownloadedFeedMatch) {
+        AppStateManager.shared.pendingLibraryItemID = match.libraryID
+        AppStateManager.shared.select(.library)
     }
 
     private func applySiteCapabilities(for site: String) {

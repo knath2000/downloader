@@ -13,6 +13,7 @@ private enum FeedCardLayout {
 struct FeedCardView: View {
     let item: FeedItem
     let isFavorite: Bool
+    let downloadedMatch: DownloadedFeedMatch?
     let toggleFavorite: () -> Void
     let extract: () -> Void
     let profileMatch: ProfileMatchReason?
@@ -26,12 +27,14 @@ struct FeedCardView: View {
     init(
         item: FeedItem,
         isFavorite: Bool = false,
+        downloadedMatch: DownloadedFeedMatch? = nil,
         toggleFavorite: @escaping () -> Void = {},
         extract: @escaping () -> Void,
         profileMatch: ProfileMatchReason? = nil
     ) {
         self.item = item
         self.isFavorite = isFavorite
+        self.downloadedMatch = downloadedMatch
         self.toggleFavorite = toggleFavorite
         self.extract = extract
         self.profileMatch = profileMatch
@@ -220,6 +223,12 @@ struct FeedCardView: View {
                     .padding(7)
             }
         }
+        .overlay(alignment: .bottomTrailing) {
+            if let downloadedMatch {
+                downloadedBadge(downloadedMatch)
+                    .padding(7)
+            }
+        }
         .help(item.url)
     }
 
@@ -379,6 +388,21 @@ struct FeedCardView: View {
             .background(.black.opacity(0.48), in: Capsule())
     }
 
+    private func downloadedBadge(_ match: DownloadedFeedMatch) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 9, weight: .black))
+            Text("Downloaded")
+                .font(.system(size: 9, weight: .black, design: .rounded))
+        }
+        .foregroundStyle(Theme.success)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(.black.opacity(0.56), in: Capsule())
+        .overlay(Capsule().strokeBorder(Theme.success.opacity(0.55), lineWidth: 0.7))
+        .help(match.tooltip)
+    }
+
     private var placeholder: some View {
         Text(initials)
             .font(.system(.title2, design: .rounded).weight(.bold))
@@ -405,6 +429,9 @@ struct FeedCardView: View {
         var pieces = [FeedDisplay.title(for: item), item.studio ?? item.siteName, metadataText]
         if let duration = item.durationSeconds {
             pieces.append(FeedDisplay.duration(duration))
+        }
+        if downloadedMatch != nil {
+            pieces.append("downloaded")
         }
         return pieces.joined(separator: ", ")
     }

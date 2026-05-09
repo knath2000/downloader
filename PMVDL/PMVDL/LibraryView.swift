@@ -3,6 +3,7 @@ import SwiftUI
 
 @MainActor
 struct LibraryView: View {
+    @StateObject private var appState = AppStateManager.shared
     @StateObject private var library = VideoLibrary.shared
     @StateObject private var history = HistoryManager.shared
     @StateObject private var thumbnailStore = LibraryThumbnailStore()
@@ -153,8 +154,12 @@ struct LibraryView: View {
         .onChange(of: filteredEntryIDs) { _, _ in
             syncSelectedEntry()
         }
+        .onChange(of: appState.pendingLibraryItemID) { _, newValue in
+            focusLibraryItem(id: newValue)
+        }
         .onAppear {
             syncSelectedEntry()
+            focusLibraryItem(id: appState.pendingLibraryItemID)
         }
         .background(
             Button("") { searchFocused = true }
@@ -327,6 +332,16 @@ struct LibraryView: View {
 
     private func syncSelectedEntry() {
         selectedEntryID = LibraryTimelineBuilder.selectedEntryID(currentID: selectedEntryID, in: filteredEntries)
+    }
+
+    private func focusLibraryItem(id: UUID?) {
+        guard let id,
+              library.items.contains(where: { $0.id == id }) else { return }
+        searchText = ""
+        timelineFilter = .videos
+        selection.removeAll()
+        selectedEntryID = "video-\(id.uuidString)"
+        appState.pendingLibraryItemID = nil
     }
 
     private func deleteSelectedItems() {

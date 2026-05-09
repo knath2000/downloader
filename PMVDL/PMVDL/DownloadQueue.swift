@@ -9,6 +9,10 @@ class DownloadQueue: ObservableObject {
 
     private let userDefaultsKey = "downloadQueue"
     private let restartMessage = "Resuming after app restart…"
+    private let progressPublishInterval: TimeInterval = 0.25
+    private let progressPersistDelay: UInt64 = 1_000_000_000
+    private var lastProgressUpdateAt: [UUID: Date] = [:]
+    private var pendingProgressSaveTask: Task<Void, Never>?
 
     var concurrentLimit: Int { maxConcurrent }
 
@@ -152,6 +156,7 @@ class DownloadQueue: ObservableObject {
            !current.status.isTerminal {
             cancelActiveWork(id: item.id, status: current.status)
         }
+        lastProgressUpdateAt[item.id] = nil
         queue.removeAll { $0.id == item.id }
         save()
     }
@@ -161,6 +166,7 @@ class DownloadQueue: ObservableObject {
            !current.status.isTerminal {
             cancelActiveWork(id: id, status: current.status)
         }
+        lastProgressUpdateAt[id] = nil
         queue.removeAll { $0.id == id }
         save()
     }
@@ -225,52 +231,73 @@ class DownloadQueue: ObservableObject {
     }
 
     func clearCompleted() {
+        let completedIDs = queue.filter { $0.status.isTerminal }.map(\.id)
+        completedIDs.forEach { lastProgressUpdateAt[$0] = nil }
         queue.removeAll { $0.status.isTerminal }
         save()
     }
 
-    func updateProgress(id: UUID, status: QueueStatus, progress: Double) {
+    @discardableResult
+    func updateProgress(id: UUID, status: QueueStatus, progress: Double) -> Bool {
         update(id: id, status: status, progress: progress, message: nil)
     }
 
+    @discardableResult
     func update(
         id: UUID,
         status: QueueStatus,
         progress: Double,
         message: String? = nil,
         metrics: DownloadTransferMetrics? = nil
-    ) {
-        guard let idx = queue.firstIndex(where: { $0.id == id }) else { return }
+    ) -> Bool {
+        guard let idx = queue.firstIndex(where: { $0.id == id }) else { return false }
         let previousStatus = queue[idx].status
         let previousUploadStarted = queue[idx].uploadStarted
         let previousMessage = queue[idx].statusMessage
+        let previousProgress = queue[idx].progress
         let previousBytesDownloaded = queue[idx].bytesDownloaded
         let previousTotalBytes = queue[idx].totalBytes
+        let previousBytesPerSecond = queue[idx].bytesPerSecond
         let parsedMetrics = metrics ?? message.flatMap { DownloadProgressParsers.transferMetrics(from: $0) }
-        if status == .uploading {
-            queue[idx].uploadStarted = true
-        }
+        let nextUploadStarted = status == .uploading ? true : previousUploadStarted
+        let nextBytesDownloaded = parsedMetrics?.bytesDownloaded ?? previousBytesDownloaded
+        let nextTotalBytes = parsedMetrics?.totalBytes ?? previousTotalBytes
+        let nextBytesPerSecond = parsedMetrics?.bytesPerSecond ?? previousBytesPerSecond
+        let statusChanged = previousStatus != status
+        let uploadStartedChanged = previousUploadStarted != nextUploadStarted
+        let messageChanged = previousMessage != message
+        let metricsChanged = previousBytesDownloaded != nextBytesDownloaded ||
+            previousTotalBytes != nextTotalBytes ||
+            previousBytesPerSecond != nextBytesPerSecond
+        let progressDelta = abs(progress - previousProgress)
+        let now = Date()
+        let lastUpdate = lastProgressUpdateAt[id] ?? .distantPast
+        let enoughTimeElapsed = now.timeIntervalSince(lastUpdate) >= progressPublishInterval
+        let shouldPublish = statusChanged ||
+            uploadStartedChanged ||
+            status.isTerminal ||
+            progressDelta >= 1 ||
+            (enoughTimeElapsed && (progressDelta > 0 || messageChanged || metricsChanged))
+        guard shouldPublish else { return false }
+
+        queue[idx].uploadStarted = nextUploadStarted
         queue[idx].status = status
         queue[idx].progress = progress
         queue[idx].statusMessage = message
-        if let bytesDownloaded = parsedMetrics?.bytesDownloaded {
-            queue[idx].bytesDownloaded = bytesDownloaded
-        }
-        if let totalBytes = parsedMetrics?.totalBytes {
-            queue[idx].totalBytes = totalBytes
+        queue[idx].bytesDownloaded = nextBytesDownloaded
+        queue[idx].totalBytes = nextTotalBytes
+        queue[idx].bytesPerSecond = nextBytesPerSecond
+        if let totalBytes = nextTotalBytes {
             queue[idx].expectedTotalBytes = totalBytes
         }
-        if let bytesPerSecond = parsedMetrics?.bytesPerSecond {
-            queue[idx].bytesPerSecond = bytesPerSecond
-        }
-        if previousStatus != status ||
-            previousUploadStarted != queue[idx].uploadStarted ||
-            previousMessage != message ||
-            previousBytesDownloaded != queue[idx].bytesDownloaded ||
-            previousTotalBytes != queue[idx].totalBytes ||
-            status.isTerminal {
+        lastProgressUpdateAt[id] = now
+
+        if statusChanged || uploadStartedChanged || status.isTerminal {
             save()
+        } else {
+            scheduleProgressSave()
         }
+        return true
     }
 
     func complete(id: UUID, finalPath: String?, message: String) {
@@ -280,6 +307,7 @@ class DownloadQueue: ObservableObject {
         queue[idx].statusMessage = message
         queue[idx].bytesPerSecond = nil
         queue[idx].finalPath = finalPath
+        lastProgressUpdateAt[id] = nil
         save()
     }
 
@@ -293,6 +321,7 @@ class DownloadQueue: ObservableObject {
         queue[idx].progress = 0
         queue[idx].statusMessage = message
         queue[idx].bytesPerSecond = nil
+        lastProgressUpdateAt[id] = nil
         save()
     }
 
@@ -381,9 +410,7 @@ class DownloadQueue: ObservableObject {
     }
 
     func processNextIfNeeded() {
-        // Will be called from ContentView batch download logic
-        // The actual processing is handled by the calling code
-        // This just tracks the state
+        DownloadJobRunner.shared.processNextIfNeeded()
     }
 
     private func cancelActiveWork(id: UUID, status: QueueStatus) {
@@ -391,6 +418,15 @@ class DownloadQueue: ObservableObject {
             VideoProcessingLauncher.cancel(queueId: id)
         } else {
             DownloadJobRunner.shared.cancel(queueId: id)
+        }
+    }
+
+    private func scheduleProgressSave() {
+        guard pendingProgressSaveTask == nil else { return }
+        pendingProgressSaveTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: progressPersistDelay)
+            save()
+            pendingProgressSaveTask = nil
         }
     }
 }

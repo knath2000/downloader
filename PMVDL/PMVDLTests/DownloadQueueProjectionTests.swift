@@ -159,6 +159,30 @@ final class DownloadQueueProjectionTests: XCTestCase {
         XCTAssertEqual(projection.message, "Preparing seedbox upload…")
     }
 
+    func testHomeQueueCountsUseNonTerminalVisibleItemsAsRemaining() {
+        let items = [
+            queueItem(status: .pending),
+            queueItem(status: .downloading),
+            queueItem(status: .verifying),
+            queueItem(status: .uploading),
+            queueItem(status: .processing),
+            queueItem(status: .paused),
+            queueItem(status: .completed),
+            queueItem(status: .failed("Network"))
+        ]
+
+        let counts = HomeQueueCounts(items: items)
+
+        XCTAssertEqual(counts.total, 8)
+        XCTAssertEqual(counts.remaining, 6)
+        XCTAssertEqual(counts.active, 4)
+        XCTAssertEqual(counts.queued, 1)
+        XCTAssertEqual(counts.paused, 1)
+        XCTAssertEqual(counts.completed, 1)
+        XCTAssertEqual(counts.failed, 1)
+        XCTAssertEqual(counts.summaryText, "6 remaining · 4 active · 1 queued · 1 paused")
+    }
+
     @MainActor
     func testSeedboxHLSLocalMaterializationStaysActiveUntilFinalCompletion() {
         let queue = DownloadQueue.shared
@@ -247,5 +271,11 @@ final class DownloadQueueProjectionTests: XCTestCase {
         } else {
             XCTFail("Expected non-terminal upload projection", file: file, line: line)
         }
+    }
+
+    private func queueItem(status: QueueStatus) -> DownloadQueueItem {
+        var item = DownloadQueueItem(url: "https://example.test/\(UUID().uuidString).mp4", quality: "Video", targetCloud: .local)
+        item.status = status
+        return item
     }
 }

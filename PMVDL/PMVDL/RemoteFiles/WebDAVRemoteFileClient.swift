@@ -201,6 +201,47 @@ final class WebDAVRemoteFileClient: RemoteFileClient {
         try validateHTTP(response)
     }
 
+    func move(itemAt path: String, kind: RemoteFileKind, toDirectory directory: String, newName: String?) async throws {
+        let source = urlForPath(uiPath: path, isDirectory: kind == .folder)
+        let targetName = newName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? newName!
+            : RemotePath.basename(path)
+        let destinationPath = RemotePath.joining(directory: directory, name: targetName)
+        let destination = urlForPath(uiPath: destinationPath, isDirectory: kind == .folder)
+
+        var request = URLRequest(url: source)
+        request.httpMethod = "MOVE"
+        request.timeoutInterval = 7200
+        request.setValue(destination.absoluteString, forHTTPHeaderField: "Destination")
+        request.setValue("F", forHTTPHeaderField: "Overwrite")
+        setBasicAuth(&request)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        try validateHTTP(response)
+    }
+
+    func copy(itemAt path: String, kind: RemoteFileKind, toDirectory directory: String, newName: String?) async throws {
+        let source = urlForPath(uiPath: path, isDirectory: kind == .folder)
+        let targetName = newName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? newName!
+            : RemotePath.basename(path)
+        let destinationPath = RemotePath.joining(directory: directory, name: targetName)
+        let destination = urlForPath(uiPath: destinationPath, isDirectory: kind == .folder)
+
+        var request = URLRequest(url: source)
+        request.httpMethod = "COPY"
+        request.timeoutInterval = 7200
+        request.setValue(destination.absoluteString, forHTTPHeaderField: "Destination")
+        request.setValue("F", forHTTPHeaderField: "Overwrite")
+        if kind == .folder {
+            request.setValue("infinity", forHTTPHeaderField: "Depth")
+        }
+        setBasicAuth(&request)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+        try validateHTTP(response)
+    }
+
     func delete(itemAt path: String, kind: RemoteFileKind) async throws {
         let url = urlForPath(uiPath: path, isDirectory: kind == .folder)
 
@@ -301,11 +342,12 @@ final class WebDAVRemoteFileClient: RemoteFileClient {
             combined = RemotePath.normalizeDirectory(root + "/" + String(ui.dropFirst()))
         }
 
-        for part in combined.split(separator: "/").map(String.init) {
-            url.appendPathComponent(part, isDirectory: false)
+        let parts = combined.split(separator: "/").map(String.init)
+        for (index, part) in parts.enumerated() {
+            url.appendPathComponent(part, isDirectory: isDirectory && index == parts.count - 1)
         }
 
-        if isDirectory, !url.absoluteString.hasSuffix("/") {
+        if isDirectory, parts.isEmpty, !url.absoluteString.hasSuffix("/") {
             url.appendPathComponent("", isDirectory: true)
         }
 

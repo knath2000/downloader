@@ -32,7 +32,7 @@ extension CloudTarget {
 struct BatchDownloadBar: View {
     let queuedCount: Int
     @Binding var selectedTarget: CloudTarget
-    let isRunning: Bool
+    let isSubmitting: Bool
     let progressText: String
     let action: () -> Void
 
@@ -42,7 +42,7 @@ struct BatchDownloadBar: View {
                 Text("\(queuedCount) queued")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Theme.textPrimary)
-                Text(isRunning ? progressText : "Batch download extracted results.")
+                Text(isSubmitting ? progressText : "Batch download extracted results.")
                     .font(.caption2)
                     .foregroundStyle(Theme.textSecondary)
                     .lineLimit(1)
@@ -60,18 +60,18 @@ struct BatchDownloadBar: View {
             .help("Choose destination for all queued downloads")
 
             Button(action: action) {
-                if isRunning {
+                if isSubmitting {
                     ProgressView()
                         .controlSize(.small)
                         .scaleEffect(0.7)
-                    Text("Running")
+                    Text("Adding")
                 } else {
                     Label(selectedTarget.homeBatchButtonTitle, systemImage: selectedTarget.icon)
                 }
             }
             .buttonStyle(.borderedProminent)
             .tint(Theme.skyBlue)
-            .disabled(isRunning || queuedCount == 0)
+            .disabled(isSubmitting || queuedCount == 0)
         }
         .padding(14)
         .glassCard(tint: Theme.skyBlue.opacity(0.10), cornerRadius: HomeLayoutMetrics.cardCornerRadius)

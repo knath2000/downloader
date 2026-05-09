@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProfileView: View {
     @StateObject private var model = ProfileViewModel.shared
+    @State private var showAllPerformers = false
     @AppStorage("xaiAPIKey") private var xaiAPIKey = ""
 
     var body: some View {
@@ -43,7 +44,7 @@ struct ProfileView: View {
                 }
 
                 Text(headerSummary)
-                    .font(.caption.weight(.semibold))
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(Theme.textSecondary)
             }
 
@@ -96,16 +97,29 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 14) {
             sourceBadges(stats: result.stats)
 
-            LazyVGrid(columns: [
-                GridItem(.flexible(), spacing: 12),
-                GridItem(.flexible(), spacing: 12)
-            ], spacing: 12) {
-                rankingCard("Top Performers", icon: "person.2.fill", entries: result.stats.topPerformers)
-                rankingCard("Top Categories", icon: "square.grid.2x2.fill", entries: result.stats.topCategories)
-                rankingCard("Top Studios", icon: "building.2.fill", entries: result.stats.topStudios)
+            if !result.stats.topPerformers.isEmpty {
+                rankingCard(
+                    "Top Performers",
+                    icon: "person.2.fill",
+                    entries: result.stats.topPerformers,
+                    showsAvatar: true,
+                    maxVisible: 5,
+                    showAll: $showAllPerformers
+                )
             }
 
-            tagsCard(result.stats.topTags)
+            if result.stats.topCategories.isEmpty,
+               result.stats.topStudios.isEmpty,
+               result.stats.topTags.isEmpty {
+                metadataUnavailableCallout
+            } else {
+                metadataRankingSection(stats: result.stats)
+
+                if !result.stats.topTags.isEmpty {
+                    tagsCard(result.stats.topTags)
+                }
+            }
+
             viewingPatternsCard(result.stats)
             narrativeCard(result)
         }
@@ -138,34 +152,94 @@ struct ProfileView: View {
         .overlay(Capsule().strokeBorder(tint.opacity(0.18), lineWidth: 0.5))
     }
 
-    private func rankingCard(_ title: String, icon: String, entries: [ProfileStats.RankedEntry]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+    @ViewBuilder
+    private func metadataRankingSection(stats: ProfileStats) -> some View {
+        if !stats.topCategories.isEmpty && !stats.topStudios.isEmpty {
+            LazyVGrid(columns: [
+                GridItem(.flexible(), spacing: 12),
+                GridItem(.flexible(), spacing: 12)
+            ], spacing: 12) {
+                rankingCard("Top Categories", icon: "square.grid.2x2.fill", entries: stats.topCategories)
+                rankingCard("Top Studios", icon: "building.2.fill", entries: stats.topStudios)
+            }
+        } else {
+            if !stats.topCategories.isEmpty {
+                rankingCard("Top Categories", icon: "square.grid.2x2.fill", entries: stats.topCategories)
+            }
+            if !stats.topStudios.isEmpty {
+                rankingCard("Top Studios", icon: "building.2.fill", entries: stats.topStudios)
+            }
+        }
+    }
+
+    private var metadataUnavailableCallout: some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: "info.circle.fill")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Theme.gold)
+            Text("No category, tag, or studio metadata available - this improves after PornHub scraper data is fetched.")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .glassCard(tint: Theme.gold.opacity(0.08), cornerRadius: 14)
+    }
+
+    private func rankingCard(
+        _ title: String,
+        icon: String,
+        entries: [ProfileStats.RankedEntry],
+        showsAvatar: Bool = false,
+        maxVisible: Int? = nil,
+        showAll: Binding<Bool>? = nil
+    ) -> some View {
+        let visibleEntries: [ProfileStats.RankedEntry]
+        if let maxVisible = maxVisible, showAll?.wrappedValue == false {
+            visibleEntries = Array(entries.prefix(maxVisible))
+        } else {
+            visibleEntries = entries
+        }
+
+        return VStack(alignment: .leading, spacing: 10) {
             cardHeader(title, icon: icon)
-            if entries.isEmpty {
-                Text("No signal yet")
-                    .font(.caption)
-                    .foregroundStyle(Theme.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 8)
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                        rankedRow(index: index, entry: entry)
-                    }
+
+            VStack(spacing: 8) {
+                ForEach(Array(visibleEntries.enumerated()), id: \.element.id) { index, entry in
+                    rankedRow(index: index, entry: entry, showsAvatar: showsAvatar)
                 }
+            }
+
+            if let maxVisible = maxVisible,
+               let showAll = showAll,
+               entries.count > maxVisible {
+                Button {
+                    showAll.wrappedValue.toggle()
+                } label: {
+                    Text(showAll.wrappedValue ? "Show fewer" : "Show all \(entries.count)")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Theme.gold)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
             }
         }
         .padding(14)
         .glassCard(tint: Theme.gold.opacity(0.08), cornerRadius: 14)
     }
 
-    private func rankedRow(index: Int, entry: ProfileStats.RankedEntry) -> some View {
+    private func rankedRow(index: Int, entry: ProfileStats.RankedEntry, showsAvatar: Bool = false) -> some View {
         HStack(alignment: .top, spacing: 9) {
             Text("\(index + 1)")
                 .font(.system(size: 11, weight: .black))
-                .foregroundStyle(Theme.surface0)
+                .foregroundStyle(Theme.gold)
                 .frame(width: 22, height: 22)
-                .background(Theme.gold, in: Circle())
+                .overlay(Circle().strokeBorder(Theme.gold.opacity(0.72), lineWidth: 1))
+
+            if showsAvatar {
+                ProfilePerformerAvatar(entry: entry)
+            }
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
@@ -180,10 +254,17 @@ struct ProfileView: View {
                 }
 
                 if !entry.sourceSummary.isEmpty {
-                    Text("↳ \(entry.sourceSummary)")
-                        .font(.caption2)
-                        .foregroundStyle(Theme.textSecondary)
-                        .lineLimit(2)
+                    HStack(alignment: .top, spacing: 6) {
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(Theme.gold.opacity(0.24))
+                            .frame(width: 2, height: 18)
+                            .padding(.top, 1)
+                        Text(entry.sourceSummary)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(2)
+                    }
+                    .padding(.leading, 1)
                 }
             }
         }
@@ -250,6 +331,9 @@ struct ProfileView: View {
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(Theme.textPrimary)
                 .lineLimit(1)
+            Rectangle()
+                .fill(Theme.gold.opacity(0.72))
+                .frame(width: 24, height: 1)
             if !detail.isEmpty {
                 Text(detail)
                     .font(.caption2)
@@ -272,10 +356,11 @@ struct ProfileView: View {
                     .foregroundStyle(result.isStale ? Theme.warning : Theme.textSecondary)
             }
 
-            MarkdownText(result.narrative)
+            MarkdownText(preprocessMarkdown(result.narrative))
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.textPrimary)
-                .lineSpacing(4)
+                .lineSpacing(6)
+                .padding(.top, 4)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -374,6 +459,79 @@ struct ProfileView: View {
         }
         let stats = result.stats
         return "\(stats.favoritesCount) Favorites · \(stats.pornhubLikedCount) PH Liked · \(stats.pornhubFavoritesCount) PH Favorites · \(stats.libraryCount) Downloads"
+    }
+
+    private func preprocessMarkdown(_ text: String) -> String {
+        var result = text
+        let knownHeadings = [
+            #"What I Learned About Your Habits"#,
+            #"Top Performers(?: \(with source citations\))?"#,
+            #"Preferred Categories(?: & Themes)?(?: \(with source citations\))?"#,
+            #"Studio Preferences(?: \(with source citations\))?"#,
+            #"Viewing Patterns(?: \(duration, quality, frequency\))?"#,
+            #"How This Profile Was Built(?: \(data sources used, counts, gaps/limitations\))?"#
+        ]
+
+        for heading in knownHeadings {
+            result = result.replacingOccurrences(
+                of: #"(?<!# )("# + heading + #")"#,
+                with: "\n\n## $1\n\n",
+                options: .regularExpression
+            )
+        }
+
+        result = result.replacingOccurrences(of: #"([^\n])\n(#{1,3} )"#, with: "$1\n\n$2", options: .regularExpression)
+        result = result.replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+private struct ProfilePerformerAvatar: View {
+    let entry: ProfileStats.RankedEntry
+
+    private var imageURL: URL? {
+        guard let value = entry.imageURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return nil }
+        return URL(string: value)
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Theme.surface1.opacity(0.86))
+
+            if let imageURL {
+                RefererAwareAsyncImage(url: imageURL, referer: entry.imageReferer) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .empty:
+                        ProgressView()
+                            .controlSize(.small)
+                            .scaleEffect(0.55)
+                    case .failure:
+                        placeholder
+                    @unknown default:
+                        placeholder
+                    }
+                }
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: 38, height: 38)
+        .clipShape(Circle())
+        .overlay(Circle().strokeBorder(Theme.gold.opacity(0.70), lineWidth: 1))
+        .help(entry.imageSource == "profile" ? "Profile image" : "Evidence thumbnail")
+    }
+
+    private var placeholder: some View {
+        Image(systemName: "person.fill")
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(Theme.gold)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

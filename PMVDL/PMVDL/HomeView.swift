@@ -4,10 +4,12 @@ import AppKit
 struct HomeView: View {
     @ObservedObject var appState: AppStateManager
     @ObservedObject private var tracker = ActiveWorkTracker.shared
+    @ObservedObject private var downloadQueue = DownloadQueue.shared
     @State private var urlText: String = ""
     @State private var results: [ExtractResult] = []
     @State private var isLoading = false
     @State private var loadProgress = ""
+    @State private var activeBatchSubmission: BatchSubmission?
     @State private var showingStatusPopover = false
     @State private var showResultsSheet = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -43,6 +45,16 @@ struct HomeView: View {
         let uploadFileName: String
     }
 
+    private struct BatchSignature: Equatable {
+        let target: CloudTarget
+        let urls: [String]
+    }
+
+    private struct BatchSubmission: Equatable {
+        let signature: BatchSignature
+        var progressText: String
+    }
+
     private func preferredBatchTarget(for source: VideoSource) -> VideoSource.Quality? {
         if let mp4 = source.mp4 {
             return VideoSource.Quality(label: "Video", url: mp4, kind: .direct, headers: source.headers)
@@ -54,6 +66,9 @@ struct HomeView: View {
         results.compactMap { result in
             guard let source = result.source,
                   let target = preferredBatchTarget(for: source) else {
+                return nil
+            }
+            if hasExistingQueueItem(for: target.url, target: batchTarget) {
                 return nil
             }
             if let state = state(for: target.url, target: batchTarget) {
@@ -72,6 +87,24 @@ struct HomeView: View {
                 uploadFileName: VideoFileNaming.mp4FileName(title: title, fallback: fileName(of: target.url))
             )
         }
+    }
+
+    private var currentBatchSignature: BatchSignature? {
+        let urls = results.compactMap { result in
+            result.source.flatMap(preferredBatchTarget(for:))?.url
+        }
+        guard !urls.isEmpty else { return nil }
+        return BatchSignature(target: batchTarget, urls: urls.sorted())
+    }
+
+    private var isCurrentBatchSubmitting: Bool {
+        guard let currentBatchSignature else { return false }
+        return activeBatchSubmission?.signature == currentBatchSignature
+    }
+
+    private var currentBatchProgressText: String {
+        guard isCurrentBatchSubmitting else { return "" }
+        return activeBatchSubmission?.progressText ?? ""
     }
 
     // Category rail items — quick-paste shortcuts for common platforms
@@ -230,8 +263,8 @@ struct HomeView: View {
                 BatchDownloadBar(
                     queuedCount: batchTargetLinks.count,
                     selectedTarget: $batchTarget,
-                    isRunning: tracker.isBatchDownloading,
-                    progressText: loadProgress,
+                    isSubmitting: isCurrentBatchSubmitting,
+                    progressText: currentBatchProgressText,
                     action: batchDownloadAll
                 )
             }
@@ -428,10 +461,25 @@ struct HomeView: View {
 
     private func batchDownloadAll() {
         let jobs = batchTargetJobs
-        guard !jobs.isEmpty else { return }
+        guard !jobs.isEmpty,
+              let signature = currentBatchSignature,
+              activeBatchSubmission?.signature != signature else { return }
         let selectedTarget = batchTarget
+        let currentResults = results
+        activeBatchSubmission = BatchSubmission(
+            signature: signature,
+            progressText: "\(selectedTarget.homeBatchButtonTitle) 0/\(jobs.count)..."
+        )
 
         Task {
+            defer {
+                Task { @MainActor in
+                    if activeBatchSubmission?.signature == signature {
+                        activeBatchSubmission = nil
+                    }
+                }
+            }
+
             guard ProFeatureGate.canBatchDownload(count: jobs.count) else {
                 onUpgradeRequired()
                 return
@@ -441,53 +489,27 @@ struct HomeView: View {
                 onUpgradeRequired()
                 return
             }
-            tracker.isBatchDownloading = true
-            loadProgress = "\(selectedTarget.homeBatchButtonTitle) 0/\(jobs.count)…"
 
-            var resolutions: [DownloadResolution] = []
-            for job in jobs {
+            let context = downloadJobContext
+            for (index, job) in jobs.enumerated() {
                 do {
-                    resolutions.append(try await DownloadResolver.resolve(requestedUrl: job.url, in: results))
+                    let resolution = try await DownloadResolver.resolve(requestedUrl: job.url, in: currentResults)
+                    guard ProFeatureGate.canDownloadAudio || !resolution.isAudio else {
+                        onUpgradeRequired()
+                        return
+                    }
+                    DownloadJobRunner.shared.start(resolution: resolution, target: selectedTarget, context: context)
+                    await MainActor.run {
+                        if var submission = activeBatchSubmission, submission.signature == signature {
+                            submission.progressText = "\(selectedTarget.homeBatchButtonTitle) \(index + 1)/\(jobs.count)"
+                            activeBatchSubmission = submission
+                        }
+                    }
                 } catch {
                     tracker.projectFailure(url: job.url, target: selectedTarget, message: error.localizedDescription)
                     NotificationManager.shared.notifyUploadFailed(filename: job.uploadFileName, reason: error.localizedDescription)
                 }
             }
-
-            guard ProFeatureGate.canDownloadAudio || !resolutions.contains(where: \.isAudio) else {
-                onUpgradeRequired()
-                tracker.isBatchDownloading = false
-                loadProgress = ""
-                return
-            }
-
-            let context = downloadJobContext
-            var nextIndex = 0
-            var done = jobs.count - resolutions.count
-            let concurrencyLimit = DownloadQueue.shared.concurrentLimit
-
-            await withTaskGroup(of: Bool.self) { group in
-                func addNext() {
-                    guard nextIndex < resolutions.count else { return }
-                    let resolution = resolutions[nextIndex]
-                    nextIndex += 1
-                    group.addTask {
-                        await DownloadJobRunner.shared.run(resolution: resolution, target: selectedTarget, context: context)
-                    }
-                }
-
-                for _ in 0..<min(concurrencyLimit, resolutions.count) {
-                    addNext()
-                }
-
-                for await _ in group {
-                    done += 1
-                    await MainActor.run { loadProgress = "\(selectedTarget.homeBatchButtonTitle) \(done)/\(jobs.count)" }
-                    addNext()
-                }
-            }
-
-            tracker.isBatchDownloading = false; loadProgress = ""
         }
     }
 
@@ -539,6 +561,21 @@ struct HomeView: View {
 
     private func uploadFileName(for url: String) -> String {
         VideoFileNaming.mp4FileName(title: title(for: url), fallback: fileName(of: url))
+    }
+
+    private func hasExistingQueueItem(for url: String, target: CloudTarget) -> Bool {
+        downloadQueue.queue.contains { item in
+            item.url == url &&
+                item.targetCloud == target &&
+                !isFailedStatus(item.status)
+        }
+    }
+
+    private func isFailedStatus(_ status: QueueStatus) -> Bool {
+        if case .failed = status {
+            return true
+        }
+        return false
     }
 
     private func state(for url: String, target: CloudTarget) -> UploadState? {

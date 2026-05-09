@@ -79,11 +79,152 @@ enum RemoteFileOperation: Equatable {
     case list
     case createFolder
     case rename
+    case move
+    case copy
+    case duplicate
     case delete
     case upload
     case download
     case readText
     case saveText
+}
+
+struct RemoteFileOperationProgress: Equatable {
+    let completed: Int
+    let total: Int
+    let currentName: String?
+}
+
+struct RemoteFileDragPayload: Codable, Equatable {
+    let provider: RemoteFileProviderID
+    let sourceDirectory: String
+    let itemIDs: [String]
+}
+
+struct RemoteFileSelectionState: Equatable {
+    var selectedIDs: Set<String> = []
+    var anchorID: String?
+}
+
+enum RemoteFileSelectionMode {
+    case replace
+    case toggle
+    case range
+}
+
+enum RemoteFileSelectionReducer {
+    static func select(
+        itemID: String,
+        orderedIDs: [String],
+        state: RemoteFileSelectionState,
+        mode: RemoteFileSelectionMode
+    ) -> RemoteFileSelectionState {
+        switch mode {
+        case .replace:
+            return RemoteFileSelectionState(selectedIDs: [itemID], anchorID: itemID)
+
+        case .toggle:
+            var selected = state.selectedIDs
+            if selected.contains(itemID) {
+                selected.remove(itemID)
+            } else {
+                selected.insert(itemID)
+            }
+            return RemoteFileSelectionState(selectedIDs: selected, anchorID: itemID)
+
+        case .range:
+            guard
+                let anchorID = state.anchorID,
+                let anchorIndex = orderedIDs.firstIndex(of: anchorID),
+                let itemIndex = orderedIDs.firstIndex(of: itemID)
+            else {
+                return RemoteFileSelectionState(selectedIDs: [itemID], anchorID: itemID)
+            }
+
+            let bounds = anchorIndex <= itemIndex ? anchorIndex...itemIndex : itemIndex...anchorIndex
+            return RemoteFileSelectionState(
+                selectedIDs: Set(orderedIDs[bounds]),
+                anchorID: anchorID
+            )
+        }
+    }
+
+    static func selectAll(orderedIDs: [String]) -> RemoteFileSelectionState {
+        RemoteFileSelectionState(selectedIDs: Set(orderedIDs), anchorID: orderedIDs.first)
+    }
+}
+
+struct RemoteFileTransferPlan: Equatable {
+    let item: RemoteFileItem
+    let targetDirectory: String
+    let newName: String
+}
+
+enum RemoteFileOperationPlanner {
+    static func movePlans(
+        items: [RemoteFileItem],
+        targetDirectory: String,
+        existingTargetNames: Set<String>
+    ) throws -> [RemoteFileTransferPlan] {
+        let target = RemotePath.normalizeDirectory(targetDirectory)
+        var occupied = Set(existingTargetNames.map { $0.lowercased() })
+        var plans: [RemoteFileTransferPlan] = []
+
+        for item in items {
+            try validateMove(item: item, targetDirectory: target)
+            let sourceParent = RemotePath.parent(of: item.path)
+            guard sourceParent != target else { continue }
+
+            let name = RemotePath.sanitizeNameComponent(item.name)
+            guard !occupied.contains(name.lowercased()) else {
+                throw RemoteFileClientError.invalidPath("\"\(name)\" already exists in \(target).")
+            }
+
+            plans.append(RemoteFileTransferPlan(item: item, targetDirectory: target, newName: name))
+            occupied.insert(name.lowercased())
+        }
+
+        return plans
+    }
+
+    static func copyPlans(
+        items: [RemoteFileItem],
+        targetDirectory: String,
+        existingTargetNames: Set<String>
+    ) throws -> [RemoteFileTransferPlan] {
+        let target = RemotePath.normalizeDirectory(targetDirectory)
+        var occupied = Set(existingTargetNames)
+        var lowercasedOccupied = Set(existingTargetNames.map { $0.lowercased() })
+        var plans: [RemoteFileTransferPlan] = []
+
+        for item in items {
+            if item.path == "/" {
+                throw RemoteFileClientError.invalidPath("The remote root cannot be copied.")
+            }
+
+            let sourceParent = RemotePath.parent(of: item.path)
+            let name = sourceParent == target || lowercasedOccupied.contains(item.name.lowercased())
+                ? RemotePath.duplicateName(for: item.name, existingNames: occupied)
+                : RemotePath.sanitizeNameComponent(item.name)
+
+            plans.append(RemoteFileTransferPlan(item: item, targetDirectory: target, newName: name))
+            occupied.insert(name)
+            lowercasedOccupied.insert(name.lowercased())
+        }
+
+        return plans
+    }
+
+    static func validateMove(item: RemoteFileItem, targetDirectory: String) throws {
+        let target = RemotePath.normalizeDirectory(targetDirectory)
+        if item.path == "/" {
+            throw RemoteFileClientError.invalidPath("The remote root cannot be moved.")
+        }
+
+        if item.kind == .folder, item.path == target || RemotePath.isDescendant(target, of: item.path) {
+            throw RemoteFileClientError.invalidPath("A folder cannot be moved into itself.")
+        }
+    }
 }
 
 enum RemoteFileClientError: LocalizedError, Equatable {

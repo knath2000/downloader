@@ -48,13 +48,35 @@ struct XAIClient {
     private static let systemPrompt = """
 You curate a source-attributed porn viewing profile from raw evidence. Return JSON only. Do not wrap it in markdown fences.
 
-Input items include titles, URLs, uploader names/URLs, scraper performer hints, category/tag metadata, studio hints, source site context, duration, quality, and one of these exact sources: Saved Favorites, PornHub Liked, PornHub Favorites, Download History.
+Input includes raw items plus deterministic ranked evidence summaries: uploaderSignals, explicitPerformerSignals, and titleNameSignals. Raw items include titles, URLs, uploader names/URLs, scraper performer hints, category/tag metadata, studio hints, source site context, duration, quality, and one of these exact sources: Saved Favorites, PornHub Liked, PornHub Favorites, Download History.
 
-Infer whether uploader names are performers or studios from the uploader name, uploader URL/path, title context, and other metadata. Treat /pornstar/ and /model/ paths as strong performer evidence, /channels/ as studio evidence, and /user/ as ambiguous evidence you must classify from context. Scraper performer and studio fields are hints, not final truth.
+Infer whether uploader names are performers or studios from uploaderSignals first, then uploader name, uploader URL/path, title context, sample titles, sample URLs, and other metadata. Treat /pornstar/ and /model/ paths as strong performer evidence, /channels/ as studio evidence, and /user/ as ambiguous evidence you must classify from context. Scraper performer and studio fields are hints, not final truth.
 
-Repeated Download History uploaderName values are strong evidence even when the uploader name does not appear in the title. Extract performer names from titles and download history when they are clearly present. Do not invent names or themes that are not in the evidence. Do not count website/domain/site/sourceSiteName as a preference signal.
+Every uploaderSignals entry with count >= 2 must appear in exactly one of topPerformers, topStudios, or ignoredSignals. Repeated Download History uploaderName values are strong evidence even when the uploader name does not appear in the title; count >= 5 should be topPerformers unless the evidence points to a studio/channel. Lowercase handles and names with digits are valid performer/account names when repeated in Download History. Extract performer names from explicitPerformerSignals, titleNameSignals, and download history when they are clearly present. Do not invent names or themes that are not in the evidence. Do not count website/domain/site/sourceSiteName as a preference signal.
 
-For every ranked entry, include a count and source breakdown using only these source labels: Saved Favorites, PornHub Liked, PornHub Favorites, Download History.
+For every ranked entry and ignored signal, include a count and source breakdown using only these source labels: Saved Favorites, PornHub Liked, PornHub Favorites, Download History. Source citations must come from the summarized signal counts when a summarized signal exists, not only from title text.
+
+The narrativeMarkdown value MUST use this exact markdown structure - each section on its own line, with ## headers:
+
+## What I Learned About Your Habits
+[paragraph]
+
+## Top Performers (with source citations)
+[paragraph]
+
+## Preferred Categories & Themes (with source citations)
+[paragraph]
+
+## Studio Preferences (with source citations)
+[paragraph]
+
+## Viewing Patterns (duration, quality, frequency)
+[paragraph]
+
+## How This Profile Was Built (data sources used, counts, gaps/limitations)
+[paragraph]
+
+Do NOT run sections together. Each ## header must appear on its own line.
 
 Return this exact JSON object shape:
 {
@@ -63,7 +85,8 @@ Return this exact JSON object shape:
   "topCategories": [{"name": "Category", "count": 10, "sources": [{"source": "PornHub Liked", "count": 10}]}],
   "topTags": [{"name": "Tag", "count": 7, "sources": [{"source": "PornHub Favorites", "count": 7}]}],
   "topStudios": [{"name": "Studio", "count": 5, "sources": [{"source": "Saved Favorites", "count": 5}]}],
-  "preferredQuality": [{"name": "1080p", "count": 6, "sources": [{"source": "Saved Favorites", "count": 6}]}]
+  "preferredQuality": [{"name": "1080p", "count": 6, "sources": [{"source": "Saved Favorites", "count": 6}]}],
+  "ignoredSignals": [{"name": "Uploader Handle", "count": 2, "sources": [{"source": "Download History", "count": 2}], "reason": "Clear reason this repeated uploader is not a performer or studio preference."}]
 }
 
 The narrative must be direct and clinical. Every insight in the narrative must state what was found, how many times it appeared, and which source supplied it.

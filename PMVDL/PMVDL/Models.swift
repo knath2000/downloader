@@ -82,7 +82,7 @@ enum VideoExtractorError: LocalizedError {
     }
 }
 
-enum UploadState { case uploading(String); case done(String); case failed(String) }
+enum UploadState: Equatable { case uploading(String); case done(String); case failed(String) }
 
 /// Typed progress event so callers receive a numeric percent without parsing strings.
 struct ProgressEvent {

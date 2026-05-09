@@ -5,6 +5,11 @@
 - Added video, link, and upload detail actions directly in the Library preview panel
 - Kept video bulk selection separate from timeline preview selection
 - Added Library timeline tests for selected-entry fallback and video-only bulk selection
+- Added AI Profile performer avatars with profile/headshot lookup and evidence thumbnail fallback
+- Added Feed downloaded-state badges with Library matching by PornHub viewkey or normalized URL
+- Added clearer Home download queue counts for remaining, active, queued, and paused work
+- Expanded Files into a Finder-like remote browser with multi-select, drag move/copy, duplicate, move, info, and right-click actions
+- Stabilized the Files toolbar so selection state does not push the file list down
 - Moved extraction loading into the results sheet so Home content stays visible while extraction runs
 - Embedded a compact download queue on Home and removed the standalone Downloads navigation route
 - Added compact queue thumbnails, context actions, and completed-download thumbnail fixes

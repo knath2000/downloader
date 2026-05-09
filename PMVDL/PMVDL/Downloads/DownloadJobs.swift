@@ -452,8 +452,18 @@ struct SeedboxDownloadJob: DownloadJob {
 final class DownloadJobRunner {
     static let shared = DownloadJobRunner()
 
+    private struct QueuedRun {
+        let payload: DownloadRetryPayload
+        let seedboxWebdavPassword: String
+    }
+
+    private var queuedRuns: [UUID: QueuedRun] = [:]
+    private var startingQueueIDs: Set<UUID> = []
     private var runningTasks: [UUID: Task<Bool, Never>] = [:]
     private var runningTokens: [UUID: UUID] = [:]
+    private var awaitedResultIDs: Set<UUID> = []
+    private var resultWaiters: [UUID: [CheckedContinuation<Bool, Never>]] = [:]
+    private var completedResults: [UUID: Bool] = [:]
     private var pausedQueueIDs: Set<UUID> = []
     private var cancelledQueueIDs: Set<UUID> = []
 
@@ -461,26 +471,14 @@ final class DownloadJobRunner {
 
     // MARK: - Public entry points
 
-    func start(resolution: DownloadResolution, target: CloudTarget, context: DownloadJobContext) {
-        Task {
-            _ = await run(resolution: resolution, target: target, context: context)
-        }
+    @discardableResult
+    func start(resolution: DownloadResolution, target: CloudTarget, context: DownloadJobContext) -> UUID {
+        enqueue(resolution: resolution, target: target, context: context)
     }
 
     func run(resolution: DownloadResolution, target: CloudTarget, context: DownloadJobContext) async -> Bool {
-        let payload = buildRetryPayload(for: resolution, target: target, context: context)
-        let queueId = DownloadQueue.shared.add(
-            url: resolution.requestedUrl,
-            quality: queueQuality(for: resolution, target: target),
-            targetCloud: target,
-            displayTitle: resolution.title,
-            retryPayload: payload
-        )
-        return await runRegistered(
-            queueId: queueId,
-            payload: payload,
-            seedboxWebdavPassword: context.seedboxWebdavPassword
-        )
+        let queueId = enqueue(resolution: resolution, target: target, context: context, waitsForResult: true)
+        return await waitForResult(queueId: queueId)
     }
 
     /// Fire-and-forget wrapper called from the Downloads UI Retry button.
@@ -497,45 +495,130 @@ final class DownloadJobRunner {
     }
 
     func startInterruptedResume(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) {
-        Task {
-            _ = await runRegistered(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
-        }
+        enqueueExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
     }
 
     func pause(queueId: UUID) {
         pausedQueueIDs.insert(queueId)
         cancelledQueueIDs.remove(queueId)
-        runningTasks[queueId]?.cancel()
+        if let task = runningTasks[queueId] {
+            task.cancel()
+        } else {
+            cancelQueuedRun(queueId: queueId)
+        }
     }
 
     func cancel(queueId: UUID) {
         cancelledQueueIDs.insert(queueId)
         pausedQueueIDs.remove(queueId)
-        runningTasks[queueId]?.cancel()
+        if let task = runningTasks[queueId] {
+            task.cancel()
+        } else {
+            cancelQueuedRun(queueId: queueId)
+        }
     }
 
     /// Resets the existing queue row and reruns the job with the original payload.
     @discardableResult
     func retry(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) async -> Bool {
         guard DownloadQueue.shared.resetForRetry(id: queueId) else { return false }
-        return await runRegistered(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
+        awaitedResultIDs.insert(queueId)
+        enqueueExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
+        return await waitForResult(queueId: queueId)
     }
 
     @discardableResult
     func resume(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) async -> Bool {
         guard DownloadQueue.shared.resetForResume(id: queueId) else { return false }
-        return await runRegistered(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
+        awaitedResultIDs.insert(queueId)
+        enqueueExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
+        return await waitForResult(queueId: queueId)
+    }
+
+    func processNextIfNeeded() {
+        let limit = DownloadQueue.shared.concurrentLimit
+        guard inFlightCount < limit else { return }
+        let queueItems = DownloadQueue.shared.queue
+        for item in queueItems where inFlightCount < limit {
+            guard item.status == .pending,
+                  queuedRuns[item.id] != nil,
+                  !pausedQueueIDs.contains(item.id),
+                  !cancelledQueueIDs.contains(item.id) else {
+                continue
+            }
+            startQueued(queueId: item.id)
+        }
     }
 
     // MARK: - Shared execution core
+
+    @discardableResult
+    private func enqueue(
+        resolution: DownloadResolution,
+        target: CloudTarget,
+        context: DownloadJobContext,
+        waitsForResult: Bool = false
+    ) -> UUID {
+        let payload = buildRetryPayload(for: resolution, target: target, context: context)
+        let queueId = DownloadQueue.shared.add(
+            url: resolution.requestedUrl,
+            quality: queueQuality(for: resolution, target: target),
+            targetCloud: target,
+            displayTitle: resolution.title,
+            retryPayload: payload
+        )
+        ActiveWorkTracker.shared.project(queueId: queueId)
+        if waitsForResult {
+            awaitedResultIDs.insert(queueId)
+        }
+        enqueueExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: context.seedboxWebdavPassword)
+        return queueId
+    }
+
+    private func enqueueExisting(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) {
+        pausedQueueIDs.remove(queueId)
+        cancelledQueueIDs.remove(queueId)
+        queuedRuns[queueId] = QueuedRun(payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
+        processNextIfNeeded()
+    }
+
+    private func startQueued(queueId: UUID) {
+        guard let queuedRun = queuedRuns.removeValue(forKey: queueId) else { return }
+        startingQueueIDs.insert(queueId)
+        Task { @MainActor in
+            _ = await self.runRegistered(
+                queueId: queueId,
+                payload: queuedRun.payload,
+                seedboxWebdavPassword: queuedRun.seedboxWebdavPassword
+            )
+        }
+    }
+
+    private func waitForResult(queueId: UUID) async -> Bool {
+        if let result = completedResults.removeValue(forKey: queueId) {
+            awaitedResultIDs.remove(queueId)
+            return result
+        }
+        return await withCheckedContinuation { continuation in
+            resultWaiters[queueId, default: []].append(continuation)
+        }
+    }
+
+    private func cancelQueuedRun(queueId: UUID) {
+        guard queuedRuns.removeValue(forKey: queueId) != nil else { return }
+        startingQueueIDs.remove(queueId)
+        pausedQueueIDs.remove(queueId)
+        cancelledQueueIDs.remove(queueId)
+        resolveWaiters(queueId: queueId, result: false)
+        processNextIfNeeded()
+    }
 
     private func runRegistered(
         queueId: UUID,
         payload: DownloadRetryPayload,
         seedboxWebdavPassword: String
     ) async -> Bool {
-        pausedQueueIDs.remove(queueId)
-        cancelledQueueIDs.remove(queueId)
+        startingQueueIDs.remove(queueId)
 
         let token = UUID()
         let task = Task { @MainActor in
@@ -554,7 +637,27 @@ final class DownloadJobRunner {
             runningTasks[queueId] = nil
             cancelledQueueIDs.remove(queueId)
         }
+        resolveWaiters(queueId: queueId, result: result)
+        processNextIfNeeded()
         return result
+    }
+
+    private func resolveWaiters(queueId: UUID, result: Bool) {
+        let waiters = resultWaiters.removeValue(forKey: queueId) ?? []
+        if waiters.isEmpty {
+            if awaitedResultIDs.contains(queueId) {
+                completedResults[queueId] = result
+            }
+            return
+        }
+        awaitedResultIDs.remove(queueId)
+        for waiter in waiters {
+            waiter.resume(returning: result)
+        }
+    }
+
+    private var inFlightCount: Int {
+        runningTasks.count + startingQueueIDs.count
     }
 
     private func runExisting(
@@ -677,8 +780,9 @@ final class DownloadJobRunner {
               DownloadQueue.shared.item(id: queueId)?.status != .paused else { return }
         switch event {
         case .progress(let status, let progress, let message, let metrics):
-            DownloadQueue.shared.update(id: queueId, status: status, progress: progress, message: message, metrics: metrics)
-            ActiveWorkTracker.shared.project(queueId: queueId)
+            if DownloadQueue.shared.update(id: queueId, status: status, progress: progress, message: message, metrics: metrics) {
+                ActiveWorkTracker.shared.project(queueId: queueId)
+            }
         }
     }
 
@@ -838,7 +942,7 @@ private extension ProgressEvent.Phase {
         case .uploading:
             return .uploading
         case .completing:
-            return .completed
+            return .verifying
         }
     }
 }

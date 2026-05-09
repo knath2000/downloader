@@ -11,6 +11,7 @@ class AppStateManager: ObservableObject {
     @Published var pendingExtractURL: String?
     @Published var pendingExtractShouldStart = false
     @Published var pendingExtractThumbnailURL: String?
+    @Published var pendingLibraryItemID: UUID?
 
     func setActivationPolicy(_ policy: NSApplication.ActivationPolicy) {
         NSApp.setActivationPolicy(policy)
