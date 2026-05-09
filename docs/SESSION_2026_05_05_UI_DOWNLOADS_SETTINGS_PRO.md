@@ -183,7 +183,7 @@ Current Phase 2 behavior:
 - Subtitle downloading requires Pro.
 - Settings subtitle toggle opens the upgrade overlay for free users.
 - Lower-level yt-dlp paths also refuse subtitle/audio behavior without Pro.
-- Smart Upload Rules are visible in Settings and locked for free users.
+- Legacy upload automation rules were later removed from Settings during the 2026-05-09 scope cleanup.
 - `CloudHub.resolveTargets` only applies upload rules for Pro users; free users use the default Mega route.
 - Library context menus expose Pro Processing actions.
 - Completed Downloads rows expose Pro Processing actions.
@@ -333,7 +333,6 @@ PID 23377
 
 Builds and tests pass, but Xcode continues to emit existing warnings/noise:
 
-- Sparkle signed binary stripping warnings.
 - CoreMedia/AVFCore dyld symbol warnings.
 - AccentColor asset catalog warning.
 - Existing Swift warnings in older extractor/test code.

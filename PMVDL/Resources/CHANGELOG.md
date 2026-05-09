@@ -1,6 +1,9 @@
 # VidDL Changelog
 
 ## Unreleased
+- Simplified Settings Cloud Destinations into one selector-driven setup section
+- Removed legacy upload automation rules, updater integration, and companion-entrypoint scope
+- Fixed AI Profile narrative rendering for flattened cached analysis text
 - Redesigned Library as a hybrid activity timeline plus selected-item detail preview
 - Added video, link, and upload detail actions directly in the Library preview panel
 - Kept video bulk selection separate from timeline preview selection
@@ -35,10 +38,7 @@
 - Notifications for upload and scrape status
 - Keyboard shortcuts (⌘1-4 for navigation, ⌘N for extraction)
 - Drag & drop support for URLs and video files
-- Safari extension for one-click extraction
-- Share extension (system share sheet)
 - Siri Shortcuts (3 intents)
-- Sparkle auto-update integration
 - Pro licensing via Stripe ($0.99 one-time)
 - Stream host support improvements
 - AES-128 encrypted HLS handling now decrypts segments locally before muxing

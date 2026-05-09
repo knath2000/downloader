@@ -32,8 +32,6 @@ struct VidDLApp: App {
             }
             CommandGroup(replacing: .appInfo) {
                 Button("About VidDL") { showAboutWindow() }
-                Button("Check for Updates...") { UpdateManager.shared.checkForUpdates() }
-                    .disabled(!UpdateManager.shared.isAvailable)
             }
         }
     }

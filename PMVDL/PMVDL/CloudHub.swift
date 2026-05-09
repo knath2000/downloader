@@ -33,51 +33,6 @@ enum CloudProviderID: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Upload Rule
-
-struct UploadRule: Identifiable, Codable, Equatable {
-    let id: UUID
-    let name: String
-    let qualityCondition: String?   // ">= 2160p", "== 1080p", etc.
-    let filenamePattern: String?    // regex, e.g. ".*uncensored.*"
-    let targets: [CloudProviderID]
-
-    init(id: UUID = UUID(), name: String, qualityCondition: String? = nil,
-         filenamePattern: String? = nil, targets: [CloudProviderID]) {
-        self.id = id; self.name = name
-        self.qualityCondition = qualityCondition
-        self.filenamePattern = filenamePattern
-        self.targets = targets
-    }
-
-    /// Check if a video matches this rule.
-    func matches(quality: String?, filename: String) -> Bool {
-        if let qc = qualityCondition, !qualityMatches(qc, quality: quality) { return false }
-        if let fp = filenamePattern,
-           let regex = try? NSRegularExpression(pattern: fp),
-           regex.firstMatch(in: filename, range: NSRange(filename.startIndex..<filename.endIndex, in: filename)) == nil {
-            return false
-        }
-        return true
-    }
-
-    private func qualityMatches(_ condition: String, quality: String?) -> Bool {
-        guard let quality else { return true }
-        let qualityNums = ["2160p": 2160, "1440p": 1440, "1080p": 1080, "720p": 720, "480p": 480, "360p": 360]
-
-        if condition.hasPrefix(">=") {
-            let threshold = Int(condition.dropFirst(2).replacingOccurrences(of: "p", with: "")) ?? 0
-            return (qualityNums[quality] ?? 0) >= threshold
-        } else if condition.hasPrefix("<=") {
-            let threshold = Int(condition.dropFirst(2).replacingOccurrences(of: "p", with: "")) ?? 0
-            return (qualityNums[quality] ?? 0) <= threshold
-        } else if condition.hasPrefix("==") {
-            return quality == condition.dropFirst(2)
-        }
-        return true
-    }
-}
-
 // MARK: - Upload Result
 
 struct CloudUploadResult: Identifiable {
@@ -111,57 +66,16 @@ private enum CloudHubError: LocalizedError {
 class CloudHub: ObservableObject {
     static let shared = CloudHub()
 
-    @Published var rules: [UploadRule] = []
     @Published var isUploading = false
     @Published var lastResults: [CloudUploadResult] = []
 
-    private let rulesKey = "cloudHubRules"
-
-    private init() { loadRules() }
-
-    // MARK: - Rules Management
-
-    private func loadRules() {
-        if let data = UserDefaults.standard.data(forKey: rulesKey),
-           let decoded = try? JSONDecoder().decode([UploadRule].self, from: data) {
-            rules = decoded
-        }
-    }
-
-    func saveRules() {
-        if let encoded = try? JSONEncoder().encode(rules) {
-            UserDefaults.standard.set(encoded, forKey: rulesKey)
-        }
-    }
-
-    func addRule(_ rule: UploadRule) {
-        rules.append(rule); saveRules()
-    }
-
-    func removeRule(_ rule: UploadRule) {
-        rules.removeAll { $0.id == rule.id }; saveRules()
-    }
-
-    /// Determine which clouds to upload to based on rules.
-    func resolveTargets(quality: String?, filename: String) -> [CloudProviderID] {
-        guard ProFeatureGate.canUseUploadRules else {
-            return [.mega]
-        }
-
-        for rule in rules {
-            if rule.matches(quality: quality, filename: filename) {
-                return rule.targets.filter { $0.isAvailable }
-            }
-        }
-        // Default: just Mega
-        return [.mega]
-    }
+    private init() {}
 
     // MARK: - Upload
 
     func uploadToAll(videoUrl: String, quality: String?, remotePath: String = "/Cloud/VidDL/", title: String? = nil,
                      onProgress: @escaping (CloudProviderID, String) -> Void) async -> [CloudUploadResult] {
-        let targets = resolveTargets(quality: quality, filename: URL(string: videoUrl)?.lastPathComponent ?? "video")
+        let targets: [CloudProviderID] = [.mega]
         guard !targets.isEmpty else { return [] }
         guard targets.count == 1 || ProFeatureGate.canMultiUpload else {
             let results = [CloudUploadResult.failure(targets[0], error: CloudHubError.multiCloudRequiresPro)]

@@ -165,7 +165,7 @@ git diff --check
 
 Existing warnings remained:
 
-- Sparkle/XCTest signed binary stripping warnings.
+- XCTest signed binary stripping warnings.
 - CoreMedia/AVFCore dyld missing-symbol warnings.
 - Accent color asset warning.
 - Existing unrelated Swift warnings.

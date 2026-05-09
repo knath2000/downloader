@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 struct ProfileView: View {
@@ -385,13 +386,13 @@ struct ProfileView: View {
                     .foregroundStyle(result.isStale ? Theme.warning : Theme.textSecondary)
             }
 
-            MarkdownText(preprocessMarkdown(result.narrative))
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.textPrimary)
-                .lineSpacing(6)
-                .padding(.top, 4)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(ProfileNarrativeFormatter.sections(from: result.narrative)) { section in
+                    ProfileNarrativeSectionView(section: section)
+                }
+            }
+            .padding(.top, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(14)
         .glassCard(tint: Theme.gold.opacity(0.08), cornerRadius: 14)
@@ -490,28 +491,188 @@ struct ProfileView: View {
         return "\(stats.favoritesCount) Favorites · \(stats.pornhubLikedCount) PH Liked · \(stats.pornhubFavoritesCount) PH Favorites · \(stats.libraryCount) Downloads"
     }
 
-    private func preprocessMarkdown(_ text: String) -> String {
-        var result = text
-        let knownHeadings = [
-            #"What I Learned About Your Habits"#,
-            #"Top Performers(?: \(with source citations\))?"#,
-            #"Preferred Categories(?: & Themes)?(?: \(with source citations\))?"#,
-            #"Studio Preferences(?: \(with source citations\))?"#,
-            #"Viewing Patterns(?: \(duration, quality, frequency\))?"#,
-            #"How This Profile Was Built(?: \(data sources used, counts, gaps/limitations\))?"#
-        ]
+}
 
-        for heading in knownHeadings {
-            result = result.replacingOccurrences(
-                of: #"(?<!# )("# + heading + #")"#,
-                with: "\n\n## $1\n\n",
-                options: .regularExpression
-            )
+struct ProfileNarrativeSection: Hashable, Identifiable {
+    let title: String
+    let body: String
+
+    var id: String {
+        title.isEmpty ? body : title
+    }
+}
+
+enum ProfileNarrativeFormatter {
+    private struct HeadingVariant {
+        let title: String
+        let variant: String
+        let order: Int
+    }
+
+    private struct HeadingMatch {
+        let title: String
+        let range: Range<String.Index>
+        let location: Int
+        let length: Int
+        let order: Int
+    }
+
+    private static let headings: [(title: String, variants: [String])] = [
+        (
+            "What I Learned About Your Habits",
+            ["What I Learned About Your Habits"]
+        ),
+        (
+            "Top Performers (with source citations)",
+            ["Top Performers (with source citations)", "Top Performers"]
+        ),
+        (
+            "Preferred Categories & Themes (with source citations)",
+            [
+                "Preferred Categories & Themes (with source citations)",
+                "Preferred Categories & Themes",
+                "Preferred Categories (with source citations)",
+                "Preferred Categories"
+            ]
+        ),
+        (
+            "Studio Preferences (with source citations)",
+            ["Studio Preferences (with source citations)", "Studio Preferences"]
+        ),
+        (
+            "Viewing Patterns (duration, quality, frequency)",
+            ["Viewing Patterns (duration, quality, frequency)", "Viewing Patterns"]
+        ),
+        (
+            "How This Profile Was Built (data sources used, counts, gaps/limitations)",
+            [
+                "How This Profile Was Built (data sources used, counts, gaps/limitations)",
+                "How This Profile Was Built"
+            ]
+        )
+    ]
+
+    static func sections(from text: String) -> [ProfileNarrativeSection] {
+        let normalized = normalizedText(text)
+        guard !normalized.isEmpty else { return [] }
+
+        let matches = headingMatches(in: normalized)
+        guard !matches.isEmpty else {
+            return fallbackSections(from: normalized)
         }
 
-        result = result.replacingOccurrences(of: #"([^\n])\n(#{1,3} )"#, with: "$1\n\n$2", options: .regularExpression)
-        result = result.replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
-        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+        let sections = matches.enumerated().compactMap { offset, match -> ProfileNarrativeSection? in
+            let bodyStart = match.range.upperBound
+            let bodyEnd = offset + 1 < matches.count ? matches[offset + 1].range.lowerBound : normalized.endIndex
+            let body = cleanedBody(String(normalized[bodyStart..<bodyEnd]))
+            guard !body.isEmpty else { return nil }
+            return ProfileNarrativeSection(title: match.title, body: body)
+        }
+
+        return sections.isEmpty ? fallbackSections(from: normalized) : sections
+    }
+
+    private static func normalizedText(_ text: String) -> String {
+        var output = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+
+        if output.contains("\\n") {
+            output = output.replacingOccurrences(of: "\\n", with: "\n")
+        }
+
+        output = output.replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+        return output.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func fallbackSections(from text: String) -> [ProfileNarrativeSection] {
+        let body = cleanedBody(text)
+        return body.isEmpty ? [] : [ProfileNarrativeSection(title: "", body: body)]
+    }
+
+    private static func headingMatches(in text: String) -> [HeadingMatch] {
+        var found: [HeadingMatch] = []
+        let nsRange = NSRange(text.startIndex..<text.endIndex, in: text)
+
+        for variant in headingVariants {
+            let escaped = NSRegularExpression.escapedPattern(for: variant.variant)
+            let pattern = #"(?im)(?:^\s*|(?<=\n)\s*|(?<=[.!?])\s*)(?:#{1,6}\s*)?"# + escaped
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            for match in regex.matches(in: text, range: nsRange) {
+                guard let range = Range(match.range, in: text) else { continue }
+                found.append(HeadingMatch(
+                    title: variant.title,
+                    range: range,
+                    location: match.range.location,
+                    length: match.range.length,
+                    order: variant.order
+                ))
+            }
+        }
+
+        return acceptedMatches(from: found)
+    }
+
+    private static var headingVariants: [HeadingVariant] {
+        headings.enumerated().flatMap { order, heading in
+            heading.variants.map { HeadingVariant(title: heading.title, variant: $0, order: order) }
+        }
+    }
+
+    private static func acceptedMatches(from matches: [HeadingMatch]) -> [HeadingMatch] {
+        let sorted = matches.sorted {
+            if $0.location == $1.location {
+                if $0.length == $1.length {
+                    return $0.order < $1.order
+                }
+                return $0.length > $1.length
+            }
+            return $0.location < $1.location
+        }
+
+        var output: [HeadingMatch] = []
+        var lastOrder = -1
+        for match in sorted {
+            guard !output.contains(where: { overlaps($0, match) }),
+                  match.order > lastOrder else { continue }
+            output.append(match)
+            lastOrder = match.order
+        }
+        return output.sorted { $0.location < $1.location }
+    }
+
+    private static func overlaps(_ lhs: HeadingMatch, _ rhs: HeadingMatch) -> Bool {
+        lhs.range.overlaps(rhs.range)
+    }
+
+    private static func cleanedBody(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: #"^\s*[:\-–—]\s*"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+private struct ProfileNarrativeSectionView: View {
+    let section: ProfileNarrativeSection
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: section.title.isEmpty ? 0 : 6) {
+            if !section.title.isEmpty {
+                Text(section.title)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(Theme.gold)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Text(section.body)
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.textPrimary)
+                .lineSpacing(5)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -561,22 +722,6 @@ private struct ProfilePerformerAvatar: View {
             .font(.system(size: 15, weight: .bold))
             .foregroundStyle(Theme.gold)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-private struct MarkdownText: View {
-    let text: String
-
-    init(_ text: String) {
-        self.text = text
-    }
-
-    var body: some View {
-        if let attributed = try? AttributedString(markdown: text) {
-            Text(attributed)
-        } else {
-            Text(text)
-        }
     }
 }
 

@@ -21,16 +21,6 @@
 	<string>VidDL uses notifications to inform you about download and upload status</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
-	<key>SUFeedURL</key>
-	<string>https://updates.viddl.com/appcast.xml</string>
-	<key>SUPublicEDKey</key>
-	<string>rwkO9/HuB8cLx9FlsLqeYAeNyHuCq51gl2i/MCFWiWY=</string>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
-	<key>SUScheduledCheckInterval</key>
-	<integer>86400</integer>
-	<key>SUAllowsAutomaticUpdates</key>
-	<true/>
 
 	<!-- URL scheme: pmvdl://extract?url=... -->
 	<key>CFBundleURLTypes</key>

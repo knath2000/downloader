@@ -19,23 +19,16 @@ struct SettingsView: View {
     @AppStorage(AppPreferenceKeys.preventSleepWhileRunning) private var preventSleepWhileRunning = false
 
     @StateObject private var license = LicenseManager.shared
-    @StateObject private var updater = UpdateManager.shared
     @StateObject private var dependencyStore = SettingsDependencyStore.shared
-    @StateObject private var cloudHub = CloudHub.shared
 
     @State private var activeSection: SettingsSection = .cloud
+    @State private var selectedCloudDestination: CloudSettingsDestination = .mega
     @State private var activateEmail = ""
     @State private var activationResult = ""
     @State private var isActivating = false
     @State private var seedboxTestResult = ""
     @State private var seedboxTestSucceeded: Bool?
     @State private var isTestingSeedboxConnection = false
-    @State private var uploadRuleName = ""
-    @State private var uploadRuleQuality = "Any"
-    @State private var uploadRulePattern = ""
-    @State private var uploadRuleMega = true
-    @State private var uploadRuleGDrive = false
-    @State private var uploadRuleSeedbox = false
 
     private var trimmedActivationEmail: String {
         activateEmail.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -52,6 +45,12 @@ struct SettingsView: View {
 
     private var dependencyModel: SettingsDependencyViewModel {
         SettingsDependencyPresenter.model(snapshot: dependencyStore.snapshot, input: dependencyInput)
+    }
+
+    private var currentVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?.?.?"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        return "\(version) (\(build))"
     }
 
     private func color(for tone: SettingsDependencyTone) -> Color {
@@ -183,101 +182,83 @@ struct SettingsView: View {
     }
 
     private var cloudSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            cloudDestinationCard(
-                title: "Mega Upload",
-                subtitle: "Upload completed Mega transfers into a MEGAcmd folder.",
-                systemImage: "cloud.fill",
-                model: dependencyModel.mega,
-                accent: color(for: dependencyModel.mega.tone)
-            ) {
-                GlassTextField(
-                    label: "Remote path",
-                    placeholder: "/Cloud/VidDL/",
-                    text: $megaRemotePath,
-                    help: "VidDL uploads completed Mega transfers into this folder after MEGAcmd is installed and signed in."
-                )
-            }
+        let model = selectedCloudModel
+        let tint = color(for: model.tone)
 
-            cloudDestinationCard(
-                title: "Google Drive Upload",
-                subtitle: "Use rclone to upload completed files to a Google Drive remote.",
-                systemImage: "externaldrive.fill.badge.checkmark",
-                model: dependencyModel.gdrive,
-                accent: color(for: dependencyModel.gdrive.tone)
-            ) {
-                GlassTextField(
-                    label: "Remote name",
-                    placeholder: "gdrive",
-                    text: $gdriveRemoteName,
-                    help: "The remote name must match the Google Drive remote created in rclone."
-                )
-                GlassTextField(
-                    label: "Remote path",
-                    placeholder: "VidDL/",
-                    text: $gdriveRemotePath
-                )
-            }
-
-            seedboxTransferCard
-            uploadRulesCard
-        }
-    }
-
-    private func cloudDestinationCard<Content: View>(
-        title: String,
-        subtitle: String,
-        systemImage: String,
-        model: SettingsDependencyCardModel,
-        accent: Color,
-        @ViewBuilder fields: () -> Content
-    ) -> some View {
-        SettingsCard(tint: accent) {
+        return SettingsCard(tint: tint) {
             VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
                 SettingsCardTitle(
-                    title: title,
-                    subtitle: subtitle,
-                    systemImage: systemImage,
-                    tint: accent,
+                    title: selectedCloudDestination.fullTitle,
+                    subtitle: selectedCloudDestination.subtitle,
+                    systemImage: selectedCloudDestination.systemImage,
+                    tint: tint,
                     status: model.status
                 )
 
-                SettingsDependencySummary(model: model, color: accent)
+                SettingsFieldRow("Destination") {
+                    Picker("Cloud destination", selection: $selectedCloudDestination) {
+                        ForEach(CloudSettingsDestination.allCases) { destination in
+                            Label(destination.title, systemImage: destination.systemImage)
+                                .tag(destination)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 460)
+                }
 
-                fields()
+                SettingsDependencySummary(model: model, color: tint)
+                selectedCloudDestinationFields
             }
         }
     }
 
-    private var seedboxTransferCard: some View {
-        SettingsCard(tint: color(for: dependencyModel.seedbox.tone)) {
-            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
-                SettingsCardTitle(
-                    title: "Seedbox Transfer",
-                    subtitle: "Stream direct downloads to a seedbox via rclone or WebDAV.",
-                    systemImage: "server.rack",
-                    tint: color(for: dependencyModel.seedbox.tone),
-                    status: dependencyModel.seedbox.status
-                )
+    private var selectedCloudModel: SettingsDependencyCardModel {
+        switch selectedCloudDestination {
+        case .mega:
+            return dependencyModel.mega
+        case .gdrive:
+            return dependencyModel.gdrive
+        case .seedbox:
+            return dependencyModel.seedbox
+        }
+    }
 
-                SettingsDependencySummary(
-                    model: dependencyModel.seedbox,
-                    color: color(for: dependencyModel.seedbox.tone)
-                )
-
-                SettingsFieldRow("Transfer mode") {
-                    Picker("Transfer Mode", selection: $seedboxTransferMode) {
-                        Text("rclone rcat").tag("rclone")
-                        Text("WebDAV PUT").tag("webdav")
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(maxWidth: 320)
+    @ViewBuilder
+    private var selectedCloudDestinationFields: some View {
+        switch selectedCloudDestination {
+        case .mega:
+            GlassTextField(
+                label: "Remote path",
+                placeholder: "/Cloud/VidDL/",
+                text: $megaRemotePath,
+                help: "VidDL uploads completed Mega transfers into this folder after MEGAcmd is installed and signed in."
+            )
+        case .gdrive:
+            GlassTextField(
+                label: "Remote name",
+                placeholder: "gdrive",
+                text: $gdriveRemoteName,
+                help: "The remote name must match the Google Drive remote created in rclone."
+            )
+            GlassTextField(
+                label: "Remote path",
+                placeholder: "VidDL/",
+                text: $gdriveRemotePath
+            )
+        case .seedbox:
+            SettingsFieldRow("Transfer mode") {
+                Picker("Transfer Mode", selection: $seedboxTransferMode) {
+                    Text("rclone rcat").tag("rclone")
+                    Text("WebDAV PUT").tag("webdav")
                 }
-
-                seedboxModeFields
-                seedboxTestConnectionRow
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(maxWidth: 320)
             }
+
+            seedboxModeFields
+            seedboxTestConnectionRow
         }
     }
 
@@ -335,98 +316,6 @@ struct SettingsView: View {
         }
     }
 
-    private var uploadRulesCard: some View {
-        SettingsCard(tint: ProFeatureGate.canUseUploadRules ? Theme.lavender : Theme.coral) {
-            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
-                SettingsCardTitle(
-                    title: "Smart Upload Rules",
-                    subtitle: "Route completed downloads by quality or filename.",
-                    systemImage: "wand.and.stars",
-                    tint: ProFeatureGate.canUseUploadRules ? Theme.lavender : Theme.coral,
-                    status: ProFeatureGate.canUseUploadRules ? "Pro" : "Locked"
-                )
-
-                if ProFeatureGate.canUseUploadRules {
-                    uploadRulesEditor
-                } else {
-                    SettingsHelpText("Upload rules are Pro-only. Free downloads still use the default Mega target.")
-                    Button {
-                        onUpgradeRequired()
-                    } label: {
-                        Label("Upgrade to Pro", systemImage: "crown.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.coral)
-                    .controlSize(.small)
-                }
-            }
-        }
-    }
-
-    private var uploadRulesEditor: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if cloudHub.rules.isEmpty {
-                SettingsHelpText("No rules yet. VidDL uses Mega by default until a matching Pro rule is added.")
-            } else {
-                VStack(spacing: 7) {
-                    ForEach(cloudHub.rules) { rule in
-                        SettingsUploadRuleRow(rule: rule) {
-                            cloudHub.removeRule(rule)
-                        }
-                    }
-                }
-            }
-
-            SettingsDivider()
-
-            GlassTextField(label: "Name", placeholder: "4K to Mega", text: $uploadRuleName)
-
-            SettingsFieldRow("Quality") {
-                Picker("Quality", selection: $uploadRuleQuality) {
-                    Text("Any").tag("Any")
-                    Text(">= 2160p").tag(">=2160p")
-                    Text(">= 1080p").tag(">=1080p")
-                    Text(">= 720p").tag(">=720p")
-                    Text("<= 720p").tag("<=720p")
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(maxWidth: 420)
-            }
-
-            GlassTextField(
-                label: "Filename",
-                placeholder: "optional regex",
-                text: $uploadRulePattern,
-                help: "Leave blank to match only by quality."
-            )
-
-            SettingsFieldRow("Targets") {
-                HStack(spacing: 10) {
-                    Toggle("Mega", isOn: $uploadRuleMega)
-                    Toggle("Drive", isOn: $uploadRuleGDrive)
-                    Toggle("Seedbox", isOn: $uploadRuleSeedbox)
-                }
-                .toggleStyle(.checkbox)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.textSecondary)
-            }
-
-            HStack {
-                Spacer()
-                Button {
-                    addUploadRule()
-                } label: {
-                    Label("Add Rule", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.lavender)
-                .controlSize(.small)
-                .disabled(selectedUploadRuleTargets.isEmpty)
-            }
-        }
-    }
-
     private var subtitleBinding: Binding<Bool> {
         Binding(
             get: { downloadSubtitles && ProFeatureGate.canDownloadSubtitles },
@@ -453,32 +342,6 @@ struct SettingsView: View {
                 SleepPreventionManager.shared.update()
             }
         )
-    }
-
-    private var selectedUploadRuleTargets: [CloudProviderID] {
-        var targets: [CloudProviderID] = []
-        if uploadRuleMega { targets.append(.mega) }
-        if uploadRuleGDrive { targets.append(.gdrive) }
-        if uploadRuleSeedbox { targets.append(.seedbox) }
-        return targets
-    }
-
-    private func addUploadRule() {
-        let trimmedName = uploadRuleName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedPattern = uploadRulePattern.trimmingCharacters(in: .whitespacesAndNewlines)
-        let rule = UploadRule(
-            name: trimmedName.isEmpty ? "Upload Rule \(cloudHub.rules.count + 1)" : trimmedName,
-            qualityCondition: uploadRuleQuality == "Any" ? nil : uploadRuleQuality,
-            filenamePattern: trimmedPattern.isEmpty ? nil : trimmedPattern,
-            targets: selectedUploadRuleTargets
-        )
-        cloudHub.addRule(rule)
-        uploadRuleName = ""
-        uploadRuleQuality = "Any"
-        uploadRulePattern = ""
-        uploadRuleMega = true
-        uploadRuleGDrive = false
-        uploadRuleSeedbox = false
     }
 
     private var preferencesSection: some View {
@@ -703,7 +566,7 @@ struct SettingsView: View {
                     SettingsFeatureLine("Batch download more than \(ProFeatureGate.freeBatchLimit) items", tint: Theme.success)
                     SettingsFeatureLine("Multi-cloud simultaneous upload", tint: Theme.success)
                     SettingsFeatureLine("Video processing tools", tint: Theme.success)
-                    SettingsFeatureLine("Smart upload rules, audio, and subtitles", tint: Theme.success)
+                    SettingsFeatureLine("Audio downloads and subtitles", tint: Theme.success)
                 }
 
                 HStack {
@@ -747,7 +610,7 @@ struct SettingsView: View {
                     SettingsFeatureLine("Batch download more than \(ProFeatureGate.freeBatchLimit) items", tint: Theme.gold)
                     SettingsFeatureLine("Multi-cloud simultaneous upload", tint: Theme.skyBlue)
                     SettingsFeatureLine("Video processing tools", tint: Theme.coral)
-                    SettingsFeatureLine("Smart upload rules, audio, and subtitles", tint: Theme.lavender)
+                    SettingsFeatureLine("Audio downloads and subtitles", tint: Theme.lavender)
                 }
 
                 freeDownloadsMeter
@@ -845,45 +708,16 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
                 SettingsCardTitle(
                     title: "Info",
-                    subtitle: "Updates, extensions, and about VidDL.",
+                    subtitle: "Version and about VidDL.",
                     systemImage: "info.circle.fill",
                     tint: Theme.skyBlue
                 )
 
                 SettingsInfoRow(
                     title: "Version",
-                    detail: updater.currentVersion,
-                    systemImage: "arrow.triangle.2.circlepath",
+                    detail: currentVersion,
+                    systemImage: "tag.fill",
                     tint: Theme.skyBlue
-                ) {
-                    Button("Check for Updates") {
-                        updater.checkForUpdates()
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(!updater.isAvailable)
-                }
-
-                SettingsDivider()
-
-                SettingsInfoRow(
-                    title: "Safari Extension",
-                    detail: "Install via Safari Extensions.",
-                    systemImage: "safari.fill",
-                    tint: Theme.lavender
-                ) {
-                    Button("Open") {
-                        openExtensionsPreferences()
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-
-                SettingsInfoRow(
-                    title: "Share Extension",
-                    detail: "Available in the macOS Share menu.",
-                    systemImage: "square.and.arrow.up.fill",
-                    tint: Theme.gold
                 )
 
                 SettingsDivider()
@@ -897,12 +731,6 @@ struct SettingsView: View {
                     .controlSize(.small)
                 }
             }
-        }
-    }
-
-    private func openExtensionsPreferences() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preferences.extensions") {
-            NSWorkspace.shared.open(url)
         }
     }
 
@@ -943,6 +771,46 @@ private enum SettingsLayoutMetrics {
     static let iconBoxSize: CGFloat = 34
 }
 
+private enum CloudSettingsDestination: String, CaseIterable, Identifiable {
+    case mega
+    case gdrive
+    case seedbox
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .mega: return "Mega"
+        case .gdrive: return "Drive"
+        case .seedbox: return "Seedbox"
+        }
+    }
+
+    var fullTitle: String {
+        switch self {
+        case .mega: return "Mega Upload"
+        case .gdrive: return "Google Drive Upload"
+        case .seedbox: return "Seedbox Transfer"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .mega: return "Upload completed downloads into a MEGAcmd folder."
+        case .gdrive: return "Use rclone to upload completed files to a Google Drive remote."
+        case .seedbox: return "Stream direct downloads to a seedbox via rclone or WebDAV."
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .mega: return "cloud.fill"
+        case .gdrive: return "externaldrive.fill.badge.checkmark"
+        case .seedbox: return "server.rack"
+        }
+    }
+}
+
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case cloud
     case preferences
@@ -974,11 +842,11 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .cloud: return "Configure where completed downloads are uploaded."
+        case .cloud: return "Choose and configure one upload destination at a time."
         case .preferences: return "Notifications, download behavior, and helper tools."
         case .ai: return "xAI API key for Grok-powered taste profiles."
         case .pro: return "Your VidDL Pro license."
-        case .info: return "Updates, extensions, and about VidDL."
+        case .info: return "Version and about VidDL."
         }
     }
 
@@ -1449,49 +1317,6 @@ private struct SettingsToggleRow: View {
     }
 }
 
-private struct SettingsUploadRuleRow: View {
-    let rule: UploadRule
-    let remove: () -> Void
-
-    private var conditionText: String {
-        let quality = rule.qualityCondition ?? "Any quality"
-        let pattern = rule.filenamePattern.map { " · \($0)" } ?? ""
-        return quality + pattern
-    }
-
-    private var targetsText: String {
-        rule.targets.map(\.displayName).joined(separator: ", ")
-    }
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Image(systemName: "arrow.triangle.branch")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(Theme.lavender)
-                .frame(width: 22)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(rule.name)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Theme.textPrimary)
-                Text("\(conditionText) -> \(targetsText)")
-                    .font(.caption2)
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineLimit(2)
-            }
-
-            Spacer(minLength: 8)
-
-            Button(role: .destructive, action: remove) {
-                Image(systemName: "trash")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-        }
-        .padding(10)
-        .background(Theme.surface2.opacity(0.14), in: RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius))
-    }
-}
 
 private struct SettingsInfoRow<Action: View>: View {
     let title: String

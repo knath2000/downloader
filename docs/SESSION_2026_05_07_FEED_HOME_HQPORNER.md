@@ -116,8 +116,7 @@ The project now includes a user-facing `README.md` setup guide covering:
 - Optional MEGA, Google Drive, and seedbox setup.
 - First-launch dependency checks.
 - VidDL Pro licensing.
-- Sparkle updates.
-- `pmvdl://extract?url=<encoded-url>` browser integration.
+- `pmvdl://extract?url=<encoded-url>` local automation.
 
 ## Validation
 

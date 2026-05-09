@@ -22,7 +22,6 @@ struct ProFeatureGate {
     static var canDownloadConcurrent: Bool { isPro }
 
     static var canUseVideoProcessing: Bool { isPro }
-    static var canUseUploadRules: Bool { isPro }
     static var canDownloadAudio: Bool { isPro }
     static var canDownloadSubtitles: Bool { isPro }
 

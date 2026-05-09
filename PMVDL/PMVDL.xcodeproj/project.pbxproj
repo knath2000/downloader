@@ -30,7 +30,6 @@
 	A10052 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20052; };
 	A10021 /* DropHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20021; };
 	A10022 /* AboutWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20022; };
-	A10023 /* UpdateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20023; };
 	A10025 /* ProFeatureGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20025; };
 	A10026 /* UpgradeOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20026; };
 	A10027 /* IntentHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20027; };
@@ -55,7 +54,6 @@
 	A10064 /* HardwareID.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20064 /* HardwareID.swift */; };
 	A10062 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20062; };
 		A10063 /* GlassComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20063; };
-	A10066 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = A30002 /* Sparkle */; };
 	A10067 /* HistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20067 /* HistoryManager.swift */; };
 	A10068 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20068 /* HistoryView.swift */; };
 	A10071 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20071 /* SettingsView.swift */; };
@@ -130,6 +128,7 @@
 	T10018 /* RemoteFileTextPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20018 /* RemoteFileTextPolicyTests.swift */; };
 	T10019 /* RemoteFilesDisplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20019 /* RemoteFilesDisplayTests.swift */; };
 	T10020 /* VideoProcessingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20020 /* VideoProcessingTests.swift */; };
+	T10021 /* ProfileNarrativeFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20021 /* ProfileNarrativeFormatterTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -154,7 +153,6 @@
 	A20020 /* DownloadQueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadQueueView.swift; sourceTree = "<group>"; };
 	A20021 /* DropHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DropHandler.swift; sourceTree = "<group>"; };
 	A20022 /* AboutWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutWindow.swift; sourceTree = "<group>"; };
-	A20023 /* UpdateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateManager.swift; sourceTree = "<group>"; };
 	A20025 /* ProFeatureGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProFeatureGate.swift; sourceTree = "<group>"; };
 	A20026 /* UpgradeOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpgradeOverlay.swift; sourceTree = "<group>"; };
 	A20027 /* IntentHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntentHandler.swift; sourceTree = "<group>"; };
@@ -173,16 +171,9 @@
 	A20042 /* CloudSyncScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncScheduler.swift; sourceTree = "<group>"; };
 	A20043 /* WidgetDataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataStore.swift; sourceTree = "<group>"; };
 	A20047 /* ActiveWorkTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveWorkTracker.swift; sourceTree = "<group>"; };
-	A20044 /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
-	A20045 /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = background.js; sourceTree = "<group>"; };
-	A20046 /* contentScript.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = contentScript.js; sourceTree = "<group>"; };
 	A20050 /* CHANGELOG.md */ = {isa = PBXFileReference; lastKnownFileType = text; name = CHANGELOG.md; path = Resources/CHANGELOG.md; sourceTree = "<group>"; };
 	A20051 /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; name = LICENSE; path = Resources/LICENSE; sourceTree = "<group>"; };
 	A20052 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadManager.swift; sourceTree = "<group>"; };
-	A20029a /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Extensions/SafariExtension/manifest.json; sourceTree = "<group>"; };
-	A20029b /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = Extensions/SafariExtension/background.js; sourceTree = "<group>"; };
-	A20029c /* contentScript.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = Extensions/SafariExtension/contentScript.js; sourceTree = "<group>"; };
-	A20029d /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions/ShareExtension/ShareViewController.swift; sourceTree = "<group>"; };
 	A20057 /* StreamTapeExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamTapeExtractor.swift; sourceTree = "<group>"; };
 	A20058 /* MixDropExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MixDropExtractor.swift; sourceTree = "<group>"; };
 	A20059 /* DoodStreamExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoodStreamExtractor.swift; sourceTree = "<group>"; };
@@ -267,6 +258,7 @@
 	T20018 /* RemoteFileTextPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileTextPolicyTests.swift; sourceTree = "<group>"; };
 	T20019 /* RemoteFilesDisplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesDisplayTests.swift; sourceTree = "<group>"; };
 	T20020 /* VideoProcessingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoProcessingTests.swift; sourceTree = "<group>"; };
+	T20021 /* ProfileNarrativeFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileNarrativeFormatterTests.swift; sourceTree = "<group>"; };
 	T30001 /* VidDLTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VidDLTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -275,7 +267,6 @@
 		isa = PBXFrameworksBuildPhase;
 		buildActionMask = 2147483647;
 		files = (
-			A10066 /* Sparkle in Frameworks */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};
@@ -295,7 +286,6 @@
 			A50002 /* PMVDL */,
 			T50001 /* PMVDLTests */,
 			A50003 /* Products */,
-			A50004 /* Extensions */,
 			A50005 /* Resources */,
 		);
 		sourceTree = "<group>";
@@ -335,7 +325,6 @@
 			A20014 /* NotificationManager.swift */,
 			A20027 /* IntentHandler.swift */,
 			A20021 /* DropHandler.swift */,
-			A20023 /* UpdateManager.swift */,
 			A20061 /* LicenseManager.swift */,
 			A20064 /* HardwareID.swift */,
 			A20062 /* Theme.swift */,
@@ -513,17 +502,9 @@
 			T20018 /* RemoteFileTextPolicyTests.swift */,
 			T20019 /* RemoteFilesDisplayTests.swift */,
 			T20020 /* VideoProcessingTests.swift */,
+			T20021 /* ProfileNarrativeFormatterTests.swift */,
 		);
 		path = PMVDLTests;
-		sourceTree = "<group>";
-	};
-	A50004 /* Extensions */ = {
-		isa = PBXGroup;
-		children = (
-			A50006 /* SafariExtension */,
-			A50007 /* ShareExtension */,
-			A50008 /* ChromeExtension */,
-		);
 		sourceTree = "<group>";
 	};
 	A50005 /* Resources */ = {
@@ -534,37 +515,6 @@
 		);
 		name = Resources;
 		sourceTree = "<group>";
-	};
-	A50006 /* SafariExtension */ = {
-		isa = PBXGroup;
-		children = (
-			A20029a /* manifest.json */,
-			A20029b /* background.js */,
-			A20029c /* contentScript.js */,
-		);
-		name = SafariExtension;
-		sourceTree = "<group>";
-		path = Extensions/SafariExtension;
-	};
-	A50007 /* ShareExtension */ = {
-		isa = PBXGroup;
-		children = (
-			A20029d /* ShareViewController.swift */,
-		);
-		name = ShareExtension;
-		sourceTree = "<group>";
-		path = Extensions/ShareExtension;
-	};
-	A50008 /* ChromeExtension */ = {
-		isa = PBXGroup;
-		children = (
-			A20044 /* manifest.json */,
-			A20045 /* background.js */,
-			A20046 /* contentScript.js */,
-		);
-		name = ChromeExtension;
-		sourceTree = "<group>";
-		path = Extensions/ChromeExtension;
 	};
 	A50010 /* Extractors */ = {
 		isa = PBXGroup;
@@ -602,7 +552,6 @@
 		);
 		name = PMVDL;
 		packageProductDependencies = (
-			A30002 /* Sparkle */,
 		);
 		productName = VidDL;
 		productReference = A30001 /* VidDL.app */;
@@ -655,7 +604,6 @@
 		);
 		mainGroup = A50001;
 		packageReferences = (
-			A90002 /* XCRemoteSwiftPackageReference "Sparkle" */,
 		);
 		productRefGroup = A50003 /* Products */;
 		projectDirPath = "";
@@ -701,7 +649,6 @@
 			A10020 /* DownloadQueueView.swift in Sources */,
 			A10021 /* DropHandler.swift in Sources */,
 			A10022 /* AboutWindow.swift in Sources */,
-			A10023 /* UpdateManager.swift in Sources */,
 			A10025 /* ProFeatureGate.swift in Sources */,
 			A10026 /* UpgradeOverlay.swift in Sources */,
 			A10027 /* IntentHandler.swift in Sources */,
@@ -814,6 +761,7 @@
 			T10018 /* RemoteFileTextPolicyTests.swift in Sources */,
 			T10019 /* RemoteFilesDisplayTests.swift in Sources */,
 			T10020 /* VideoProcessingTests.swift in Sources */,
+			T10021 /* ProfileNarrativeFormatterTests.swift in Sources */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};
@@ -987,24 +935,6 @@
 	};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-	A90002 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
-		isa = XCRemoteSwiftPackageReference;
-		repositoryURL = "https://github.com/sparkle-project/Sparkle";
-		requirement = {
-			branch = "2.x";
-			kind = branch;
-		};
-	};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-	A30002 /* Sparkle */ = {
-		isa = XCSwiftPackageProductDependency;
-		package = A90002 /* XCRemoteSwiftPackageReference "Sparkle" */;
-		productName = Sparkle;
-	};
-/* End XCSwiftPackageProductDependency section */
 };
 rootObject = A90001 /* Project object */;
 }

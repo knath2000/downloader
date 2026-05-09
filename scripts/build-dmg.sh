@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build, sign, notarize, and package VidDL as a distributable DMG and Sparkle ZIP.
+# Build, sign, notarize, and package VidDL as a distributable DMG.
 #
 # Prerequisites (one-time setup):
 #   1. Apple Developer Program membership (developer.apple.com)
@@ -37,23 +37,6 @@ if [[ "$TEAM_ID" == "FILL_IN_TEAM_ID" ]]; then
     echo "ERROR: Set TEAM_ID in this script before running." >&2
     exit 1
 fi
-
-find_sparkle_sign_update() {
-    if [[ -n "${SPARKLE_SIGN_UPDATE:-}" && -x "${SPARKLE_SIGN_UPDATE:-}" ]]; then
-        printf '%s\n' "$SPARKLE_SIGN_UPDATE"
-        return 0
-    fi
-
-    if command -v sign_update >/dev/null 2>&1; then
-        command -v sign_update
-        return 0
-    fi
-
-    find ~/Library/Developer/Xcode/DerivedData \
-        \( -path "*/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update" \
-        -o -path "*/SourcePackages/checkouts/Sparkle/bin/sign_update" \) \
-        -type f -perm -111 2>/dev/null | head -1
-}
 
 # ── 1. Archive ────────────────────────────────────────────────────────────────
 echo "==> Archiving ${APP_NAME} ${VERSION} (${BUILD_NUMBER})..."
@@ -94,24 +77,7 @@ xcrun notarytool submit "/tmp/${APP_NAME}.zip" \
 echo "==> Stapling .app..."
 xcrun stapler staple "$APP"
 
-# ── 5. Create Sparkle ZIP ─────────────────────────────────────────────────────
-echo "==> Creating Sparkle ZIP..."
-ZIP_NAME="${APP_NAME}-${VERSION}.zip"
-ZIP_PATH="$(pwd)/${ZIP_NAME}"
-rm -f "$ZIP_PATH" "${ZIP_PATH}.sig.txt"
-ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP_PATH"
-
-# ── 6. EdDSA sign Sparkle ZIP ─────────────────────────────────────────────────
-echo "==> Signing Sparkle ZIP..."
-SPARKLE_BIN="$(find_sparkle_sign_update)"
-if [[ -z "$SPARKLE_BIN" ]]; then
-    echo "ERROR: Could not find Sparkle sign_update. Build once with Sparkle resolved, or set SPARKLE_SIGN_UPDATE." >&2
-    exit 1
-fi
-SIG_LINE="$("$SPARKLE_BIN" "$ZIP_PATH")"
-echo "$SIG_LINE" > "${ZIP_PATH}.sig.txt"
-
-# ── 7. Create DMG ─────────────────────────────────────────────────────────────
+# ── 5. Create DMG ─────────────────────────────────────────────────────────────
 echo "==> Creating DMG..."
 DMG_STAGING="/tmp/dmg-staging"
 rm -rf "$DMG_STAGING"
@@ -127,7 +93,7 @@ hdiutil create \
     -format UDZO \
     -o "$OUTPUT_DMG"
 
-# ── 8. Notarize the DMG ────────────────────────────────────────────────────────
+# ── 6. Notarize the DMG ────────────────────────────────────────────────────────
 echo "==> Notarizing DMG..."
 xcrun notarytool submit "$OUTPUT_DMG" \
     --keychain-profile "$NOTARY_PROFILE" \
@@ -135,7 +101,7 @@ xcrun notarytool submit "$OUTPUT_DMG" \
 
 xcrun stapler staple "$OUTPUT_DMG"
 
-# ── 9. Verify ─────────────────────────────────────────────────────────────────
+# ── 7. Verify ─────────────────────────────────────────────────────────────────
 echo "==> Verifying..."
 codesign --verify --deep --strict --verbose=2 "$APP"
 codesign --display --entitlements - "$APP"
@@ -146,5 +112,3 @@ spctl --assess --type open --context context:primary-signature "$APP" && \
 echo ""
 echo "==> Done:"
 echo "    DMG: $(pwd)/${OUTPUT_DMG}"
-echo "    ZIP: ${ZIP_PATH}"
-echo "    Signature: ${ZIP_PATH}.sig.txt"

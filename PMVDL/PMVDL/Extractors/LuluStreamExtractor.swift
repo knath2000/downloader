@@ -5,7 +5,7 @@ import Foundation
 /// contains an HLS master playlist URL on the tnmr.org CDN that requires the
 /// embed-page referer to fetch successfully.
 struct LuluStreamExtractor: VideoSiteExtractor {
-    private static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    private static let userAgent = NetworkConstants.chromeUserAgent
 
     private static let supportedDomains = [
         "luluvid.com", "luluvdo.com", "lulustream.com", "tnmr.org"

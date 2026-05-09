@@ -30,7 +30,7 @@ Webhook fulfillment is the source of truth. The success page is only the browser
 
 ## Lessons Learned
 
-- Stripe Checkout should not directly use a custom scheme as `success_url`; Safari can show an invalid URL page after payment.
+- Stripe Checkout should not directly use a custom scheme as `success_url`; a system browser can show an invalid URL page after payment.
 - Use a hosted HTTPS success page first, then expose the custom scheme as a secondary handoff link.
 - The app bundle registers `pmvdl`, so Worker and app handlers must use `pmvdl://license-success`, not `viddl://license-success`.
 - Existing extraction URLs also use `pmvdl://extract?url=...`; changing app handlers to `pmvdl` preserves that flow.

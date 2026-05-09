@@ -547,7 +547,7 @@ struct DoodStreamExtractor: VideoSiteExtractor {
     var request = URLRequest(url: urlObj)
     request.httpMethod = "HEAD"
     request.timeoutInterval = 30
-    request.setValue(NetworkConstants.safariUserAgent, forHTTPHeaderField: "User-Agent")
+    request.setValue(NetworkConstants.webViewUserAgent, forHTTPHeaderField: "User-Agent")
 
     do {
       let (_, response) = try await dataWithoutFollowingRedirects(for: request)
@@ -582,7 +582,7 @@ struct DoodStreamExtractor: VideoSiteExtractor {
     var request = URLRequest(url: urlObj)
     request.httpMethod = "GET"
     request.timeoutInterval = 30
-    request.setValue(NetworkConstants.safariUserAgent, forHTTPHeaderField: "User-Agent")
+    request.setValue(NetworkConstants.webViewUserAgent, forHTTPHeaderField: "User-Agent")
 
     do {
       let (_, response) = try await dataWithoutFollowingRedirects(for: request)

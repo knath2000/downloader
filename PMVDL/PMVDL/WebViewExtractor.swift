@@ -49,8 +49,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
             self.webView = WKWebView(frame: .zero, configuration: configuration)
             self.webView?.navigationDelegate = self
 
-            // Set user agent to match browser
-            self.webView?.customUserAgent = NetworkConstants.safariUserAgent
+            self.webView?.customUserAgent = NetworkConstants.webViewUserAgent
 
             let request = URLRequest(url: url)
             self.webView?.load(request)

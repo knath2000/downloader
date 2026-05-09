@@ -151,15 +151,7 @@ VidDL includes 3 free downloads.
 
 VidDL Pro unlocks unlimited downloads with a one-time $0.99 purchase. Purchase or activate Pro from the in-app upgrade prompt or the Pro section in Settings.
 
-## Keeping Updated
-
-VidDL checks for app updates automatically with Sparkle.
-
-To check manually, use:
-
-```text
-VidDL > Check for Updates...
-```
+## Keeping Dependencies Updated
 
 Keep command-line dependencies current with:
 
@@ -174,12 +166,10 @@ brew upgrade rclone
 brew upgrade --cask megacmd-app
 ```
 
-## Browser Integration and URL Scheme
+## Automation URL Scheme
 
-VidDL registers this custom URL scheme for browser extensions and automation:
+VidDL registers this custom URL scheme for local automation:
 
 ```text
 pmvdl://extract?url=<encoded-url>
 ```
-
-The included Chrome extension uses this scheme for one-click extraction from the browser.

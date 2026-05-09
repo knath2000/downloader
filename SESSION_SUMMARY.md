@@ -1,4 +1,10 @@
-# Latest Session - 2026-05-09 Feed/Profile/PornHub Downloads/Home Controls
+# Latest Session - 2026-05-09 Settings Scope Cleanup, Updater Removal, and Profile Formatting
+
+See `docs/SESSION_2026_05_09_SETTINGS_PROFILE_CLEANUP.md` for the durable summary of the selector-driven Cloud Destinations settings section, legacy upload automation removal, updater removal, legacy companion-scope removal, Profile AI Analysis formatting repair for flattened cached narratives, validation, and launch work.
+
+---
+
+# Previous Session - 2026-05-09 Feed/Profile/PornHub Downloads/Home Controls
 
 See `docs/SESSION_2026_05_09_FEED_PROFILE_PORNHUB_DOWNLOADS_HOME.md` for the durable summary of Feed lazy loading, smoother scrolling, PornHub subscription picker/parser fixes, Profile performer links to PornHub uploaders, PornHub stale CDN download refresh for HTTP 472, Home Resume All, Settings prevent-sleep behavior, validation, and launch work.
 

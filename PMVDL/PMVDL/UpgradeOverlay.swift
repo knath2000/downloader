@@ -29,7 +29,7 @@ struct UpgradeOverlay: View {
                     FeatureRow(icon: "checkmark.seal.fill", text: "Batch download more than \(ProFeatureGate.freeBatchLimit) items")
                     FeatureRow(icon: "checkmark.seal.fill", text: "Upload to multiple clouds at once")
                     FeatureRow(icon: "checkmark.seal.fill", text: "Video processing tools")
-                    FeatureRow(icon: "checkmark.seal.fill", text: "Smart upload rules, audio, and subtitles")
+                    FeatureRow(icon: "checkmark.seal.fill", text: "Audio downloads and subtitles")
                 }
                 .padding()
 
