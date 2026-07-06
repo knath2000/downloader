@@ -17,7 +17,6 @@ struct FeedCardView: View {
     let isScrolling: Bool
     let toggleFavorite: () -> Void
     let extract: () -> Void
-    let profileMatch: ProfileMatchReason?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject private var previewCoordinator = FeedPreviewCoordinator.shared
@@ -35,8 +34,7 @@ struct FeedCardView: View {
         downloadedMatch: DownloadedFeedMatch? = nil,
         isScrolling: Bool = false,
         toggleFavorite: @escaping () -> Void = {},
-        extract: @escaping () -> Void,
-        profileMatch: ProfileMatchReason? = nil
+        extract: @escaping () -> Void
     ) {
         self.item = item
         self.isFavorite = isFavorite
@@ -44,7 +42,6 @@ struct FeedCardView: View {
         self.isScrolling = isScrolling
         self.toggleFavorite = toggleFavorite
         self.extract = extract
-        self.profileMatch = profileMatch
     }
 
     private var tint: Color {
@@ -63,11 +60,6 @@ struct FeedCardView: View {
                 .padding(17)
         }
         .contentShape(RoundedRectangle(cornerRadius: FeedCardLayout.cornerRadius))
-        .overlay(alignment: .bottomTrailing) {
-            if let profileMatch, profileMatch.score > 0 {
-                profileMatchBadge(profileMatch)
-            }
-        }
         .onHover { hovering in
             handleHover(hovering)
         }
@@ -110,10 +102,6 @@ struct FeedCardView: View {
                     .lineLimit(FeedCardLayout.titleLineLimit)
                     .lineSpacing(1)
                     .help(item.title)
-
-                if let profileMatch, profileMatch.score > 0 {
-                    profileMatchSubtext(profileMatch)
-                }
 
                 if !metadataChips.isEmpty {
                     HStack(spacing: 5) {
@@ -282,40 +270,6 @@ struct FeedCardView: View {
         .buttonStyle(.plain)
         .help(isFavorite ? "Remove from Favorites" : "Add to Favorites")
         .accessibilityLabel(Text(isFavorite ? "Remove from Favorites" : "Add to Favorites"))
-    }
-
-    private func profileMatchBadge(_ match: ProfileMatchReason) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 9, weight: .black))
-            Text("Match")
-                .font(.system(size: 9, weight: .black))
-        }
-        .foregroundStyle(Theme.gold)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 4)
-        .background(Theme.gold.opacity(0.18), in: Capsule())
-        .overlay(Capsule().strokeBorder(Theme.gold.opacity(0.28), lineWidth: 0.5))
-        .padding(8)
-    }
-
-    private func profileMatchSubtext(_ match: ProfileMatchReason) -> some View {
-        HStack(alignment: .top, spacing: 5) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 9, weight: .black))
-                .foregroundStyle(Theme.gold)
-                .padding(.top, 2)
-            Text(match.subtext)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Theme.textSecondary)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.gold.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.gold.opacity(0.16), lineWidth: 0.5))
     }
 
     private var thumbnailImage: some View {
@@ -645,6 +599,8 @@ private enum FeedSiteDisplayName {
             return "OnlyFan420"
         case HQPornerFeedScraper.supportedHost:
             return "HQPorner"
+        case EpornerFeedScraper.supportedHost:
+            return "Eporner"
         default:
             return site
         }

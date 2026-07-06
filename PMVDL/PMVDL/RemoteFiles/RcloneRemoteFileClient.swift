@@ -71,22 +71,25 @@ final class RcloneRemoteFileClient: RemoteFileClient {
     private let remoteName: String
     private let rootPath: String
     private let rclone: URL
+    private let usesAbsoluteRemotePaths: Bool
 
     init(
         provider: RemoteFileProviderID,
         remoteName: String,
         rootPath: String,
-        rclone: URL
+        rclone: URL,
+        usesAbsoluteRemotePaths: Bool = false
     ) {
         self.provider = provider
         self.remoteName = remoteName.trimmingCharacters(in: .whitespacesAndNewlines)
         self.rootPath = RemotePath.normalizeDirectory(rootPath)
         self.rclone = rclone
+        self.usesAbsoluteRemotePaths = usesAbsoluteRemotePaths
     }
 
     func list(path: String) async throws -> RemoteDirectoryListing {
         let directory = absoluteRemotePath(forUIPath: path)
-        let destination = RemotePath.rclonePath(remoteName: remoteName, directory: directory)
+        let destination = rcloneDirectory(directory)
 
         let result = try await SubprocessRunner.run(
             executable: rclone,
@@ -111,7 +114,7 @@ final class RcloneRemoteFileClient: RemoteFileClient {
 
     func createFolder(named name: String, in directory: String) async throws {
         let path = absoluteRemotePath(forUIPath: RemotePath.joining(directory: directory, name: name))
-        let destination = RemotePath.rclonePath(remoteName: remoteName, directory: path)
+        let destination = rcloneDirectory(path)
 
         let result = try await SubprocessRunner.run(
             executable: rclone,
@@ -130,8 +133,8 @@ final class RcloneRemoteFileClient: RemoteFileClient {
         let destinationUI = RemotePath.joining(directory: parent, name: newName)
         let destinationAbsolute = absoluteRemotePath(forUIPath: destinationUI)
 
-        let source = RemotePath.rcloneFile(remoteName: remoteName, path: sourceAbsolute)
-        let destination = RemotePath.rcloneFile(remoteName: remoteName, path: destinationAbsolute)
+        let source = rcloneFile(sourceAbsolute)
+        let destination = rcloneFile(destinationAbsolute)
 
         let result = try await SubprocessRunner.run(
             executable: rclone,
@@ -152,8 +155,8 @@ final class RcloneRemoteFileClient: RemoteFileClient {
         let destinationUI = RemotePath.joining(directory: directory, name: targetName)
         let destinationAbsolute = absoluteRemotePath(forUIPath: destinationUI)
 
-        let source = RemotePath.rcloneFile(remoteName: remoteName, path: sourceAbsolute)
-        let destination = RemotePath.rcloneFile(remoteName: remoteName, path: destinationAbsolute)
+        let source = rcloneFile(sourceAbsolute)
+        let destination = rcloneFile(destinationAbsolute)
 
         let result = try await SubprocessRunner.run(
             executable: rclone,
@@ -179,12 +182,12 @@ final class RcloneRemoteFileClient: RemoteFileClient {
         let arguments: [String]
 
         if kind == .folder {
-            source = RemotePath.rcloneFile(remoteName: remoteName, path: sourceAbsolute)
-            destination = RemotePath.rcloneFile(remoteName: remoteName, path: destinationAbsolute)
+            source = rcloneFile(sourceAbsolute)
+            destination = rcloneFile(destinationAbsolute)
             arguments = ["copy", source, destination, "--create-empty-src-dirs"]
         } else {
-            source = RemotePath.rcloneFile(remoteName: remoteName, path: sourceAbsolute)
-            destination = RemotePath.rcloneFile(remoteName: remoteName, path: destinationAbsolute)
+            source = rcloneFile(sourceAbsolute)
+            destination = rcloneFile(destinationAbsolute)
             arguments = ["copyto", source, destination]
         }
 
@@ -205,10 +208,10 @@ final class RcloneRemoteFileClient: RemoteFileClient {
         let command: String
 
         if kind == .folder {
-            destination = RemotePath.rclonePath(remoteName: remoteName, directory: absolute)
+            destination = rcloneDirectory(absolute)
             command = "rmdir"
         } else {
-            destination = RemotePath.rcloneFile(remoteName: remoteName, path: absolute)
+            destination = rcloneFile(absolute)
             command = "deletefile"
         }
 
@@ -225,7 +228,7 @@ final class RcloneRemoteFileClient: RemoteFileClient {
 
     func downloadFile(at path: String, to localURL: URL) async throws {
         let absolute = absoluteRemotePath(forUIPath: path)
-        let source = RemotePath.rcloneFile(remoteName: remoteName, path: absolute)
+        let source = rcloneFile(absolute)
 
         let result = try await SubprocessRunner.run(
             executable: rclone,
@@ -245,7 +248,7 @@ final class RcloneRemoteFileClient: RemoteFileClient {
 
         let destinationUI = RemotePath.joining(directory: directory, name: name)
         let absolute = absoluteRemotePath(forUIPath: destinationUI)
-        let destination = RemotePath.rcloneFile(remoteName: remoteName, path: absolute)
+        let destination = rcloneFile(absolute)
 
         let result = try await SubprocessRunner.run(
             executable: rclone,
@@ -306,6 +309,20 @@ final class RcloneRemoteFileClient: RemoteFileClient {
         }
 
         return RemotePath.normalizeDirectory(root + "/" + String(ui.dropFirst()))
+    }
+
+    private func rcloneDirectory(_ directory: String) -> String {
+        if usesAbsoluteRemotePaths {
+            return RemotePath.rcloneAbsolutePath(remoteName: remoteName, directory: directory)
+        }
+        return RemotePath.rclonePath(remoteName: remoteName, directory: directory)
+    }
+
+    private func rcloneFile(_ path: String) -> String {
+        if usesAbsoluteRemotePaths {
+            return RemotePath.rcloneAbsoluteFile(remoteName: remoteName, path: path)
+        }
+        return RemotePath.rcloneFile(remoteName: remoteName, path: path)
     }
 
     private func cleanRcloneError(_ stderr: String) -> String {

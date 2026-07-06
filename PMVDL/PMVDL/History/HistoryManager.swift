@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 final class HistoryManager: ObservableObject {
     static let shared = HistoryManager()
 
@@ -87,6 +88,7 @@ final class HistoryManager: ObservableObject {
         if let encoded = try? JSONEncoder().encode(completedUploads) {
             UserDefaults.standard.set(encoded, forKey: completedUploadsKey)
         }
+        LibraryPipelineStore.shared.rebuild(completedUploads: completedUploads)
     }
 
     private func cleanTitle(_ title: String?, fallback: String) -> String {

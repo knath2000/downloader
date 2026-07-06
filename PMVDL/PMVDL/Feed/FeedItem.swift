@@ -196,6 +196,103 @@ enum PornHubSection: String, CaseIterable, Identifiable {
     }
 }
 
+enum EpornerSection: String, CaseIterable, Identifiable {
+    case recommended
+    case hot
+    case newest
+    case subscriptions
+    case liked
+    case favorites
+    case watchLater
+    case history
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .recommended: return "Recommended"
+        case .hot: return "Hot"
+        case .newest: return "Newest"
+        case .subscriptions: return "Subscriptions"
+        case .liked: return "Liked"
+        case .favorites: return "Favorites"
+        case .watchLater: return "Watch Later"
+        case .history: return "History"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .recommended: return "sparkles"
+        case .hot: return "flame.fill"
+        case .newest: return "clock.fill"
+        case .subscriptions: return "bell.fill"
+        case .liked: return "hand.thumbsup.fill"
+        case .favorites: return "star.fill"
+        case .watchLater: return "bookmark.fill"
+        case .history: return "clock.arrow.circlepath"
+        }
+    }
+
+    var requiresLogin: Bool {
+        switch self {
+        case .recommended, .hot, .newest:
+            return false
+        case .subscriptions, .liked, .favorites, .watchLater, .history:
+            return true
+        }
+    }
+
+    var preservesFeedOrder: Bool {
+        requiresLogin
+    }
+
+    func feedURL(page: Int) -> URL? {
+        let pageQuery = page > 1 ? "?p=\(page)" : ""
+        switch self {
+        case .recommended:
+            guard var components = URLComponents(string: "https://www.eporner.com/") else { return nil }
+            if let queryItems = components.queryItems {
+                components.queryItems = queryItems + (pageQuery.isEmpty ? [] : [URLQueryItem(name: "p", value: "\(page)")])
+            } else if !pageQuery.isEmpty {
+                components.query = pageQuery
+            }
+            return components.url
+        case .hot:
+            guard var components = URLComponents(string: "https://www.eporner.com/hot/") else { return nil }
+            if !pageQuery.isEmpty { components.queryItems = [URLQueryItem(name: "p", value: "\(page)")] }
+            return components.url
+        case .newest:
+            guard var components = URLComponents(string: "https://www.eporner.com/") else { return nil }
+            components.queryItems = [URLQueryItem(name: "o", value: "new")]
+            if page > 1 {
+                components.queryItems?.append(URLQueryItem(name: "p", value: "\(page)"))
+            }
+            return components.url
+        case .subscriptions:
+            guard let base = URL(string: "https://www.eporner.com/my-subscriptions/") else { return nil }
+            if page <= 1 { return base }
+            return URL(string: "\(base.absoluteString)?p=\(page)")
+        case .liked:
+            guard let base = URL(string: "https://www.eporner.com/my-likes/") else { return nil }
+            if page <= 1 { return base }
+            return URL(string: "\(base.absoluteString)?p=\(page)")
+        case .favorites:
+            guard let base = URL(string: "https://www.eporner.com/my-favourites/") else { return nil }
+            if page <= 1 { return base }
+            return URL(string: "\(base.absoluteString)?p=\(page)")
+        case .watchLater:
+            guard let base = URL(string: "https://www.eporner.com/watch-later/") else { return nil }
+            if page <= 1 { return base }
+            return URL(string: "\(base.absoluteString)?p=\(page)")
+        case .history:
+            guard let base = URL(string: "https://www.eporner.com/history/") else { return nil }
+            if page <= 1 { return base }
+            return URL(string: "\(base.absoluteString)?p=\(page)")
+        }
+    }
+}
+
 enum FeedDateFilter: String, CaseIterable, Identifiable {
     case today
     case yesterday
@@ -251,7 +348,6 @@ enum FeedSortMode: String, CaseIterable, Identifiable {
     case longest
     case titleAZ
     case siteThenNewest
-    case profileCurated = "profileCurated"
 
     var id: String { rawValue }
 
@@ -265,7 +361,6 @@ enum FeedSortMode: String, CaseIterable, Identifiable {
         case .longest: return "Longest"
         case .titleAZ: return "Title A-Z"
         case .siteThenNewest: return "Site + Newest"
-        case .profileCurated: return "Profile Match"
         }
     }
 
@@ -298,8 +393,6 @@ enum FeedSortMode: String, CaseIterable, Identifiable {
                 }
                 return $0.siteName.localizedCaseInsensitiveCompare($1.siteName) == .orderedAscending
             }
-        case .profileCurated:
-            return items
         }
     }
 }
@@ -327,8 +420,6 @@ struct FeedSiteCapabilities {
                 return true
             case .siteThenNewest:
                 return false
-            case .profileCurated:
-                return true
             }
         }
     }
@@ -369,6 +460,15 @@ struct FeedSiteCapabilities {
         groupsByDate: false
     )
 
+    static let eporner = FeedSiteCapabilities(
+        hasRealDates: true,
+        hasViewCounts: true,
+        hasDuration: true,
+        hasStudios: true,
+        hasQualityLabels: false,
+        groupsByDate: false
+    )
+
     static func capabilities(for site: String) -> FeedSiteCapabilities {
         switch site {
         case AllPornStreamFeedScraper.supportedHost:
@@ -379,6 +479,8 @@ struct FeedSiteCapabilities {
             return .hqporner
         case PornHubFeedScraper.supportedHost:
             return .pornhub
+        case EpornerFeedScraper.supportedHost:
+            return .eporner
         default:
             return .allPornStream
         }
@@ -424,6 +526,14 @@ struct FeedSiteTheme {
         logoText: ("Porn", "Hub")
     )
 
+    static let eporner = FeedSiteTheme(
+        accent: Color(hex: "#FFB000"),
+        backgroundTint: Color(hex: "#1A1200"),
+        displayName: "Eporner",
+        icon: "play.tv.fill",
+        logoText: ("E", "PORNER")
+    )
+
     static func theme(for site: String) -> FeedSiteTheme {
         switch site {
         case AllPornStreamFeedScraper.supportedHost:
@@ -434,6 +544,8 @@ struct FeedSiteTheme {
             return .hqporner
         case PornHubFeedScraper.supportedHost:
             return .pornhub
+        case EpornerFeedScraper.supportedHost:
+            return .eporner
         default:
             return .allPornStream
         }

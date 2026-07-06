@@ -66,7 +66,7 @@ struct DependencySetupPanel: View {
                 DependencyCheck(
                     id: "ffmpeg",
                     title: "ffmpeg",
-                    detail: "HLS downloads and video processing",
+                    detail: "HLS downloads and video verification",
                     status: ffmpegReady ? "Ready" : "Missing",
                     command: ffmpegReady ? nil : "brew install ffmpeg",
                     isReady: ffmpegReady

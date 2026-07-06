@@ -4,6 +4,29 @@ import SwiftUI
 enum PerformanceProfile: Equatable {
     case normal
     case reducedEffects
+
+    static func automatic(reduceMotion: Bool, isLowPowerModeEnabled: Bool) -> PerformanceProfile {
+        if reduceMotion || isLowPowerModeEnabled || isIntelBuild {
+            return .reducedEffects
+        }
+        return .normal
+    }
+
+    var allowsExpensiveEffects: Bool {
+        self == .normal
+    }
+
+    var allowsLoadingAnimation: Bool {
+        self == .normal
+    }
+
+    private static var isIntelBuild: Bool {
+        #if arch(x86_64)
+        true
+        #else
+        false
+        #endif
+    }
 }
 
 private struct PerformanceProfileKey: EnvironmentKey {
@@ -14,6 +37,40 @@ extension EnvironmentValues {
     var performanceProfile: PerformanceProfile {
         get { self[PerformanceProfileKey.self] }
         set { self[PerformanceProfileKey.self] = newValue }
+    }
+}
+
+enum AppShellSurfaceMetrics {
+    static func pageMaxWidth(for windowSize: CGSize) -> CGFloat {
+        clamped(windowSize.width * 0.96, min: 1180, max: 1900)
+    }
+
+    static func mainPanelWidth(for windowSize: CGSize) -> CGFloat {
+        clamped(windowSize.width * 0.90, min: 848, max: 1680)
+    }
+
+    static func mainPanelHeight(for windowSize: CGSize) -> CGFloat {
+        clamped(windowSize.height * 0.70, min: 560, max: 820)
+    }
+
+    static func workflowModalWidth(for windowSize: CGSize) -> CGFloat {
+        clamped(windowSize.width * 0.78, min: 900, max: 1440)
+    }
+
+    static func workflowModalHeight(for windowSize: CGSize) -> CGFloat {
+        clamped(windowSize.height * 0.76, min: 620, max: 900)
+    }
+
+    static func detailModalWidth(for windowSize: CGSize) -> CGFloat {
+        clamped(windowSize.width * 0.52, min: 620, max: 960)
+    }
+
+    static func detailModalHeight(for windowSize: CGSize) -> CGFloat {
+        clamped(windowSize.height * 0.74, min: 720, max: 860)
+    }
+
+    private static func clamped(_ value: CGFloat, min minimum: CGFloat, max maximum: CGFloat) -> CGFloat {
+        Swift.min(Swift.max(value, minimum), maximum)
     }
 }
 
@@ -92,7 +149,7 @@ struct MeshGradientBackground: View {
     }
 
     private var shouldAnimate: Bool {
-        isActive && performanceProfile == .normal
+        isActive && performanceProfile.allowsExpensiveEffects
     }
 
     @ViewBuilder
@@ -140,15 +197,15 @@ struct GlassCard: ViewModifier {
     }
 
     private var shadowOpacity: Double {
-        performanceProfile == .reducedEffects ? 0.24 : 0.45
+        performanceProfile == .reducedEffects ? 0.16 : 0.28
     }
 
     private var shadowRadius: CGFloat {
-        performanceProfile == .reducedEffects ? 7 : 14
+        performanceProfile == .reducedEffects ? 6 : 10
     }
 
     private var shadowY: CGFloat {
-        performanceProfile == .reducedEffects ? 3 : 6
+        performanceProfile == .reducedEffects ? 2 : 4
     }
 
     @ViewBuilder
@@ -162,20 +219,33 @@ struct GlassCard: ViewModifier {
             lineWidth: 1
         )
         if #available(macOS 26, *) {
-            content
-                .glassEffect(.regular.tint(tint), in: shape)
-                .overlay(border)
-                .shadow(color: .black.opacity(shadowOpacity), radius: shadowRadius, x: 0, y: shadowY)
+            if performanceProfile.allowsExpensiveEffects {
+                content
+                    .glassEffect(.regular.tint(tint), in: shape)
+                    .overlay(border)
+                    .shadow(color: .black.opacity(shadowOpacity), radius: shadowRadius, x: 0, y: shadowY)
+            } else {
+                content
+                    .background(
+                        ZStack {
+                            shape.fill(Theme.surface0.opacity(0.82))
+                            shape.fill(tint.opacity(0.08))
+                        }
+                    )
+                    .clipShape(shape)
+                    .overlay(border)
+                    .shadow(color: .black.opacity(shadowOpacity), radius: shadowRadius, x: 0, y: shadowY)
+            }
         } else {
             content
                 .background(
                     ZStack {
-                        if performanceProfile == .normal {
+                        if performanceProfile.allowsExpensiveEffects {
                             shape.fill(.ultraThinMaterial)
                         } else {
-                            shape.fill(Theme.surface0.opacity(0.72))
+                            shape.fill(Theme.surface0.opacity(0.82))
                         }
-                        shape.fill(tint.opacity(0.14))
+                        shape.fill(tint.opacity(0.08))
                     }
                 )
                 .clipShape(shape)

@@ -1,28 +1,16 @@
 import Foundation
 
-struct ProfileMatchReason {
-    let score: Int
-    let matchedPerformers: [String]
-    let matchedTitlePerformers: [String]
-    let matchedCategories: [String]
-    let matchedTags: [String]
-    let matchedStudio: String?
-    let matchedQuality: [String]
-
-    var subtext: String {
-        var parts = ["Score \(score)"]
-        if !matchedPerformers.isEmpty { parts.append("Performers: \(matchedPerformers.joined(separator: ", "))") }
-        if !matchedTitlePerformers.isEmpty { parts.append("Performer in title: \(matchedTitlePerformers.joined(separator: ", "))") }
-        if !matchedCategories.isEmpty { parts.append("Categories: \(matchedCategories.joined(separator: ", "))") }
-        if !matchedTags.isEmpty { parts.append("Tags: \(matchedTags.joined(separator: ", "))") }
-        if let matchedStudio { parts.append("Studio: \(matchedStudio)") }
-        if !matchedQuality.isEmpty { parts.append("Quality: \(matchedQuality.joined(separator: ", "))") }
-        return parts.joined(separator: " - ")
-    }
-}
-
 struct PornHubFeedReturnState {
     let section: PornHubSection
+    let items: [FeedItem]
+    let currentPage: Int
+    let hasMore: Bool
+    let sortMode: FeedSortMode
+    let anchorID: String?
+}
+
+struct EpornerFeedReturnState {
+    let section: EpornerSection
     let items: [FeedItem]
     let currentPage: Int
     let hasMore: Bool
@@ -47,6 +35,12 @@ final class FeedViewModel: ObservableObject {
     @Published var pornHubSubscriptions: [PornHubSubscription] = []
     @Published var isLoadingPornHubSubscriptions = false
     @Published var pornHubSubscriptionsError: String?
+    @Published var selectedEpornerSection: EpornerSection = .recommended
+    @Published var epornerUploaderURL: String?
+    @Published var epornerUploaderName: String?
+    @Published var epornerSubscriptions: [PornHubSubscription] = []
+    @Published var isLoadingEpornerSubscriptions = false
+    @Published var epornerSubscriptionsError: String?
     @Published var filters = FeedFilterState() {
         didSet { rebuildDerivedState() }
     }
@@ -57,7 +51,6 @@ final class FeedViewModel: ObservableObject {
     @Published var pendingScrollRestoreID: String?
     @Published private(set) var filteredItems: [FeedItem] = []
     @Published private(set) var dayBuckets: [FeedDayBucket] = []
-    @Published private(set) var profileMatchReasons: [String: ProfileMatchReason] = [:]
     @Published private(set) var availableSites: [String] = []
     @Published private(set) var availableStudios: [String] = []
     @Published private(set) var availableCategories: [String] = []
@@ -67,6 +60,7 @@ final class FeedViewModel: ObservableObject {
     private var resolvingDateIDs: Set<String> = []
     private var visibleFeedAnchorID: String?
     private var pornHubReturnState: PornHubFeedReturnState?
+    private var epornerReturnState: EpornerFeedReturnState?
     private var lastViewportPrefetchToken: String?
 
     init() {
@@ -75,30 +69,12 @@ final class FeedViewModel: ObservableObject {
 
     private func buildFilteredItems() -> [FeedItem] {
         let base = items.filter { filters.matches($0) }
-        guard sortMode == .profileCurated else {
-            return sortMode.sort(base)
-        }
-
-        if case .loaded(let result) = ProfileViewModel.shared.state {
-            let scored = base.map { ($0, profileMatchReason($0, stats: result.stats)) }
-            let matched = scored.filter { $0.1.score > 0 }.sorted { $0.1.score > $1.1.score }
-            return matched.map { $0.0 }
-        }
-        return base
-    }
-
-    private func buildProfileMatchReasons() -> [String: ProfileMatchReason] {
-        guard sortMode == .profileCurated,
-              case .loaded(let result) = ProfileViewModel.shared.state else { return [:] }
-        return Dictionary(uniqueKeysWithValues: items.map {
-            ($0.id, profileMatchReason($0, stats: result.stats))
-        })
+        return sortMode.sort(base)
     }
 
     func rebuildDerivedState() {
         let nextFilteredItems = buildFilteredItems()
         filteredItems = nextFilteredItems
-        profileMatchReasons = buildProfileMatchReasons()
         dayBuckets = Dictionary(grouping: nextFilteredItems) { item in
             Calendar.current.startOfDay(for: item.uploadDate)
         }
@@ -124,6 +100,7 @@ final class FeedViewModel: ObservableObject {
     func refresh(clearPornHubReturnState: Bool = true) async {
         if clearPornHubReturnState {
             discardPornHubReturnState()
+            discardEpornerReturnState()
         }
         lastViewportPrefetchToken = nil
         currentPage = 0
@@ -145,6 +122,15 @@ final class FeedViewModel: ObservableObject {
                 selectedPornHubSection: selectedPornHubSection,
                 pornHubUploaderURL: pornHubUploaderURL,
                 isLoggedIn: PornHubSessionManager.shared.isLoggedIn
+            ) {
+                hasMore = false
+                return
+            }
+            if Self.shouldBlockEpornerLoadForLogin(
+                selectedSite: selectedSite,
+                selectedEpornerSection: selectedEpornerSection,
+                epornerUploaderURL: epornerUploaderURL,
+                isLoggedIn: EpornerSessionManager.shared.isLoggedIn
             ) {
                 hasMore = false
                 return
@@ -172,6 +158,8 @@ final class FeedViewModel: ObservableObject {
                 selectedSite: selectedSite,
                 selectedPornHubSection: selectedPornHubSection,
                 pornHubUploaderURL: pornHubUploaderURL,
+                selectedEpornerSection: selectedEpornerSection,
+                epornerUploaderURL: epornerUploaderURL,
                 filters: filters,
                 pageItems: pageItems
             ) {
@@ -209,7 +197,7 @@ final class FeedViewModel: ObservableObject {
         )
         guard triggerIDs.contains(appearedItemID) else { return }
 
-        let token = "\(selectedSite)|\(selectedPornHubSection.rawValue)|\(pornHubUploaderURL ?? "")|\(currentPage)|\(filteredItems.count)"
+        let token = "\(selectedSite)|\(selectedPornHubSection.rawValue)|\(pornHubUploaderURL ?? "")|\(selectedEpornerSection.rawValue)|\(epornerUploaderURL ?? "")|\(currentPage)|\(filteredItems.count)"
         guard lastViewportPrefetchToken != token else { return }
         lastViewportPrefetchToken = token
         await loadMoreMatchingCurrentFilters(pageBudget: pageBudget)
@@ -225,6 +213,8 @@ final class FeedViewModel: ObservableObject {
 
         resolvingDateIDs.formUnion(approximate.map(\.id))
 
+        var resolvedDates: [String: Date] = [:]
+
         await withTaskGroup(of: (String, Date?).self) { group in
             for item in approximate {
                 let id = item.id
@@ -237,10 +227,23 @@ final class FeedViewModel: ObservableObject {
 
             for await (id, date) in group {
                 resolvingDateIDs.remove(id)
-                guard let date,
-                      let index = items.firstIndex(where: { $0.id == id }) else { continue }
-                items[index] = items[index].withUploadDate(date, isApproximate: false)
+                guard let date else { continue }
+                resolvedDates[id] = date
             }
+        }
+
+        guard !resolvedDates.isEmpty else { return }
+
+        var updated = items
+        var didChange = false
+        for index in updated.indices {
+            if let date = resolvedDates[updated[index].id] {
+                updated[index] = updated[index].withUploadDate(date, isApproximate: false)
+                didChange = true
+            }
+        }
+        if didChange {
+            items = updated
         }
     }
 
@@ -253,93 +256,6 @@ final class FeedViewModel: ObservableObject {
     func clearFilters() {
         filters = FeedFilterState()
         resetPaginationForFilter()
-    }
-
-    private func profileMatchReason(_ item: FeedItem, stats: ProfileStats) -> ProfileMatchReason {
-        var score = 0
-        var matchedPerformers: [String] = []
-        var matchedTitlePerformers: [String] = []
-        var matchedCategories: [String] = []
-        var matchedTags: [String] = []
-        var matchedStudio: String?
-        var matchedQuality: [String] = []
-        let title = FeedDisplay.title(for: item)
-
-        for (i, entry) in stats.topPerformers.enumerated() {
-            let explicitMatch = item.performers.contains { $0.caseInsensitiveCompare(entry.name) == .orderedSame }
-            let titleMatch = titleContainsProfileName(entry.name, in: title)
-            if explicitMatch {
-                score += max(10 - i, 1) * entry.count
-                matchedPerformers.append(entry.name)
-            } else if titleMatch {
-                score += max(9 - i, 1) * entry.count
-                matchedTitlePerformers.append(entry.name)
-            }
-        }
-        for (i, entry) in stats.topCategories.enumerated() {
-            if item.categories.contains(where: { $0.caseInsensitiveCompare(entry.name) == .orderedSame }) {
-                score += max(8 - i, 1) * entry.count
-                matchedCategories.append(entry.name)
-            }
-        }
-        for tag in item.tags {
-            if let entry = stats.topTags.first(where: { $0.name.caseInsensitiveCompare(tag) == .orderedSame }) {
-                score += entry.count
-                matchedTags.append(entry.name)
-            }
-        }
-        if let studio = item.studio,
-           let entry = stats.topStudios.first(where: { $0.name.caseInsensitiveCompare(studio) == .orderedSame }) {
-            score += 5
-            matchedStudio = entry.name
-        }
-        for (i, entry) in stats.preferredQuality.enumerated() {
-            if item.qualityLabels.contains(where: { $0.caseInsensitiveCompare(entry.name) == .orderedSame }) {
-                score += max(3 - i, 1)
-                matchedQuality.append(entry.name)
-            }
-        }
-        return ProfileMatchReason(
-            score: score,
-            matchedPerformers: matchedPerformers,
-            matchedTitlePerformers: matchedTitlePerformers,
-            matchedCategories: matchedCategories,
-            matchedTags: matchedTags,
-            matchedStudio: matchedStudio,
-            matchedQuality: matchedQuality
-        )
-    }
-
-    private func titleContainsProfileName(_ name: String, in title: String) -> Bool {
-        let nameTokens = normalizedTokens(name)
-        let titleTokens = normalizedTokens(title)
-        guard !nameTokens.isEmpty, !titleTokens.isEmpty else { return false }
-        if containsSequence(nameTokens, in: titleTokens) {
-            return true
-        }
-
-        let compactName = nameTokens.joined()
-        guard compactName.count >= 6 else { return false }
-        return titleTokens.joined().contains(compactName)
-    }
-
-    private func containsSequence(_ needle: [String], in haystack: [String]) -> Bool {
-        guard !needle.isEmpty, needle.count <= haystack.count else { return false }
-        for index in 0...(haystack.count - needle.count) {
-            if Array(haystack[index..<(index + needle.count)]) == needle {
-                return true
-            }
-        }
-        return false
-    }
-
-    private func normalizedTokens(_ value: String) -> [String] {
-        value
-            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
-            .lowercased()
-            .replacingOccurrences(of: #"[^a-z0-9]+"#, with: " ", options: .regularExpression)
-            .split(separator: " ")
-            .map(String.init)
     }
 
     func selectPornHubSection(_ section: PornHubSection) async {
@@ -361,24 +277,6 @@ final class FeedViewModel: ObservableObject {
         await refresh(clearPornHubReturnState: false)
     }
 
-    @discardableResult
-    func configurePornHubUploaderFromProfile(url: String, name: String) -> Bool {
-        guard let normalizedURL = PornHubFeedScraper.normalizedUploaderURL(url) else { return false }
-        selectedSite = PornHubFeedScraper.supportedHost
-        selectedPornHubSection = .recommended
-        filters = FeedFilterState()
-        discardPornHubReturnState()
-        pornHubUploaderURL = normalizedURL
-        pornHubUploaderName = name
-        applyPornHubDefaultSortForCurrentContext()
-        return true
-    }
-
-    func openPornHubUploaderFromProfile(url: String, name: String) async {
-        guard configurePornHubUploaderFromProfile(url: url, name: name) else { return }
-        await refresh(clearPornHubReturnState: false)
-    }
-
     func pornHubUploaderBack() async {
         if restorePornHubReturnState() {
             return
@@ -395,9 +293,49 @@ final class FeedViewModel: ObservableObject {
         discardPornHubReturnState()
     }
 
+    func selectEpornerSection(_ section: EpornerSection) async {
+        guard selectedEpornerSection != section else { return }
+        discardEpornerReturnState()
+        epornerUploaderURL = nil
+        epornerUploaderName = nil
+        selectedEpornerSection = section
+        applyEpornerDefaultSortForCurrentContext()
+        await refresh()
+    }
+
+    func navigateToEpornerUploader(url: String, name: String) async {
+        guard let normalizedURL = EpornerFeedScraper.normalizedUploaderURL(url) else { return }
+        captureEpornerReturnStateIfNeeded()
+        epornerUploaderURL = normalizedURL
+        epornerUploaderName = name
+        applyEpornerDefaultSortForCurrentContext()
+        await refresh(clearPornHubReturnState: false)
+    }
+
+    func epornerUploaderBack() async {
+        if restoreEpornerReturnState() {
+            return
+        }
+        epornerUploaderURL = nil
+        epornerUploaderName = nil
+        applyEpornerDefaultSortForCurrentContext()
+        await refresh()
+    }
+
+    func clearEpornerContext() {
+        epornerUploaderURL = nil
+        epornerUploaderName = nil
+        discardEpornerReturnState()
+    }
+
     func applyPornHubDefaultSortForCurrentContext() {
         guard selectedSite == PornHubFeedScraper.supportedHost else { return }
         sortMode = usesPornHubSourceOrder ? .feedOrder : .newest
+    }
+
+    func applyEpornerDefaultSortForCurrentContext() {
+        guard selectedSite == EpornerFeedScraper.supportedHost else { return }
+        sortMode = usesEpornerSourceOrder ? .feedOrder : .newest
     }
 
     func recordVisibleFeedAnchor(_ id: String?) {
@@ -414,12 +352,31 @@ final class FeedViewModel: ObservableObject {
         pendingScrollRestoreID = nil
     }
 
+    func discardEpornerReturnState() {
+        epornerReturnState = nil
+        pendingScrollRestoreID = nil
+    }
+
     func capturePornHubReturnStateIfNeeded() {
         guard selectedSite == PornHubFeedScraper.supportedHost,
               pornHubUploaderURL == nil,
               !items.isEmpty else { return }
         pornHubReturnState = PornHubFeedReturnState(
             section: selectedPornHubSection,
+            items: items,
+            currentPage: currentPage,
+            hasMore: hasMore,
+            sortMode: sortMode,
+            anchorID: visibleFeedAnchorID ?? filteredItems.first?.id
+        )
+    }
+
+    func captureEpornerReturnStateIfNeeded() {
+        guard selectedSite == EpornerFeedScraper.supportedHost,
+              epornerUploaderURL == nil,
+              !items.isEmpty else { return }
+        epornerReturnState = EpornerFeedReturnState(
+            section: selectedEpornerSection,
             items: items,
             currentPage: currentPage,
             hasMore: hasMore,
@@ -444,6 +401,22 @@ final class FeedViewModel: ObservableObject {
         return true
     }
 
+    @discardableResult
+    func restoreEpornerReturnState() -> Bool {
+        guard let state = epornerReturnState else { return false }
+        epornerReturnState = nil
+        selectedEpornerSection = state.section
+        epornerUploaderURL = nil
+        epornerUploaderName = nil
+        items = state.items
+        currentPage = state.currentPage
+        hasMore = state.hasMore
+        sortMode = state.sortMode
+        error = nil
+        pendingScrollRestoreID = state.anchorID
+        return true
+    }
+
     func loadPornHubSubscriptionsIfNeeded() async {
         guard selectedSite == PornHubFeedScraper.supportedHost,
               PornHubSessionManager.shared.isLoggedIn,
@@ -458,6 +431,39 @@ final class FeedViewModel: ObservableObject {
             pornHubSubscriptions = try await PornHubFeedScraper.fetchSubscriptions()
         } catch {
             pornHubSubscriptionsError = error.localizedDescription
+        }
+    }
+
+    func loadEpornerSubscriptionsIfNeeded() async {
+        guard selectedSite == EpornerFeedScraper.supportedHost,
+              EpornerSessionManager.shared.isLoggedIn,
+              epornerSubscriptions.isEmpty,
+              !isLoadingEpornerSubscriptions else { return }
+
+        isLoadingEpornerSubscriptions = true
+        epornerSubscriptionsError = nil
+        defer { isLoadingEpornerSubscriptions = false }
+
+        do {
+            epornerSubscriptions = try await EpornerFeedScraper.fetchSubscriptions()
+        } catch {
+            epornerSubscriptionsError = error.localizedDescription
+        }
+    }
+
+    func refreshEpornerSubscriptions() async {
+        guard selectedSite == EpornerFeedScraper.supportedHost,
+              EpornerSessionManager.shared.isLoggedIn,
+              !isLoadingEpornerSubscriptions else { return }
+
+        isLoadingEpornerSubscriptions = true
+        epornerSubscriptionsError = nil
+        defer { isLoadingEpornerSubscriptions = false }
+
+        do {
+            epornerSubscriptions = try await EpornerFeedScraper.fetchSubscriptions()
+        } catch {
+            epornerSubscriptionsError = error.localizedDescription
         }
     }
 
@@ -500,6 +506,8 @@ final class FeedViewModel: ObservableObject {
             return HQPornerFeedScraper.self
         case PornHubFeedScraper.supportedHost:
             return PornHubFeedScraper.self
+        case EpornerFeedScraper.supportedHost:
+            return EpornerFeedScraper.self
         default:
             throw FeedScraperError.unsupportedSite(selectedSite)
         }
@@ -510,19 +518,28 @@ final class FeedViewModel: ObservableObject {
             (pornHubUploaderURL != nil || selectedPornHubSection.preservesFeedOrder)
     }
 
+    private var usesEpornerSourceOrder: Bool {
+        selectedSite == EpornerFeedScraper.supportedHost &&
+            (epornerUploaderURL != nil || selectedEpornerSection.preservesFeedOrder)
+    }
+
     nonisolated static func shouldStopPaginationForDateMiss(
         selectedSite: String,
         selectedPornHubSection: PornHubSection,
         pornHubUploaderURL: String?,
+        selectedEpornerSection: EpornerSection,
+        epornerUploaderURL: String?,
         filters: FeedFilterState,
         pageItems: [FeedItem]
     ) -> Bool {
         guard filters.date != .all,
               !pageItems.contains(where: { filters.date.matches($0.uploadDate) }) else { return false }
 
-        let isPornHubSourceOrderedFeed = selectedSite == PornHubFeedScraper.supportedHost &&
-            (pornHubUploaderURL != nil || selectedPornHubSection.preservesFeedOrder)
-        return !isPornHubSourceOrderedFeed
+        let isSourceOrderedFeed = (selectedSite == PornHubFeedScraper.supportedHost &&
+                                   (pornHubUploaderURL != nil || selectedPornHubSection.preservesFeedOrder)) ||
+                                  (selectedSite == EpornerFeedScraper.supportedHost &&
+                                   (epornerUploaderURL != nil || selectedEpornerSection.preservesFeedOrder))
+        return !isSourceOrderedFeed
     }
 
     nonisolated static func viewportPrefetchTriggerIDs(for itemIDs: [String], threshold: Int) -> Set<String> {
@@ -544,9 +561,24 @@ final class FeedViewModel: ObservableObject {
             !isLoggedIn
     }
 
+    nonisolated static func shouldBlockEpornerLoadForLogin(
+        selectedSite: String,
+        selectedEpornerSection: EpornerSection,
+        epornerUploaderURL: String?,
+        isLoggedIn: Bool
+    ) -> Bool {
+        selectedSite == EpornerFeedScraper.supportedHost &&
+            epornerUploaderURL == nil &&
+            selectedEpornerSection.requiresLogin &&
+            !isLoggedIn
+    }
+
     private func feedPage(page: Int) async throws -> [FeedItem] {
         if selectedSite == PornHubFeedScraper.supportedHost {
             return try await PornHubFeedScraper.fetchPage(page: page, section: selectedPornHubSection)
+        }
+        if selectedSite == EpornerFeedScraper.supportedHost {
+            return try await EpornerFeedScraper.fetchPage(page: page, section: selectedEpornerSection)
         }
         return try await scraper().fetchPage(page: page)
     }

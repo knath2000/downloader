@@ -2,6 +2,19 @@ import AppKit
 import SwiftUI
 
 @MainActor
+enum LibraryFavoritesActions {
+    static func extract(_ item: FeedFavoriteItem) {
+        extract(item, appState: .shared)
+    }
+
+    static func extract(_ item: FeedFavoriteItem, appState: AppStateManager) {
+        appState.pendingExtractURL = item.url
+        appState.pendingExtractShouldStart = true
+        appState.select(.home)
+    }
+}
+
+@MainActor
 struct FavoritesView: View {
     @StateObject private var favorites = FeedFavoritesStore.shared
 
@@ -109,9 +122,7 @@ struct FavoritesView: View {
     }
 
     private func extract(_ item: FeedFavoriteItem) {
-        AppStateManager.shared.pendingExtractURL = item.url
-        AppStateManager.shared.pendingExtractShouldStart = true
-        AppStateManager.shared.select(.home)
+        LibraryFavoritesActions.extract(item)
     }
 
     private func openSource(_ item: FeedFavoriteItem) {

@@ -4,6 +4,10 @@ import SwiftUI
 struct HomeURLInputCard: View {
     @Binding var text: String
     let isLoading: Bool
+    var isCompact = false
+    var isCommandCenter = false
+    var isYtDlpReady = true
+    var isPro = false
     let onPaste: () -> Void
     let onClear: () -> Void
     let onExtract: () -> Void
@@ -19,22 +23,65 @@ struct HomeURLInputCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: isCommandCenter ? .center : .leading, spacing: cardSpacing) {
             header
-            editor
-            actions
+            if isCommandCenter {
+                commandEditor
+            } else {
+                editor
+                actions
+            }
         }
-        .padding(16)
-        .glassCard(tint: Theme.skyBlue.opacity(0.10), cornerRadius: HomeLayoutMetrics.cardCornerRadius)
+        .padding(isCommandCenter ? 24 : (isCompact ? 12 : 16))
+        .glassCard(tint: Theme.skyBlue.opacity(isCompact ? 0.04 : 0.07), cornerRadius: isCommandCenter ? 20 : HomeLayoutMetrics.cardCornerRadius)
     }
 
+    private var cardSpacing: CGFloat {
+        if isCommandCenter { return 18 }
+        return isCompact ? 10 : 12
+    }
+
+    @ViewBuilder
     private var header: some View {
+        if isCommandCenter {
+            commandHeader
+        } else {
+            standardHeader
+        }
+    }
+
+    private var commandHeader: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                HomeStatusPill(
+                    label: isYtDlpReady ? "yt-dlp core" : "Install yt-dlp",
+                    systemImage: isYtDlpReady ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+                    color: isYtDlpReady ? Theme.success : Theme.warning
+                )
+                HomeStatusPill(label: "ffmpeg engine", systemImage: "checkmark.circle.fill", color: Theme.success)
+                if isPro {
+                    HomeStatusPill(label: "Pro", systemImage: "crown.fill", color: Theme.gold)
+                }
+            }
+
+            Text("Ready to Extract")
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(Theme.textPrimary)
+
+            Text("Paste a supported URL to begin parsing media assets.")
+                .font(.subheadline)
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var standardHeader: some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Paste URLs")
-                    .font(Theme.sectionHeader)
+                Text(isCompact ? "Add URLs" : "Paste URLs")
+                    .font(isCompact ? .subheadline.weight(.bold) : Theme.sectionHeader)
                     .foregroundStyle(Theme.textPrimary)
-                Text(model.helperText)
+                Text(isCompact ? compactHelperText : model.helperText)
                     .font(.caption)
                     .foregroundStyle(model.invalidLines.isEmpty ? Theme.textSecondary : Theme.warning)
             }
@@ -49,17 +96,74 @@ struct HomeURLInputCard: View {
         }
     }
 
+    private var commandEditor: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "link")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 18)
+
+            HomeURLTextEditor(
+                text: $text,
+                isFocused: $isFocused,
+                placeholder: "https://"
+            )
+            .frame(minHeight: 34, maxHeight: text.contains("\n") ? 92 : 44)
+
+            if model.readyCount > 0 {
+                Text("\(model.readyCount)")
+                    .font(.caption.weight(.heavy))
+                    .foregroundStyle(Theme.success)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Theme.success.opacity(0.12), in: Capsule())
+            }
+
+            Button {
+                if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    onPaste()
+                }
+                onExtract()
+            } label: {
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.7)
+                    Text("Extracting")
+                } else {
+                    Label("Paste & Extract", systemImage: "bolt.fill")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .keyboardShortcut(.return, modifiers: .command)
+            .disabled(isLoading || (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !canExtract))
+            .tint(.white)
+            .foregroundStyle(Theme.surface0)
+            .help("Paste from clipboard if empty, then extract video sources")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Theme.surfaceGlass.opacity(0.52), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(isFocused ? Theme.activeBlue.opacity(0.75) : Theme.borderSubtle, lineWidth: 1)
+        )
+        .shadow(color: isFocused ? Theme.activeBlue.opacity(0.18) : .clear, radius: 8)
+        .accessibilityElement(children: .contain)
+    }
+
     private var editor: some View {
         HomeURLTextEditor(
             text: $text,
             isFocused: $isFocused,
             placeholder: "https://example.com/video/...\nPaste one URL per line"
         )
-        .frame(minHeight: 104, maxHeight: 140)
+        .frame(minHeight: isCompact ? 72 : 104, maxHeight: isCompact ? 92 : 140)
         .background(Theme.surface1.opacity(0.45), in: RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(isFocused ? Theme.skyBlue.opacity(0.7) : Theme.border, lineWidth: 1)
+                .stroke(isFocused ? Theme.activeBlue.opacity(0.7) : Theme.borderSubtle, lineWidth: 1)
         )
         .accessibilityLabel("Video URLs")
     }
@@ -91,12 +195,219 @@ struct HomeURLInputCard: View {
                 }
             }
             .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .controlSize(isCompact ? .regular : .large)
             .keyboardShortcut(.return, modifiers: .command)
             .disabled(!canExtract)
             .tint(Theme.skyBlue)
             .help("Extract video sources from the URLs")
         }
+    }
+
+    private var compactHelperText: String {
+        if !model.invalidLines.isEmpty {
+            return model.helperText
+        }
+        if model.readyCount == 0 {
+            return "Queue more links while downloads continue."
+        }
+        return model.helperText
+    }
+}
+
+struct HomeStitchCommandPanel<CompletedContent: View, ResultsContent: View>: View {
+    @Binding var text: String
+    let isLoading: Bool
+    let isYtDlpReady: Bool
+    let isPro: Bool
+    let onPaste: () -> Void
+    let onClear: () -> Void
+    let onExtract: () -> Void
+    @ViewBuilder let completedContent: () -> CompletedContent
+    @ViewBuilder let resultsContent: () -> ResultsContent
+
+    @State private var isFocused = false
+    @ObservedObject private var appState = AppStateManager.shared
+
+    private var model: HomeURLInputModel {
+        HomeURLInputModel(rawText: text)
+    }
+
+    private var canExtract: Bool {
+        !isLoading && !model.validURLs.isEmpty && model.invalidLines.isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            header
+            Divider()
+                .overlay(Theme.borderSubtle)
+            editorBlock
+            actionRow
+            completedContent()
+            resultsContent()
+            supportedPlatforms
+        }
+        .padding(28)
+        .frame(minHeight: AppShellSurfaceMetrics.mainPanelHeight(for: appState.windowSize), alignment: .topLeading)
+        .background(
+            LinearGradient(
+                colors: [
+                    Theme.surfaceGlass.opacity(0.72),
+                    Theme.surface1.opacity(0.50)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 18)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Theme.border.opacity(0.64), lineWidth: 1)
+        )
+        .shadow(color: Theme.skyBlue.opacity(0.12), radius: 20, x: 0, y: 12)
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("VidDL")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundStyle(Theme.textPrimary)
+                Text("Paste URLs, extract video sources, then download locally or send to cloud storage.")
+                    .font(.subheadline)
+                    .foregroundStyle(Theme.textSecondary)
+            }
+
+            Spacer(minLength: 24)
+
+            HStack(spacing: 8) {
+                HomeStatusPill(
+                    label: isYtDlpReady ? "yt-dlp ready" : "Install yt-dlp",
+                    systemImage: isYtDlpReady ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+                    color: isYtDlpReady ? Theme.success : Theme.warning
+                )
+                HomeStatusPill(label: "ffmpeg engine", systemImage: "checkmark.circle.fill", color: Theme.success)
+                if isPro {
+                    HomeStatusPill(label: "Pro", systemImage: "crown.fill", color: Theme.gold)
+                }
+            }
+        }
+    }
+
+    private var editorBlock: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text("Paste URLs")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(Theme.textPrimary)
+
+            HStack(spacing: 0) {
+                VStack(alignment: .trailing, spacing: 36) {
+                    Text("0")
+                    Text("2")
+                }
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(Theme.textSecondary.opacity(0.68))
+                .frame(width: 30)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .padding(.top, 13)
+
+                Rectangle()
+                    .fill(Theme.borderSubtle)
+                    .frame(width: 1)
+
+                HomeURLTextEditor(
+                    text: $text,
+                    isFocused: $isFocused,
+                    placeholder: "https://example.com/video/...\nPaste one URL per line"
+                )
+                .frame(minHeight: 126, maxHeight: 170)
+            }
+            .background(Theme.surfaceGlass.opacity(0.50), in: RoundedRectangle(cornerRadius: 13))
+            .overlay(
+                RoundedRectangle(cornerRadius: 13)
+                    .stroke(isFocused ? Theme.skyBlue.opacity(0.78) : Theme.border.opacity(0.56), lineWidth: 1)
+            )
+            .shadow(color: isFocused ? Theme.skyBlue.opacity(0.20) : .clear, radius: 10)
+            .accessibilityLabel("Video URLs")
+        }
+    }
+
+    private var actionRow: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Button(action: onPaste) {
+                Label("Paste", systemImage: "clipboard")
+            }
+            .buttonStyle(.bordered)
+            .help("Paste a URL from the clipboard")
+
+            Button(role: .destructive, action: onClear) {
+                Label("Clear", systemImage: "xmark")
+            }
+            .buttonStyle(.bordered)
+            .disabled(text.isEmpty)
+
+            Spacer()
+
+            Button(action: onExtract) {
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.75)
+                    Text("Extracting")
+                } else {
+                    Label("Extract", systemImage: "bolt.fill")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .keyboardShortcut(.return, modifiers: .command)
+            .disabled(!canExtract)
+            .tint(Theme.skyBlue)
+            .shadow(color: canExtract ? Theme.skyBlue.opacity(0.42) : .clear, radius: 10)
+            .help("Extract video sources from the URLs")
+        }
+    }
+
+    private var supportedPlatforms: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Supported Platforms")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(Theme.textPrimary)
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 4), spacing: 14) {
+                StitchPlatformCard(title: "Video Hosts", systemImage: "play.rectangle.fill")
+                StitchPlatformCard(title: "Audio Streams", systemImage: "music.note")
+                StitchPlatformCard(title: "Social Media", systemImage: "bubble.left.and.bubble.right.fill")
+                StitchPlatformCard(title: "Generic Web", systemImage: "globe")
+            }
+        }
+    }
+}
+
+private struct StitchPlatformCard: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: systemImage)
+                .font(.system(size: 36, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(Theme.textPrimary.opacity(0.88))
+                .frame(height: 42)
+
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity, minHeight: 116)
+        .background(Theme.surfaceGlass.opacity(0.42), in: RoundedRectangle(cornerRadius: 13))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13)
+                .stroke(Theme.border.opacity(0.55), lineWidth: 1)
+        )
     }
 }
 

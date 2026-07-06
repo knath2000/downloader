@@ -2,10 +2,16 @@ import SwiftUI
 
 enum Theme {
     // Base surfaces (kept for legacy + fallback paths)
-    static let surface0      = Color(hex: "#0D0D1A")
-    static let surface1      = Color(hex: "#16162A")
-    static let surface2      = Color(hex: "#1E1E35")
-    static let border        = Color(hex: "#2D2D4D")
+    static let surface0      = Color(hex: "#0A0A0D")
+    static let surface1      = Color(hex: "#141417")
+    static let surface2      = Color(hex: "#202024")
+    static let border        = Color(hex: "#3A3A40")
+
+    // Lustre/Obsidian utility tokens
+    static let obsidian      = Color(hex: "#0A0A0A")
+    static let surfaceGlass  = Color(hex: "#1E1E22")
+    static let borderSubtle  = Color.white.opacity(0.08)
+    static let activeBlue    = Color(hex: "#0A84FF")
 
     // Brand amber (retained for continuity)
     static let amber         = Color(hex: "#E8933C")
@@ -17,18 +23,18 @@ enum Theme {
     static let coral         = Color(hex: "#FF6B6B")
     static let gold          = Color(hex: "#FFD700")
     static let hotPink       = Color(hex: "#FF1493")
-    static let electricLime  = Color(hex: "#7FFF00")
-    static let skyBlue       = Color(hex: "#00BFFF")
-    static let lavender      = Color(hex: "#B388FF")
+    static let electricLime  = Color(hex: "#30D158")
+    static let skyBlue       = Color(hex: "#0A84FF")
+    static let lavender      = Color(hex: "#8E8CFF")
 
     // Status
-    static let success       = Color(hex: "#4CAF50")
-    static let error         = Color(hex: "#F44336")
-    static let warning       = Color(hex: "#FF9500")
+    static let success       = Color(hex: "#30D158")
+    static let error         = Color(hex: "#FF453A")
+    static let warning       = Color(hex: "#FF9F0A")
 
     // Text
-    static let textPrimary   = Color(hex: "#F0F0F0")
-    static let textSecondary = Color(hex: "#8A8AB0")
+    static let textPrimary   = Color(hex: "#F2F0EF")
+    static let textSecondary = Color(hex: "#B4B6BC")
 
     // Mesh gradient stops
     static let meshDeepPurple = Color(hex: "#1A0A2E")
@@ -47,10 +53,7 @@ enum Theme {
         switch dest {
         case .home:       return coral
         case .feed:       return lavender
-        case .favorites:  return hotPink
         case .library:    return skyBlue
-        case .files:      return skyBlue
-        case .profile:    return gold
         case .settings:   return Color(hex: "#A0A0FF")
         }
     }

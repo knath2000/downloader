@@ -387,29 +387,23 @@ enum CloudTarget: String, Codable, CaseIterable {
 enum NavDestination: String, Codable, CaseIterable {
     case home = "Home"
     case feed = "Feed"
-    case favorites = "Favorites"
     case library = "Library"
-    case files = "Files"
-    case profile = "Profile"
     case settings = "Settings"
 
     var icon: String {
         switch self {
         case .home: return "house.fill"
         case .feed: return "antenna.radiowaves.left.and.right"
-        case .favorites: return "heart.fill"
         case .library: return "books.vertical.fill"
-        case .files: return "folder.fill"
-        case .profile: return "person.crop.circle.fill"
         case .settings: return "gearshape.fill"
         }
     }
 
     var requiresPro: Bool {
         switch self {
-        case .feed, .favorites, .profile:
+        case .feed:
             return true
-        case .home, .library, .files, .settings:
+        case .home, .library, .settings:
             return false
         }
     }

@@ -168,7 +168,6 @@ struct DownloadQueueViewNew: View {
                                         onShowSource: { showSource(item) },
                                         onCopyError: { copyError(item) },
                                         onDiagnose: { diagnosticItem = item },
-                                        onProcess: { preset in process(item, preset: preset) },
                                         onToggleSelection: { toggleSelection(for: item) }
                                     )
                                     .transition(rowTransition)
@@ -280,15 +279,6 @@ struct DownloadQueueViewNew: View {
             queueId: item.id,
             payload: payload,
             seedboxWebdavPassword: seedboxWebdavPassword
-        )
-    }
-
-    private func process(_ item: DownloadQueueItem, preset: VideoProcessingPreset) {
-        VideoProcessingLauncher.run(
-            preset: preset,
-            inputPath: item.finalPath,
-            displayName: item.displayTitle ?? item.filename,
-            onUpgradeRequired: onUpgradeRequired
         )
     }
 
@@ -569,7 +559,6 @@ private struct DownloadQueueRow: View {
     let onShowSource: () -> Void
     let onCopyError: () -> Void
     let onDiagnose: () -> Void
-    let onProcess: (VideoProcessingPreset) -> Void
     let onToggleSelection: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -714,7 +703,6 @@ private struct DownloadQueueRow: View {
                 DownloadRowButton("Open Library", systemImage: "books.vertical", tint: Theme.skyBlue) {
                     AppStateManager.shared.select(.library)
                 }
-                processingMenu
             }
 
             Spacer()
@@ -735,9 +723,6 @@ private struct DownloadQueueRow: View {
         }
         Button("Show Source") { onShowSource() }
         Button("Show in Finder") { onShowInFinder() }
-        if item.status == .completed {
-            processingMenuItems
-        }
         if !item.status.isTerminal && item.status != .processing {
             Button("Move to Front") { onMoveToFront() }
         }
@@ -747,25 +732,6 @@ private struct DownloadQueueRow: View {
 
     private var accessibilityLabel: String {
         "\(item.displayTitle ?? item.filename), \(DownloadStatusFormatting.statusLabel(item)), \(Int(item.progress)) percent, source \(DownloadStatusFormatting.sourceLabel(for: item)), destination \(item.targetCloud.displayName)"
-    }
-
-    private var processingMenu: some View {
-        Menu {
-            processingMenuItems
-        } label: {
-            Label("Process", systemImage: "wand.and.stars")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Theme.coral)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 5)
-                .background(Theme.coral.opacity(0.12), in: Capsule())
-        }
-        .menuStyle(.borderlessButton)
-        .help("Pro processing tools")
-    }
-
-    private var processingMenuItems: some View {
-        VideoProcessingMenuItems(process: onProcess)
     }
 }
 
@@ -1128,33 +1094,43 @@ private struct DownloadsNoResultsState: View {
 
 private struct DownloadDiagnosticSheet: View {
     let item: DownloadQueueItem
+    @ObservedObject private var appState = AppStateManager.shared
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Download Diagnostics")
-                    .font(.headline)
-                Spacer()
-                Button("Done") { dismiss() }
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Download Diagnostics")
+                        .font(.headline)
+                    Spacer()
+                    Button("Done") { dismiss() }
+                }
 
-            diagnosticRow("Title", item.displayTitle ?? item.filename)
-            diagnosticRow("Source", item.url)
-            diagnosticRow("Target", item.targetCloud.displayName)
-            diagnosticRow("Stage", DownloadStatusFormatting.phaseLabel(for: item))
-            diagnosticRow("Progress", String(format: "%.1f%%", item.progress))
-            if let finalPath = item.finalPath {
-                diagnosticRow("Final Path", finalPath)
-            }
-            if case .failed(let reason) = item.status {
-                diagnosticRow("Error", reason.isEmpty ? item.statusMessage ?? "Failed" : reason)
-            }
+                diagnosticRow("Title", item.displayTitle ?? item.filename)
+                diagnosticRow("Source", item.url)
+                diagnosticRow("Target", item.targetCloud.displayName)
+                diagnosticRow("Stage", DownloadStatusFormatting.phaseLabel(for: item))
+                diagnosticRow("Progress", String(format: "%.1f%%", item.progress))
+                if let finalPath = item.finalPath {
+                    diagnosticRow("Final Path", finalPath)
+                }
+                if case .failed(let reason) = item.status {
+                    diagnosticRow("Error", reason.isEmpty ? item.statusMessage ?? "Failed" : reason)
+                }
 
-            Spacer()
+                Spacer(minLength: 0)
+            }
+            .padding(18)
         }
-        .padding(18)
-        .frame(width: 520, height: 360)
+        .frame(
+            minWidth: 520,
+            idealWidth: AppShellSurfaceMetrics.detailModalWidth(for: appState.windowSize),
+            maxWidth: AppShellSurfaceMetrics.detailModalWidth(for: appState.windowSize),
+            minHeight: 360,
+            idealHeight: AppShellSurfaceMetrics.detailModalHeight(for: appState.windowSize),
+            maxHeight: AppShellSurfaceMetrics.detailModalHeight(for: appState.windowSize)
+        )
     }
 
     private func diagnosticRow(_ label: String, _ value: String) -> some View {
@@ -1306,6 +1282,10 @@ private enum DownloadPipelinePhase: String, Identifiable {
 }
 
 enum DownloadStatusFormatting {
+    static func stageLabel(for item: DownloadQueueItem) -> String {
+        statusLabel(item)
+    }
+
     static func statusTint(_ item: DownloadQueueItem) -> Color {
         switch item.status {
         case .downloading: return Theme.gold
@@ -1391,6 +1371,77 @@ enum DownloadStatusFormatting {
         case .gdrive: return "up Drive"
         case .seedbox: return "Seedbox"
         }
+    }
+
+    static func transferLocation(for item: DownloadQueueItem) -> String {
+        if let finalPath = item.finalPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !finalPath.isEmpty {
+            return finalPath
+        }
+
+        if item.isProcessingJob {
+            return item.partialLocalPath ?? DownloadPaths.downloadDir.path
+        }
+
+        if item.targetCloud == .local {
+            return item.partialLocalPath ?? DownloadPaths.downloadDir.path
+        }
+
+        guard let payload = item.retryPayload else {
+            return destinationLabel(for: item.targetCloud)
+        }
+
+        switch item.targetCloud {
+        case .local:
+            return item.partialLocalPath ?? DownloadPaths.downloadDir.path
+        case .mega:
+            return payload.context.megaRemotePath
+        case .gdrive:
+            let base = payload.context.gdriveRemotePath
+            return "\(payload.context.gdriveRemoteName):\(base)"
+        case .seedbox:
+            if payload.context.seedboxTransferMode == "webdav" {
+                let path = payload.context.seedboxRemotePath.trimmingCharacters(in: .whitespacesAndNewlines)
+                if path.isEmpty || path == "/" {
+                    return payload.context.seedboxWebdavURL
+                }
+                return "\(payload.context.seedboxWebdavURL) \(path)"
+            }
+            let path = payload.context.seedboxRemotePath.trimmingCharacters(in: .whitespacesAndNewlines)
+            if path.isEmpty || path == "/" {
+                return payload.context.seedboxRemoteName
+            }
+            return "\(payload.context.seedboxRemoteName):\(path)"
+        }
+    }
+
+    static func failureMessage(for item: DownloadQueueItem) -> String? {
+        if case .failed(let reason) = item.status {
+            let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedReason.isEmpty {
+                return trimmedReason
+            }
+        }
+
+        let trimmedMessage = item.statusMessage?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmedMessage.isEmpty ? nil : trimmedMessage
+    }
+
+    static func homeDetailLine(for item: DownloadQueueItem) -> String {
+        var parts: [String] = []
+
+        let metrics = metricsLine(for: item)
+        if !metrics.isEmpty {
+            parts.append(metrics)
+        }
+
+        if case .failed = item.status,
+           let failure = failureMessage(for: item),
+           failure != item.statusMessage {
+            parts.append(failure)
+        }
+
+        return parts.joined(separator: " · ")
     }
 
     static func searchText(for item: DownloadQueueItem) -> String {

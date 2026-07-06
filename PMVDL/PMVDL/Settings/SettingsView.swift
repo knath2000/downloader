@@ -4,31 +4,21 @@ import SwiftUI
 struct SettingsView: View {
     @Binding var gdriveRemoteName: String
     @Binding var gdriveRemotePath: String
-    @Binding var megaRemotePath: String
-    @Binding var seedboxTransferMode: String
-    @Binding var seedboxRemoteName: String
-    @Binding var seedboxRemotePath: String
-    @Binding var seedboxWebdavURL: String
-    @Binding var seedboxWebdavUser: String
-    @Binding var seedboxWebdavPassword: String
     let onUpgradeRequired: () -> Void
 
     @AppStorage("downloadSubtitles") private var downloadSubtitles = false
     @AppStorage("embeddedSubsMode") private var embeddedSubsMode = false
-    @AppStorage("xaiAPIKey") private var xaiAPIKey = ""
     @AppStorage(AppPreferenceKeys.preventSleepWhileRunning) private var preventSleepWhileRunning = false
+    @AppStorage(DownloadPaths.customDownloadDirectoryKey) private var customDownloadDirectory = ""
 
     @StateObject private var license = LicenseManager.shared
     @StateObject private var dependencyStore = SettingsDependencyStore.shared
+    @StateObject private var gdriveSetup = RcloneRemoteSetupViewModel()
 
-    @State private var activeSection: SettingsSection = .cloud
-    @State private var selectedCloudDestination: CloudSettingsDestination = .mega
     @State private var activateEmail = ""
     @State private var activationResult = ""
     @State private var isActivating = false
-    @State private var seedboxTestResult = ""
-    @State private var seedboxTestSucceeded: Bool?
-    @State private var isTestingSeedboxConnection = false
+    @State private var showsGDriveManualFields = false
 
     private var trimmedActivationEmail: String {
         activateEmail.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -37,9 +27,9 @@ struct SettingsView: View {
     private var dependencyInput: SettingsDependencyInput {
         SettingsDependencyInput(
             gdriveRemoteName: gdriveRemoteName,
-            seedboxTransferMode: seedboxTransferMode,
-            seedboxRemoteName: seedboxRemoteName,
-            seedboxWebdavURL: seedboxWebdavURL
+            seedboxTransferMode: "rclone",
+            seedboxRemoteName: "",
+            seedboxWebdavURL: ""
         )
     }
 
@@ -63,66 +53,56 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            VStack(spacing: 12) {
-                SettingsJumpToolbar(
-                    activeSection: activeSection,
-                    isRefreshing: dependencyStore.isRefreshing,
-                    refreshAction: refreshDependencyChecks,
-                    jumpAction: { section in
-                        activeSection = section
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                            proxy.scrollTo(section.id, anchor: .top)
-                        }
-                    }
-                )
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 24) {
+                settingsSection(.cloud) {
+                    cloudSection
+                }
 
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 24) {
-                        settingsSection(.cloud) {
-                            cloudSection
-                        }
+                settingsSection(.preferences) {
+                    preferencesSection
+                }
 
-                        settingsSection(.preferences) {
-                            preferencesSection
-                        }
+                settingsSection(.pro) {
+                    proSection
+                }
 
-                        settingsSection(.ai) {
-                            aiSection
-                        }
-
-                        settingsSection(.pro) {
-                            proSection
-                        }
-
-                        settingsSection(.info) {
-                            infoSection
-                        }
-                    }
-                    .frame(maxWidth: SettingsLayoutMetrics.contentMaxWidth, alignment: .leading)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 2)
-                    .padding(.bottom, 28)
+                settingsSection(.info) {
+                    infoSection
                 }
             }
-            .background(keyboardShortcuts(proxy: proxy))
+            .frame(maxWidth: SettingsLayoutMetrics.contentMaxWidth, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 28)
         }
         .task(id: dependencyInput) {
             try? await Task.sleep(nanoseconds: 200_000_000)
             if Task.isCancelled { return }
             await dependencyStore.refresh(input: dependencyInput)
         }
-        .onChange(of: seedboxTransferMode) { _, _ in
-            seedboxTestResult = ""
-            seedboxTestSucceeded = nil
-        }
     }
 
     private func refreshDependencyChecks() {
         Task { await dependencyStore.refresh(input: dependencyInput, force: true) }
+    }
+
+    private func browseForDownloadLocation() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Download Location"
+        panel.message = "Choose where VidDL should save local downloads."
+        panel.prompt = "Choose"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = DownloadPaths.downloadDir
+
+        guard panel.runModal() == .OK,
+              let url = panel.url else { return }
+        customDownloadDirectory = url.path
+        DownloadPaths.setCustomDownloadDir(url)
     }
 
     @ViewBuilder
@@ -135,186 +115,130 @@ struct SettingsView: View {
             content()
         }
         .id(section.id)
-        .onAppear { activeSection = section }
-    }
-
-    private func keyboardShortcuts(proxy: ScrollViewProxy) -> some View {
-        Group {
-            Button("") {
-                jump(to: .cloud, proxy: proxy)
-            }
-            .keyboardShortcut("1", modifiers: .command)
-
-            Button("") {
-                jump(to: .preferences, proxy: proxy)
-            }
-            .keyboardShortcut("2", modifiers: .command)
-
-            Button("") {
-                jump(to: .ai, proxy: proxy)
-            }
-            .keyboardShortcut("3", modifiers: .command)
-
-            Button("") {
-                jump(to: .pro, proxy: proxy)
-            }
-            .keyboardShortcut("4", modifiers: .command)
-
-            Button("") {
-                jump(to: .info, proxy: proxy)
-            }
-            .keyboardShortcut("5", modifiers: .command)
-
-            Button("") {
-                refreshDependencyChecks()
-            }
-            .keyboardShortcut("r", modifiers: .command)
-        }
-        .opacity(0)
-        .frame(width: 0, height: 0)
-    }
-
-    private func jump(to section: SettingsSection, proxy: ScrollViewProxy) {
-        activeSection = section
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-            proxy.scrollTo(section.id, anchor: .top)
-        }
     }
 
     private var cloudSection: some View {
-        let model = selectedCloudModel
+        let model = dependencyModel.gdrive
         let tint = color(for: model.tone)
 
         return SettingsCard(tint: tint) {
             VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
                 SettingsCardTitle(
-                    title: selectedCloudDestination.fullTitle,
-                    subtitle: selectedCloudDestination.subtitle,
-                    systemImage: selectedCloudDestination.systemImage,
+                    title: "Google Drive Upload",
+                    subtitle: "Use rclone to upload completed files to a Google Drive remote.",
+                    systemImage: "externaldrive.fill.badge.checkmark",
                     tint: tint,
                     status: model.status
                 )
 
-                SettingsFieldRow("Destination") {
-                    Picker("Cloud destination", selection: $selectedCloudDestination) {
-                        ForEach(CloudSettingsDestination.allCases) { destination in
-                            Label(destination.title, systemImage: destination.systemImage)
-                                .tag(destination)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(maxWidth: 460)
-                }
-
                 SettingsDependencySummary(model: model, color: tint)
-                selectedCloudDestinationFields
+                gdriveGuidedSetupFields
             }
         }
     }
 
-    private var selectedCloudModel: SettingsDependencyCardModel {
-        switch selectedCloudDestination {
-        case .mega:
-            return dependencyModel.mega
-        case .gdrive:
-            return dependencyModel.gdrive
-        case .seedbox:
-            return dependencyModel.seedbox
-        }
-    }
+    private var gdriveGuidedSetupFields: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SettingsFieldRow("Remote name") {
+                VStack(alignment: .leading, spacing: 6) {
+                    TextField("gdrive", text: $gdriveRemoteName)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12, design: .monospaced))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Theme.accentDim.opacity(0.25), in: RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius)
+                                .strokeBorder(Theme.border, lineWidth: 0.5)
+                        )
+                        .disabled(gdriveSetup.isRunning)
 
-    @ViewBuilder
-    private var selectedCloudDestinationFields: some View {
-        switch selectedCloudDestination {
-        case .mega:
-            GlassTextField(
-                label: "Remote path",
-                placeholder: "/Cloud/VidDL/",
-                text: $megaRemotePath,
-                help: "VidDL uploads completed Mega transfers into this folder after MEGAcmd is installed and signed in."
-            )
-        case .gdrive:
-            GlassTextField(
-                label: "Remote name",
-                placeholder: "gdrive",
-                text: $gdriveRemoteName,
-                help: "The remote name must match the Google Drive remote created in rclone."
-            )
-            GlassTextField(
-                label: "Remote path",
-                placeholder: "VidDL/",
-                text: $gdriveRemotePath
-            )
-        case .seedbox:
-            SettingsFieldRow("Transfer mode") {
-                Picker("Transfer Mode", selection: $seedboxTransferMode) {
-                    Text("rclone rcat").tag("rclone")
-                    Text("WebDAV PUT").tag("webdav")
+                    SettingsHelpText("Use a short rclone remote name. Existing uploads use this value.")
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(maxWidth: 320)
             }
 
-            seedboxModeFields
-            seedboxTestConnectionRow
-        }
-    }
-
-    @ViewBuilder
-    private var seedboxModeFields: some View {
-        if seedboxTransferMode == "webdav" {
-            GlassTextField(label: "WebDAV URL", placeholder: "https://example.com/webdav", text: $seedboxWebdavURL)
-            GlassTextField(label: "Username", placeholder: "Username", text: $seedboxWebdavUser)
-            GlassSecureField(label: "Password", placeholder: "Password", text: $seedboxWebdavPassword)
-            GlassTextField(
-                label: "Remote path",
-                placeholder: "/",
-                text: $seedboxRemotePath,
-                help: "Direct video URLs upload with native WebDAV PUT. HLS, yt-dlp, and audio fall back to local assembly and need the rclone remote below."
-            )
-            GlassTextField(label: "Fallback remote", placeholder: "seedbox", text: $seedboxRemoteName)
-        } else {
-            GlassTextField(label: "Remote name", placeholder: "seedbox", text: $seedboxRemoteName)
-            GlassTextField(
-                label: "Remote path",
-                placeholder: "/",
-                text: $seedboxRemotePath,
-                help: "The remote name must match any rclone remote for your seedbox, such as SFTP, FTP, WebDAV, or S3."
-            )
-        }
-    }
-
-    private var seedboxTestConnectionRow: some View {
-        SettingsFieldRow("Connection") {
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 8) {
-                    Button {
-                        Task { await testSeedboxConnection() }
-                    } label: {
-                        Label("Test Connection", systemImage: "network")
+            GDriveSetupStatusCard(
+                phase: gdriveSetup.phase,
+                message: gdriveSetup.progressMessage,
+                tint: color(for: gdriveSetupTone),
+                remoteName: resolvedGDriveRemoteName,
+                isRunning: gdriveSetup.isRunning,
+                start: {
+                    gdriveSetup.startGoogleDriveSetup(remoteName: gdriveRemoteName) { configuredName in
+                        gdriveRemoteName = configuredName
+                        refreshDependencyChecks()
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(isTestingSeedboxConnection)
-
-                    if isTestingSeedboxConnection {
-                        ProgressView()
-                            .scaleEffect(0.65)
-                            .controlSize(.small)
+                },
+                useExisting: {
+                    gdriveSetup.useExisting(remoteName: gdriveRemoteName) { configuredName in
+                        gdriveRemoteName = configuredName
+                        refreshDependencyChecks()
                     }
+                },
+                reconnect: {
+                    gdriveSetup.reconnectGoogleDrive(remoteName: gdriveRemoteName) { configuredName in
+                        gdriveRemoteName = configuredName
+                        refreshDependencyChecks()
+                    }
+                },
+                cancel: gdriveSetup.cancel,
+                retry: {
+                    gdriveSetup.startGoogleDriveSetup(remoteName: gdriveRemoteName) { configuredName in
+                        gdriveRemoteName = configuredName
+                        refreshDependencyChecks()
+                    }
+                },
+                refresh: {
+                    gdriveSetup.refresh(remoteName: gdriveRemoteName)
+                    refreshDependencyChecks()
                 }
+            )
 
-                if !seedboxTestResult.isEmpty {
-                    SettingsInlineAlert(
-                        text: seedboxTestResult,
-                        tint: seedboxTestSucceeded == true ? Theme.success : Theme.error
+            DisclosureGroup(isExpanded: $showsGDriveManualFields) {
+                VStack(alignment: .leading, spacing: 10) {
+                    GlassTextField(
+                        label: "Remote path",
+                        placeholder: "VidDL/",
+                        text: $gdriveRemotePath,
+                        help: "Uploads will be placed under this path inside the selected Google Drive remote."
                     )
+                    SettingsCommandRow(command: "brew install rclone")
+                    SettingsCommandRow(command: "rclone config")
+                    SettingsCommandRow(command: "rclone config reconnect \(resolvedGDriveRemoteName):")
                 }
+                .padding(.top, 8)
+            } label: {
+                Label("Advanced manual setup", systemImage: "terminal")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Theme.textPrimary)
             }
         }
+        .onAppear {
+            gdriveSetup.refresh(remoteName: gdriveRemoteName)
+        }
+        .onChange(of: gdriveRemoteName) { _, _ in
+            gdriveSetup.refresh(remoteName: gdriveRemoteName)
+        }
     }
+
+    private var resolvedGDriveRemoteName: String {
+        let trimmed = gdriveRemoteName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "gdrive" : trimmed
+    }
+
+    private var gdriveSetupTone: SettingsDependencyTone {
+        switch gdriveSetup.phase {
+        case .configured:
+            return .success
+        case .missingRclone, .failed:
+            return .error
+        case .existingRemote:
+            return .warning
+        case .idle, .ready, .authorizing, .verifying:
+            return .checking
+        }
+    }
+
 
     private var subtitleBinding: Binding<Bool> {
         Binding(
@@ -344,57 +268,14 @@ struct SettingsView: View {
         )
     }
 
+    private var downloadLocationDisplay: String {
+        DownloadPaths.downloadDir.path
+    }
+
     private var preferencesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             notificationsCard
             downloadBehaviorCard
-        }
-    }
-
-    private var aiSection: some View {
-        SettingsCard(tint: Theme.gold) {
-            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
-                SettingsCardTitle(
-                    title: "AI Profile",
-                    subtitle: "xAI API key for Grok-powered taste profiles.",
-                    systemImage: "brain.head.profile",
-                    tint: Theme.gold,
-                    status: XAIClient.model
-                )
-
-                GlassSecureField(
-                    label: "xAI API Key",
-                    placeholder: "xai-...",
-                    text: $xaiAPIKey,
-                    help: "Get a key at x.ai/api."
-                )
-
-                SettingsFieldRow("Model") {
-                    Text(XAIClient.model)
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(Theme.textPrimary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(Theme.surface2.opacity(0.16), in: RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius))
-                }
-
-                HStack {
-                    Spacer()
-                    Button {
-                        guard ProFeatureGate.canUseProfile else {
-                            onUpgradeRequired()
-                            return
-                        }
-                        AppStateManager.shared.select(.profile)
-                        Task { await ProfileViewModel.shared.generate() }
-                    } label: {
-                        Label("Generate Profile", systemImage: "person.crop.circle.badge.sparkles")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.gold)
-                    .controlSize(.small)
-                }
-            }
         }
     }
 
@@ -474,7 +355,7 @@ struct SettingsView: View {
 
                     SettingsToggleRow(
                         title: "Prevent sleep while running",
-                        subtitle: "Keep this Mac awake while downloads, uploads, or processing jobs are active.",
+                        subtitle: "Keep this Mac awake while downloads or uploads are active.",
                         systemImage: "moon.zzz.fill",
                         tint: Theme.lavender,
                         isOn: preventSleepBinding
@@ -497,14 +378,57 @@ struct SettingsView: View {
                         }
                     }
 
-                    Button {
-                        DownloadPaths.ensureDownloadDir()
-                        NSWorkspace.shared.open(DownloadPaths.downloadDir)
-                    } label: {
-                        Label("Open Downloads Folder", systemImage: "folder")
+                    SettingsDivider()
+
+                    SettingsFieldRow("Download location") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 8) {
+                                Text(downloadLocationDisplay)
+                                    .font(.caption)
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                    .padding(.horizontal, 10)
+                                    .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                                    .background(Theme.surface1.opacity(0.45), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.gold.opacity(0.18), lineWidth: 0.5))
+
+                                Button {
+                                    browseForDownloadLocation()
+                                } label: {
+                                    Label("Browse", systemImage: "folder.badge.gearshape")
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(Theme.gold)
+                                .controlSize(.small)
+
+                                Button {
+                                    DownloadPaths.ensureDownloadDir()
+                                    NSWorkspace.shared.open(DownloadPaths.downloadDir)
+                                } label: {
+                                    Label("Open", systemImage: "folder")
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+
+                            HStack(spacing: 8) {
+                                Text(DownloadPaths.hasCustomDownloadDir ? "Custom folder selected." : "Using the default VidDL folder.")
+                                    .font(.caption2)
+                                    .foregroundStyle(Theme.textSecondary)
+
+                                if DownloadPaths.hasCustomDownloadDir {
+                                    Button("Reset to Default") {
+                                        customDownloadDirectory = ""
+                                        DownloadPaths.resetCustomDownloadDir()
+                                    }
+                                    .buttonStyle(.plain)
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(Theme.gold)
+                                }
+                            }
+                        }
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
                 }
 
                 SettingsDivider()
@@ -569,9 +493,7 @@ struct SettingsView: View {
                     SettingsFeatureLine("\(ProFeatureGate.proConcurrentDownloadLimit) concurrent downloads", tint: Theme.success)
                     SettingsFeatureLine("Batch download more than \(ProFeatureGate.freeBatchLimit) items", tint: Theme.success)
                     SettingsFeatureLine("Feed discovery and saved favorites", tint: Theme.success)
-                    SettingsFeatureLine("AI Profile analysis", tint: Theme.success)
                     SettingsFeatureLine("Multi-cloud simultaneous upload", tint: Theme.success)
-                    SettingsFeatureLine("Video processing tools", tint: Theme.success)
                     SettingsFeatureLine("Audio downloads and subtitles", tint: Theme.success)
                 }
 
@@ -615,9 +537,7 @@ struct SettingsView: View {
                     SettingsFeatureLine("\(ProFeatureGate.freeConcurrentDownloadLimit) → \(ProFeatureGate.proConcurrentDownloadLimit) concurrent downloads", tint: Theme.electricLime)
                     SettingsFeatureLine("Batch download more than \(ProFeatureGate.freeBatchLimit) items", tint: Theme.gold)
                     SettingsFeatureLine("Feed discovery and saved favorites", tint: Theme.lavender)
-                    SettingsFeatureLine("AI Profile analysis", tint: Theme.gold)
                     SettingsFeatureLine("Multi-cloud simultaneous upload", tint: Theme.skyBlue)
-                    SettingsFeatureLine("Video processing tools", tint: Theme.coral)
                     SettingsFeatureLine("Audio downloads and subtitles", tint: Theme.lavender)
                 }
 
@@ -742,31 +662,6 @@ struct SettingsView: View {
         }
     }
 
-    private func testSeedboxConnection() async {
-        isTestingSeedboxConnection = true
-        seedboxTestResult = ""
-        seedboxTestSucceeded = nil
-        do {
-            let manager = SeedboxManager(mode: try seedboxModeForTesting())
-            try await manager.testConnection()
-            seedboxTestSucceeded = true
-            seedboxTestResult = "OK - seedbox connection succeeded."
-        } catch {
-            seedboxTestSucceeded = false
-            seedboxTestResult = error.localizedDescription
-        }
-        isTestingSeedboxConnection = false
-        await dependencyStore.refresh(input: dependencyInput, force: true)
-    }
-
-    private func seedboxModeForTesting() throws -> SeedboxTransferMode {
-        if seedboxTransferMode == "webdav" {
-            let trimmed = seedboxWebdavURL.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty, let base = URL(string: trimmed) else { throw SeedboxError.notConfigured }
-            return .webdav(baseURL: base, user: seedboxWebdavUser, password: seedboxWebdavPassword, remotePath: seedboxRemotePath)
-        }
-        return .rclone(remoteName: dependencyInput.resolvedSeedboxRemoteName, remotePath: seedboxRemotePath)
-    }
 }
 
 private enum SettingsLayoutMetrics {
@@ -779,50 +674,9 @@ private enum SettingsLayoutMetrics {
     static let iconBoxSize: CGFloat = 34
 }
 
-private enum CloudSettingsDestination: String, CaseIterable, Identifiable {
-    case mega
-    case gdrive
-    case seedbox
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .mega: return "Mega"
-        case .gdrive: return "Drive"
-        case .seedbox: return "Seedbox"
-        }
-    }
-
-    var fullTitle: String {
-        switch self {
-        case .mega: return "Mega Upload"
-        case .gdrive: return "Google Drive Upload"
-        case .seedbox: return "Seedbox Transfer"
-        }
-    }
-
-    var subtitle: String {
-        switch self {
-        case .mega: return "Upload completed downloads into a MEGAcmd folder."
-        case .gdrive: return "Use rclone to upload completed files to a Google Drive remote."
-        case .seedbox: return "Stream direct downloads to a seedbox via rclone or WebDAV."
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .mega: return "cloud.fill"
-        case .gdrive: return "externaldrive.fill.badge.checkmark"
-        case .seedbox: return "server.rack"
-        }
-    }
-}
-
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case cloud
     case preferences
-    case ai
     case pro
     case info
 
@@ -832,7 +686,6 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .cloud: return "Cloud"
         case .preferences: return "Preferences"
-        case .ai: return "AI"
         case .pro: return "Pro"
         case .info: return "Info"
         }
@@ -842,7 +695,6 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .cloud: return "Cloud Destinations"
         case .preferences: return "Preferences"
-        case .ai: return "AI Profile"
         case .pro: return "Pro"
         case .info: return "Info"
         }
@@ -852,7 +704,6 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .cloud: return "Choose and configure one upload destination at a time."
         case .preferences: return "Notifications, download behavior, and helper tools."
-        case .ai: return "xAI API key for Grok-powered taste profiles."
         case .pro: return "Your VidDL Pro license."
         case .info: return "Version and about VidDL."
         }
@@ -862,7 +713,6 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .cloud: return "cloud.fill"
         case .preferences: return "slider.horizontal.3"
-        case .ai: return "brain.head.profile"
         case .pro: return "crown.fill"
         case .info: return "info.circle.fill"
         }
@@ -872,90 +722,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .cloud: return Theme.electricLime
         case .preferences: return Theme.gold
-        case .ai: return Theme.gold
         case .pro: return Theme.coral
         case .info: return Theme.skyBlue
-        }
-    }
-}
-
-private struct SettingsJumpToolbar: View {
-    let activeSection: SettingsSection
-    let isRefreshing: Bool
-    let refreshAction: () -> Void
-    let jumpAction: (SettingsSection) -> Void
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            horizontal
-            vertical
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .glassCard(tint: Theme.lavender.opacity(0.15), cornerRadius: SettingsLayoutMetrics.cardCornerRadius)
-    }
-
-    private var horizontal: some View {
-        HStack(spacing: 8) {
-            sectionButtons
-            Spacer(minLength: 10)
-            refreshControl
-        }
-    }
-
-    private var vertical: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                sectionButtons
-                Spacer(minLength: 0)
-            }
-            refreshControl
-        }
-    }
-
-    private var sectionButtons: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(SettingsSection.allCases) { section in
-                    Button {
-                        jumpAction(section)
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: section.icon)
-                                .font(.system(size: 10, weight: .bold))
-                            Text(section.title)
-                                .font(.caption.weight(.semibold))
-                        }
-                        .foregroundStyle(activeSection == section ? .white : Theme.textSecondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(activeSection == section ? section.color.opacity(0.85) : Theme.accentDim.opacity(0.30), in: Capsule())
-                        .overlay(Capsule().strokeBorder(section.color.opacity(activeSection == section ? 0.25 : 0.16), lineWidth: 0.5))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .frame(maxWidth: 470)
-    }
-
-    private var refreshControl: some View {
-        HStack(spacing: 8) {
-            if isRefreshing {
-                ProgressView()
-                    .scaleEffect(0.65)
-                    .controlSize(.small)
-            }
-
-            Button(action: refreshAction) {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 12, weight: .bold))
-                    .frame(width: 24, height: 22)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help("Refresh dependency and cloud status checks")
-            .disabled(isRefreshing)
         }
     }
 }
@@ -1107,35 +875,6 @@ private struct GlassTextField: View {
     }
 }
 
-private struct GlassSecureField: View {
-    let label: String
-    let placeholder: String
-    @Binding var text: String
-    var help: String?
-
-    var body: some View {
-        SettingsFieldRow(label) {
-            VStack(alignment: .leading, spacing: 4) {
-                SecureField(placeholder, text: $text)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12, design: .monospaced))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(Theme.accentDim.opacity(0.25), in: RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius)
-                            .strokeBorder(Theme.border, lineWidth: 0.5)
-                    )
-                    .frame(maxWidth: .infinity)
-
-                if let help {
-                    SettingsHelpText(help)
-                }
-            }
-        }
-    }
-}
-
 private struct SettingsHelpText: View {
     let text: String
 
@@ -1254,6 +993,179 @@ private struct SettingsDependencyInlineRow: View {
         }
         .padding(10)
         .background(Theme.surface2.opacity(0.14), in: RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius))
+    }
+}
+
+private struct GDriveSetupStatusCard: View {
+    let phase: RcloneRemoteSetupPhase
+    let message: String
+    let tint: Color
+    let remoteName: String
+    let isRunning: Bool
+    let start: () -> Void
+    let useExisting: () -> Void
+    let reconnect: () -> Void
+    let cancel: () -> Void
+    let retry: () -> Void
+    let refresh: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 9) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(tint)
+                    .frame(width: 20, height: 20)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text(message)
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+
+                if isRunning {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.7)
+                }
+            }
+
+            actionRow
+        }
+        .padding(10)
+        .background(Theme.surface2.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(tint.opacity(0.18), lineWidth: 0.5))
+    }
+
+    private var title: String {
+        switch phase {
+        case .idle, .ready:
+            return "Connect Google Drive"
+        case .missingRclone:
+            return "rclone is required"
+        case .existingRemote:
+            return "Remote already exists"
+        case .authorizing:
+            return "Google sign-in in progress"
+        case .verifying:
+            return "Verifying remote"
+        case .configured:
+            return "Google Drive is ready"
+        case .failed:
+            return "Setup failed"
+        }
+    }
+
+    private var icon: String {
+        switch phase {
+        case .configured:
+            return "checkmark.circle.fill"
+        case .missingRclone, .failed:
+            return "exclamationmark.triangle.fill"
+        case .existingRemote:
+            return "externaldrive.badge.questionmark"
+        case .authorizing, .verifying:
+            return "arrow.triangle.2.circlepath"
+        case .idle, .ready:
+            return "g.circle.fill"
+        }
+    }
+
+    @ViewBuilder
+    private var actionRow: some View {
+        switch phase {
+        case .missingRclone:
+            VStack(alignment: .leading, spacing: 8) {
+                SettingsCommandRow(command: "brew install rclone")
+                Button {
+                    refresh()
+                } label: {
+                    Label("Refresh Checks", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        case .existingRemote:
+            HStack(spacing: 8) {
+                Button {
+                    useExisting()
+                } label: {
+                    Label("Use Existing", systemImage: "checkmark.circle.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(tint)
+                .controlSize(.small)
+
+                Button {
+                    reconnect()
+                } label: {
+                    Label("Reconnect", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        case .authorizing, .verifying:
+            Button {
+                cancel()
+            } label: {
+                Label("Cancel Setup", systemImage: "xmark.circle")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        case .configured:
+            HStack(spacing: 8) {
+                Button {
+                    refresh()
+                } label: {
+                    Label("Refresh Checks", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Text("\(remoteName):")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+        case .failed:
+            VStack(alignment: .leading, spacing: 8) {
+                if case .failed(let detail) = phase {
+                    SettingsInlineAlert(text: detail, tint: Theme.error)
+                }
+                HStack(spacing: 8) {
+                    Button {
+                        retry()
+                    } label: {
+                        Label("Retry", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(tint)
+                    .controlSize(.small)
+
+                    Button {
+                        refresh()
+                    } label: {
+                        Label("Refresh Checks", systemImage: "checkmark.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+        case .idle, .ready:
+            Button {
+                start()
+            } label: {
+                Label("Connect Google Drive", systemImage: "person.crop.circle.badge.plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(tint)
+            .controlSize(.small)
+        }
     }
 }
 

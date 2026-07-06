@@ -73,12 +73,28 @@ enum RemotePath {
         return "\(remoteName):\(String(dir.dropFirst()))/"
     }
 
+    static func rcloneAbsolutePath(remoteName: String, directory: String) -> String {
+        let dir = normalizeDirectory(directory)
+        if dir == "/" {
+            return "\(remoteName):/"
+        }
+        return "\(remoteName):\(dir)/"
+    }
+
     static func rcloneFile(remoteName: String, path: String) -> String {
         let normalized = normalizeDirectory(path)
         if normalized == "/" {
             return "\(remoteName):"
         }
         return "\(remoteName):\(String(normalized.dropFirst()))"
+    }
+
+    static func rcloneAbsoluteFile(remoteName: String, path: String) -> String {
+        let normalized = normalizeDirectory(path)
+        if normalized == "/" {
+            return "\(remoteName):/"
+        }
+        return "\(remoteName):\(normalized)"
     }
 
     private static func splitName(_ name: String) -> (base: String, ext: String) {

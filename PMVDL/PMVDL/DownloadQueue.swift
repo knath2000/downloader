@@ -101,8 +101,10 @@ class DownloadQueue: ObservableObject {
 
     private init() {
         load()
-        normalizeInterruptedItemsForLaunch()
-        save()
+        let didNormalize = normalizeInterruptedItemsForLaunch()
+        if didNormalize {
+            persistQueueSnapshot()
+        }
     }
 
     private func load() {
@@ -113,12 +115,19 @@ class DownloadQueue: ObservableObject {
     }
 
     func save() {
+        persistQueueSnapshot()
+        LibraryPipelineStore.shared.rebuild(queueItems: queue)
+    }
+
+    private func persistQueueSnapshot() {
         if let encoded = try? JSONEncoder().encode(queue) {
             UserDefaults.standard.set(encoded, forKey: userDefaultsKey)
         }
     }
 
-    func normalizeInterruptedItemsForLaunch() {
+    @discardableResult
+    func normalizeInterruptedItemsForLaunch() -> Bool {
+        var didChange = false
         for i in queue.indices {
             switch queue[i].status {
             case .processing:
@@ -127,6 +136,7 @@ class DownloadQueue: ObservableObject {
                 queue[i].progress = 0
                 queue[i].bytesPerSecond = nil
                 queue[i].statusMessage = message
+                didChange = true
             case .downloading, .verifying, .uploading:
                 let wasUploading = queue[i].status == .uploading
                 if queue[i].retryPayload != nil {
@@ -147,10 +157,12 @@ class DownloadQueue: ObservableObject {
                     queue[i].bytesPerSecond = nil
                     queue[i].statusMessage = message
                 }
+                didChange = true
             case .paused, .pending, .completed, .failed:
                 break
             }
         }
+        return didChange
     }
 
     func add(

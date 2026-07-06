@@ -50,6 +50,12 @@ final class RemotePathTests: XCTestCase {
         XCTAssertEqual(RemotePath.rcloneFile(remoteName: "seedbox", path: "/downloads/a.mp4"), "seedbox:downloads/a.mp4")
     }
 
+    func testRcloneAbsolutePathFormatting() {
+        XCTAssertEqual(RemotePath.rcloneAbsolutePath(remoteName: "server", directory: "/"), "server:/")
+        XCTAssertEqual(RemotePath.rcloneAbsolutePath(remoteName: "server", directory: "/srv/uploads"), "server:/srv/uploads/")
+        XCTAssertEqual(RemotePath.rcloneAbsoluteFile(remoteName: "server", path: "/srv/uploads/a.mp4"), "server:/srv/uploads/a.mp4")
+    }
+
     func testMovePlannerRejectsFolderIntoDescendant() {
         let folder = item(name: "Movies", path: "/Movies", kind: .folder)
 

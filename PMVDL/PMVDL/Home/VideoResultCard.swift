@@ -3,10 +3,12 @@ import SwiftUI
 
 struct VideoResultCard: View {
     let result: ExtractResult
+    let isRetrying: Bool
     let localState: (String) -> UploadState?
     let megaState: (String) -> UploadState?
     let gdriveState: (String) -> UploadState?
     let seedboxState: (String) -> UploadState?
+    let onRetry: () -> Void
     let onLocal: (String) -> Void
     let onMega: (String) -> Void
     let onGDrive: (String) -> Void
@@ -57,10 +59,30 @@ struct VideoResultCard: View {
                 }
                 .font(.caption.weight(.semibold))
             } else if let error = result.error {
-                Text(displayError(error))
-                    .font(.caption)
-                    .foregroundStyle(Theme.error)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(displayError(error))
+                        .font(.caption)
+                        .foregroundStyle(Theme.error)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if isRetrying {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Retrying...")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Theme.textSecondary)
+                        }
+                    } else {
+                        Button {
+                            onRetry()
+                        } label: {
+                            Label("Retry", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
             }
         }
         .padding(14)
@@ -138,8 +160,15 @@ struct VideoResultCard: View {
     }
 
     private var statusPill: some View {
-        let color: Color = result.error == nil ? (selectedState == nil ? Theme.success : stateColor(selectedState!)) : Theme.error
-        let label = result.error == nil ? (selectedState.map(stateLabel) ?? "Ready") : "Error"
+        let color: Color
+        let label: String
+        if result.error == nil {
+            color = selectedState == nil ? Theme.success : stateColor(selectedState!)
+            label = selectedState.map(stateLabel) ?? "Ready"
+        } else {
+            color = isRetrying ? Theme.skyBlue : Theme.error
+            label = isRetrying ? "Retrying" : "Error"
+        }
         return Text(label.uppercased())
             .font(.system(size: 9, weight: .black))
             .foregroundStyle(color)

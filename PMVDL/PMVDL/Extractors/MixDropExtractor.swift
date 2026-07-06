@@ -6,8 +6,8 @@ struct MixDropExtractor: VideoSiteExtractor {
 
  static func supports(_ url: URL) -> Bool {
  guard let host = url.host()?.lowercased() else { return false }
- return host == "mixdrop.ag" || host == "mixdrop.co" || host == "mixdrop.sx" || host == "mixdrop.pw" || host == "mixdrop.top" || host == "m1xdrop.click"
- || host.hasSuffix(".mixdrop.ag") || host.hasSuffix(".mixdrop.co") || host.hasSuffix(".mixdrop.sx") || host.hasSuffix(".mixdrop.pw") || host.hasSuffix(".mixdrop.top") || host.hasSuffix(".m1xdrop.click")
+ return host == "mixdrop.ag" || host == "mixdrop.co" || host == "mixdrop.sx" || host == "mixdrop.pw" || host == "mixdrop.top" || host == "m1xdrop.click" || host == "miiixdrop.net"
+ || host.hasSuffix(".mixdrop.ag") || host.hasSuffix(".mixdrop.co") || host.hasSuffix(".mixdrop.sx") || host.hasSuffix(".mixdrop.pw") || host.hasSuffix(".mixdrop.top") || host.hasSuffix(".m1xdrop.click") || host.hasSuffix(".miiixdrop.net")
  }
 
  static func extract(fromHTML html: String, url: URL) async throws -> VideoSource {

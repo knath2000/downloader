@@ -2,6 +2,26 @@ import XCTest
 @testable import VidDL
 
 final class VideoResultPresentationTests: XCTestCase {
+    private func makeResults() -> [ExtractResult] {
+        [
+            ExtractResult(
+                url: "https://example.test/one",
+                source: VideoSource(mp4: "https://cdn.example.test/one.mp4", hls: [], title: "One"),
+                error: nil
+            ),
+            ExtractResult(
+                url: "https://example.test/two",
+                source: nil,
+                error: "Failed two"
+            ),
+            ExtractResult(
+                url: "https://example.test/three",
+                source: nil,
+                error: "Failed three"
+            )
+        ]
+    }
+
     func testMP4SourceProducesMP4Choice() {
         let source = VideoSource(mp4: "https://cdn.example.test/video.mp4", hls: [], title: "Example")
         let presentation = VideoResultPresentation(result: ExtractResult(url: "https://example.test/watch", source: source, error: nil))
@@ -41,5 +61,31 @@ final class VideoResultPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.title, "Untitled Video")
         XCTAssertTrue(presentation.qualities.isEmpty)
+    }
+
+    func testExtractionRetrySupportFindsFailedIndices() {
+        XCTAssertEqual(ExtractionRetrySupport.failedIndices(in: makeResults()), [1, 2])
+    }
+
+    func testExtractionRetrySupportExcludesAlreadyRetryingIndices() {
+        XCTAssertEqual(
+            ExtractionRetrySupport.retryableFailedIndices(in: makeResults(), retryingIndices: [2]),
+            [1]
+        )
+    }
+
+    func testExtractionRetrySupportReplacesOnlyTargetIndex() {
+        let results = makeResults()
+        let replacement = ExtractResult(
+            url: "https://example.test/two",
+            source: VideoSource(mp4: "https://cdn.example.test/two.mp4", hls: [], title: "Two"),
+            error: nil
+        )
+
+        let updated = ExtractionRetrySupport.replacingResult(at: 1, in: results, with: replacement)
+
+        XCTAssertEqual(updated[0], results[0])
+        XCTAssertEqual(updated[1], replacement)
+        XCTAssertEqual(updated[2], results[2])
     }
 }

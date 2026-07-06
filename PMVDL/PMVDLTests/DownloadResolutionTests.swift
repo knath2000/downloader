@@ -93,6 +93,10 @@ final class StreamTapeExtractorTests: XCTestCase {
 }
 
 final class MixDropExtractorTests: XCTestCase {
+    func testSupportsCurrentMirrorHost() throws {
+        XCTAssertTrue(MixDropExtractor.supports(try XCTUnwrap(URL(string: "https://miiixdrop.net/e/4dvjklq6u3w8md"))))
+    }
+
     func testMixDropPrefersMDCoreWurlOverAdScriptSrc() async throws {
         let pageURL = URL(string: "https://mixdrop.ag/e/039jlq83he41d6")!
 
@@ -198,6 +202,56 @@ final class DoodStreamExtractorTests: XCTestCase {
         XCTAssertEqual(source.hls.first?.headers?["Referer"], finalURL.absoluteString)
     }
 
+    func testPlaymogoDPathNormalizesToEmbedPath() async throws {
+        let pageURL = URL(string: "https://playmogo.com/d/ta6jhp0sh9jd")!
+        let embedURL = URL(string: "https://playmogo.com/e/ta6jhp0sh9jd")!
+
+        let source = try await DoodStreamExtractor.extract(
+            fromHTML: playmogoHTML(),
+            url: pageURL,
+            resolvedPageURL: nil,
+            playmogoPassResolver: { _, referer in
+                XCTAssertEqual(referer, embedURL)
+                return "https://ll288op.cloudatacdn.com/base/video~"
+            },
+            randomSuffix: { "abcdefghij" },
+            nowMilliseconds: { "1777922000000" }
+        )
+
+        XCTAssertEqual(source.siteName, "Playmogo")
+        XCTAssertNil(source.mp4)
+        XCTAssertEqual(source.hls.first?.headers?["Referer"], embedURL.absoluteString)
+    }
+
+    func testPlaymogoMinifiedTokenBuilderParsesRenamedVariable() async throws {
+        let pageURL = URL(string: "https://playmogo.com/e/ta6jhp0sh9jd")!
+        let source = try await DoodStreamExtractor.extract(
+            fromHTML: minifiedPlaymogoHTML(),
+            url: pageURL,
+            resolvedPageURL: pageURL,
+            playmogoPassResolver: { passURL, referer in
+                XCTAssertEqual(referer, pageURL)
+                XCTAssertEqual(passURL.path, "/pass_md5/renamed/token")
+                return "https://ll288op.cloudatacdn.com/base/video~"
+            },
+            randomSuffix: { "abcdefghij" },
+            nowMilliseconds: { "1777922000000" }
+        )
+
+        XCTAssertEqual(
+            source.hls.first?.url,
+            "https://ll288op.cloudatacdn.com/base/video~abcdefghij?token=renamed&expiry=1777922000000"
+        )
+        XCTAssertNil(source.mp4)
+    }
+
+    func testPlaymogoParserHelpersReadAjaxShape() {
+        let html = minifiedPlaymogoHTML()
+
+        XCTAssertEqual(DoodStreamExtractor.extractPlaymogoPassPathForTesting(from: html), "/pass_md5/renamed/token")
+        XCTAssertEqual(DoodStreamExtractor.extractPlaymogoTokenPrefixForTesting(from: html), "?token=renamed&expiry=")
+    }
+
     private func playmogoHTML() -> String {
         """
         <html>
@@ -218,9 +272,33 @@ final class DoodStreamExtractorTests: XCTestCase {
         </html>
         """
     }
+
+    private func minifiedPlaymogoHTML() -> String {
+        """
+        <script>
+        $.ajax({url:'/pass_md5/renamed/token',success:function(payload){player.src(payload+mk())}});
+        function mk(){var z="";return z+"?token=renamed&expiry="+Date . now ( )}
+        </script>
+        """
+    }
 }
 
 final class VidaraExtractorTests: XCTestCase {
+    func testVidaraFilecodeAcceptsWatchEmbedAndDownloadPaths() throws {
+        XCTAssertEqual(
+            try VidaraExtractor.extractFilecodeForTesting(from: URL(string: "https://vidara.so/v/HMyhgZqHhW3Ml")!),
+            "HMyhgZqHhW3Ml"
+        )
+        XCTAssertEqual(
+            try VidaraExtractor.extractFilecodeForTesting(from: URL(string: "https://vidara.so/e/HMyhgZqHhW3Ml")!),
+            "HMyhgZqHhW3Ml"
+        )
+        XCTAssertEqual(
+            try VidaraExtractor.extractFilecodeForTesting(from: URL(string: "https://vidara.so/d/HMyhgZqHhW3Ml")!),
+            "HMyhgZqHhW3Ml"
+        )
+    }
+
     func testParsedHLSQualitiesCarryVidaraHeadersAndSourcePageUrl() {
         let playlist = """
         #EXTM3U
@@ -360,6 +438,45 @@ final class DownloadResolutionTests: XCTestCase {
         XCTAssertEqual(resolution.sourcePageUrl, sourcePageUrl)
     }
 
+    func testVidaraProviderPageFallbackResolvesThroughExtractor() async throws {
+        let providerPage = "https://vidara.so/d/HMyhgZqHhW3Ml"
+        let quality = VideoSource.Quality(
+            label: "VIDARA · provider page",
+            url: providerPage,
+            kind: .pageUrl,
+            sourcePageUrl: providerPage
+        )
+        let source = VideoSource(mp4: nil, hls: [quality], title: "Provider Fixture")
+        var requestedURLs: [String] = []
+
+        let resolution = try await DownloadResolver.resolve(
+            requestedUrl: providerPage,
+            in: [ExtractResult(url: "https://allpornstream.com/post/test", source: source, error: nil)],
+            extractor: { url in
+                requestedURLs.append(url)
+                return VideoSource(
+                    mp4: nil,
+                    hls: [
+                        VideoSource.Quality(
+                            label: "1080p",
+                            url: "https://cdn.vidara.test/hls/master.m3u8?token=abc",
+                            kind: .hlsManifest,
+                            headers: ["Referer": "https://vidara.so/"],
+                            sourcePageUrl: providerPage
+                        )
+                    ],
+                    title: "Vidara Resolved",
+                    siteName: "Vidara"
+                )
+            }
+        )
+
+        XCTAssertEqual(requestedURLs, [providerPage])
+        XCTAssertEqual(resolution.mediaKind, .hls)
+        XCTAssertEqual(resolution.finalUrl, "https://cdn.vidara.test/hls/master.m3u8?token=abc")
+        XCTAssertEqual(resolution.sourcePageUrl, providerPage)
+    }
+
     func testPornHubResolutionRefreshesStaleDirectURLAtDownloadTime() async throws {
         let pageURL = "https://www.pornhub.com/view_video.php?viewkey=phfixture"
         let staleURL = "https://ev-phncdn.example.test/videos/stale-720.mp4?ttl=old"
@@ -490,6 +607,80 @@ final class SeedboxHLSUploadStrategyTests: XCTestCase {
     }
 }
 
+final class GDriveStreamingUploadTests: XCTestCase {
+    func testRcloneDestinationNormalizesRemotePath() {
+        XCTAssertEqual(
+            GDriveManager.rcloneDestination(remoteName: "gdrive", remotePath: "VidDL", filename: "video.mp4"),
+            "gdrive:VidDL/video.mp4"
+        )
+        XCTAssertEqual(
+            GDriveManager.rcloneDestination(remoteName: "gdrive", remotePath: "/", filename: "video.mp4"),
+            "gdrive:video.mp4"
+        )
+    }
+
+    func testRcloneRcatArgumentsTargetRemoteDestination() {
+        XCTAssertEqual(
+            GDriveManager.rcloneRcatArguments(remoteName: "gdrive", remotePath: "VidDL/", filename: "video.mp4"),
+            ["rcat", "gdrive:VidDL/video.mp4"]
+        )
+    }
+
+    func testDirectDownloadsStreamToGoogleDrive() {
+        XCTAssertTrue(
+            GDriveDownloadJob.shouldStream(mediaKind: .direct, siteName: "Example", sourcePageUrl: nil)
+        )
+    }
+
+    func testSafeHLSStreamsToGoogleDrive() {
+        XCTAssertEqual(
+            GDriveDownloadJob.hlsUploadStrategy(forSiteName: "HLS Stream", sourcePageUrl: nil),
+            .streamToRclone
+        )
+        XCTAssertTrue(
+            GDriveDownloadJob.shouldStream(mediaKind: .hls, siteName: "HLS Stream", sourcePageUrl: nil)
+        )
+    }
+
+    func testKnownProblemHLSMaterializesLocallyForGoogleDrive() {
+        XCTAssertEqual(
+            GDriveDownloadJob.hlsUploadStrategy(forSiteName: "LuluStream", sourcePageUrl: nil),
+            .materializeLocally
+        )
+        XCTAssertEqual(
+            GDriveDownloadJob.hlsUploadStrategy(forSiteName: "Vidara", sourcePageUrl: nil),
+            .materializeLocally
+        )
+        XCTAssertEqual(
+            GDriveDownloadJob.hlsUploadStrategy(forSiteName: "ProviderLink", sourcePageUrl: nil),
+            .materializeLocally
+        )
+        XCTAssertEqual(
+            GDriveDownloadJob.hlsUploadStrategy(forSiteName: nil, sourcePageUrl: "https://allpornstream.com/post/example"),
+            .materializeLocally
+        )
+        XCTAssertFalse(
+            GDriveDownloadJob.shouldStream(mediaKind: .hls, siteName: "ProviderLink", sourcePageUrl: nil)
+        )
+    }
+
+    func testGoogleDriveQuotaErrorsAreRecognized() {
+        let message = "googleapi: Error 403: Quota exceeded for quota metric 'Queries' and limit 'Queries per minute'"
+
+        XCTAssertTrue(GDriveManager.isGoogleDriveQuotaError(message))
+        XCTAssertTrue(GDriveManager.userFacingRcloneFailureMessage(message).contains("Google Drive rate limit hit"))
+    }
+
+    func testYtDlpAndAudioStayOnLocalFallbackForGoogleDrive() {
+        XCTAssertFalse(
+            GDriveDownloadJob.shouldStream(mediaKind: .ytDlp, siteName: "Example", sourcePageUrl: nil)
+        )
+        XCTAssertFalse(
+            GDriveDownloadJob.shouldStream(mediaKind: .audio, siteName: "Example", sourcePageUrl: nil)
+        )
+    }
+}
+
 final class ProviderLinkExtractorResolutionTests: XCTestCase {
     func testAllPornStreamCandidatesPreferEmbedUrls() throws {
         let html = allPornStreamFixture()
@@ -503,6 +694,21 @@ final class ProviderLinkExtractorResolutionTests: XCTestCase {
         ])
         XCTAssertEqual(candidates[2].providerName, "DOODSTREAM")
         XCTAssertEqual(candidates[2].url, "https://doodstream.com/e/ta6jhp0sh9jd")
+    }
+
+    func testAllPornStreamCandidatesParseInlineRSCVideoUrls() throws {
+        let html = """
+        3:[["$","$L10",null,{"initialPost":{"video_title":"[GlowingDesire] Mia James","video_urls":{"link":[["STREAMTAPE","https://streamtape.com/v/wPAXyzQ3l4UGr3"],["MIIIXDROP.NET","https://miiixdrop.net/f/4dvjklq6u3w8md"],["DOODSTREAM","https://doodstream.com/d/bzcfvq3l93ze"]],"direct":[],"iframe":[{"embed_url":"https://streamtape.com/e/wPAXyzQ3l4UGr3","file_code":"wPAXyzQ3l4UGr3","hosting_provider":"STREAMTAPE","status_code":200},{"embed_url":"https://miiixdrop.net/e/4dvjklq6u3w8md","file_code":"4dvjklq6u3w8md","hosting_provider":"MIIIXDROP.NET","status_code":200},{"embed_url":"https://doodstream.com/e/bzcfvq3l93ze","file_code":"bzcfvq3l93ze","hosting_provider":"DOODSTREAM","status_code":200}]}}}]]
+        """
+
+        let candidates = ProviderLinkExtractor.providerCandidatesForTesting(from: html)
+
+        XCTAssertEqual(candidates.map(\.providerName), ["STREAMTAPE", "MIIIXDROP.NET", "DOODSTREAM"])
+        XCTAssertEqual(candidates.map(\.url), [
+            "https://streamtape.com/e/wPAXyzQ3l4UGr3",
+            "https://miiixdrop.net/e/4dvjklq6u3w8md",
+            "https://doodstream.com/e/bzcfvq3l93ze"
+        ])
     }
 
     func testAllPornStreamResolutionFlattensProviderSources() async throws {
@@ -597,6 +803,33 @@ final class ProviderLinkExtractorResolutionTests: XCTestCase {
         XCTAssertEqual(qualities.map(\.label), ["STREAMTAPE · Video", "DOODSTREAM · provider page"])
         XCTAssertEqual(qualities.map(\.kind), [.direct, .pageUrl])
         XCTAssertEqual(qualities[1].url, "https://doodstream.com/e/ta6jhp0sh9jd")
+    }
+
+    func testVidaraProviderCandidateResolvesInsteadOfFallingBackToPage() async throws {
+        let candidates = [
+            ProviderLinkExtractor.ProviderCandidateForTesting(providerName: "VIDARA", url: "https://vidara.so/d/HMyhgZqHhW3Ml")
+        ]
+
+        let qualities = await ProviderLinkExtractor.resolveProviderCandidatesForTesting(candidates, resolver: { url in
+            XCTAssertEqual(url, "https://vidara.so/d/HMyhgZqHhW3Ml")
+            return VideoSource(
+                mp4: nil,
+                hls: [
+                    VideoSource.Quality(
+                        label: "1080p",
+                        url: "https://cdn.vidara.test/hls/master.m3u8?token=abc",
+                        kind: .hlsManifest,
+                        headers: ["Referer": "https://vidara.so/"],
+                        sourcePageUrl: url
+                    )
+                ],
+                siteName: "Vidara"
+            )
+        })
+
+        XCTAssertEqual(qualities.map(\.label), ["VIDARA · 1080p"])
+        XCTAssertEqual(qualities.first?.kind, .hlsManifest)
+        XCTAssertEqual(qualities.first?.url, "https://cdn.vidara.test/hls/master.m3u8?token=abc")
     }
 
     func testDirectQualityWithoutMP4ResolvesAsDirectDownload() async throws {

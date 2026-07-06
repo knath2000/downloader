@@ -122,10 +122,10 @@ enum SettingsDependencyPresenter {
             ),
             seedbox: SettingsDependencyCardModel(
                 icon: "hourglass",
-                title: "Checking seedbox setup…",
+                title: "Checking remote server setup…",
                 status: "Checking",
                 detail: input.seedboxTransferMode == "webdav"
-                    ? "Checking WebDAV seedbox settings."
+                    ? "Checking WebDAV remote server settings."
                     : "Looking for rclone and the \(input.resolvedSeedboxRemoteName) remote.",
                 command: nil,
                 footnote: "This should only take a moment.",
@@ -256,7 +256,7 @@ enum SettingsDependencyPresenter {
                 status: hasURL ? "Configured" : "Missing URL",
                 detail: hasURL
                     ? "VidDL will stream direct video URLs to WebDAV without rclone."
-                    : "Enter the WebDAV base URL for your seedbox.",
+                    : "Enter the WebDAV base URL for your remote server.",
                 command: nil,
                 footnote: "HLS and yt-dlp sources still require rclone for the fallback upload step.",
                 tone: hasURL ? .success : .warning,
@@ -266,7 +266,7 @@ enum SettingsDependencyPresenter {
         } else if snapshot.seedboxRcloneConfigured {
             return SettingsDependencyCardModel(
                 icon: "externaldrive.fill.badge.checkmark",
-                title: "Seedbox rclone remote is ready",
+                title: "Remote server is ready",
                 status: "Configured",
                 detail: "VidDL can find rclone and the \(input.resolvedSeedboxRemoteName) remote.",
                 command: nil,
@@ -278,7 +278,7 @@ enum SettingsDependencyPresenter {
         } else if snapshot.seedboxRcloneAvailable {
             return SettingsDependencyCardModel(
                 icon: "externaldrive.badge.exclamationmark",
-                title: "Seedbox rclone remote is not configured",
+                title: "Remote server is not configured",
                 status: "Configure remote",
                 detail: "rclone is installed, but VidDL cannot find a remote named \(input.resolvedSeedboxRemoteName).",
                 command: "rclone config",
@@ -292,9 +292,9 @@ enum SettingsDependencyPresenter {
                 icon: "externaldrive.badge.xmark",
                 title: "rclone is missing",
                 status: "Missing",
-                detail: "Seedbox rclone transfers are disabled because VidDL cannot find the rclone command on this Mac.",
+                detail: "Remote server transfers are disabled because VidDL cannot find the rclone command on this Mac.",
                 command: "brew install rclone",
-                footnote: "Install rclone and create a seedbox remote for rclone rcat or HLS fallback uploads.",
+                footnote: "Install rclone and create an SFTP remote for rclone rcat or HLS fallback uploads.",
                 tone: .error,
                 isReady: false,
                 isChecking: false

@@ -91,6 +91,7 @@ final class SettingsDependencyStateTests: XCTestCase {
         XCTAssertEqual(model.seedbox.status, "Configured")
         XCTAssertEqual(model.ytDlp.status,   "Ready")
         XCTAssertEqual(model.ffmpeg.status,  "Ready")
+        XCTAssertEqual(model.seedbox.title, "Remote server is ready")
 
         XCTAssertTrue(model.mega.isReady)
         XCTAssertTrue(model.gdrive.isReady)
@@ -140,6 +141,7 @@ final class SettingsDependencyStateTests: XCTestCase {
 
         XCTAssertEqual(model.gdrive.command, "brew install rclone")
         XCTAssertEqual(model.seedbox.command, "brew install rclone")
+        XCTAssertTrue(model.seedbox.detail.contains("Remote server transfers"))
         XCTAssertEqual(model.ytDlp.command,  "brew install yt-dlp")
         XCTAssertEqual(model.ffmpeg.command, "brew install ffmpeg")
 

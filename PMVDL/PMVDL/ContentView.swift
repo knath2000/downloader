@@ -5,7 +5,6 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var appState = AppStateManager.shared
     @StateObject private var activeQueueBadge = DownloadQueueActiveCountProjection(queue: .shared)
-    @StateObject private var favorites = FeedFavoritesStore.shared
     @StateObject private var license = LicenseManager.shared
     @AppStorage("megaRemotePath") var megaRemotePath = "/Cloud/VidDL/"
     @AppStorage("gdriveRemoteName") var gdriveRemoteName = "gdrive"
@@ -25,7 +24,10 @@ struct ContentView: View {
     private let floatingTabContentInset: CGFloat = 0
 
     private var performanceProfile: PerformanceProfile {
-        reduceMotion || isLowPowerModeEnabled ? .reducedEffects : .normal
+        PerformanceProfile.automatic(
+            reduceMotion: reduceMotion,
+            isLowPowerModeEnabled: isLowPowerModeEnabled
+        )
     }
 
     private var displayedDestination: NavDestination {
@@ -55,18 +57,10 @@ struct ContentView: View {
         .environment(\.performanceProfile, performanceProfile)
         .onAppear {
             isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
-            if !favorites.hasFavorites && appState.selectedDestination == .favorites {
-                selectDestination(.feed)
-            }
             enforceAccess(to: appState.selectedDestination)
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSProcessInfoPowerStateDidChange)) { _ in
             isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
-        }
-        .onChange(of: favorites.hasFavorites) { _, hasFavorites in
-            if !hasFavorites && appState.selectedDestination == .favorites {
-                selectDestination(.feed)
-            }
         }
         .onChange(of: appState.selectedDestination) { _, destination in
             enforceAccess(to: destination)
@@ -92,8 +86,6 @@ struct ContentView: View {
         ZStack(alignment: .bottom) {
             contentForDestination(displayedDestination)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .transition(.opacity)
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: displayedDestination)
 
             FloatingTabSwitcher(
                 destinations: sidebarDestinations,
@@ -135,35 +127,9 @@ struct ContentView: View {
             FeedView()
                 .padding()
                 .padding(.bottom, floatingTabContentInset)
-        case .favorites:
-            FavoritesView()
-                .padding()
-                .padding(.bottom, floatingTabContentInset)
-        case .files:
-            RemoteFilesView(
-                seedboxTransferMode: seedboxTransferMode,
-                seedboxRemoteName: seedboxRemoteName,
-                seedboxRemotePath: seedboxRemotePath,
-                seedboxWebdavURL: seedboxWebdavURL,
-                seedboxWebdavUser: seedboxWebdavUser,
-                seedboxWebdavPassword: seedboxWebdavPassword
-            )
-            .padding()
-            .padding(.bottom, floatingTabContentInset)
-        case .profile:
-            ProfileView()
-                .padding()
-                .padding(.bottom, floatingTabContentInset)
         case .settings:
             SettingsView(gdriveRemoteName: $gdriveRemoteName,
                          gdriveRemotePath: $gdriveRemotePath,
-                         megaRemotePath: $megaRemotePath,
-                         seedboxTransferMode: $seedboxTransferMode,
-                         seedboxRemoteName: $seedboxRemoteName,
-                         seedboxRemotePath: $seedboxRemotePath,
-                         seedboxWebdavURL: $seedboxWebdavURL,
-                         seedboxWebdavUser: $seedboxWebdavUser,
-                         seedboxWebdavPassword: $seedboxWebdavPassword,
                          onUpgradeRequired: presentUpgradeOverlay)
                 .padding()
                 .padding(.bottom, floatingTabContentInset)
@@ -171,22 +137,13 @@ struct ContentView: View {
     }
 
     private var sidebarDestinations: [NavDestination] {
-        NavDestination.allCases.filter { destination in
-            switch destination {
-            case .favorites:
-                return favorites.hasFavorites
-            default:
-                return true
-            }
-        }
+        NavDestination.allCases
     }
 
     private func navBadge(for dest: NavDestination) -> Int? {
         switch dest {
         case .home:
             return activeQueueBadge.activeCount == 0 ? nil : activeQueueBadge.activeCount
-        case .favorites:
-            return favorites.count == 0 ? nil : favorites.count
         default:
             return nil
         }
@@ -198,7 +155,7 @@ struct ContentView: View {
             return
         }
 
-        withAnimation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.7)) {
+        withAnimation(performanceProfile == .reducedEffects ? nil : .easeOut(duration: 0.12)) {
             appState.select(destination)
         }
     }
@@ -299,7 +256,7 @@ private struct FloatingTabSwitcher: View {
                 .frame(width: 56, height: 44)
                 .background {
                     if isSelected {
-                        if #available(macOS 26, *) {
+                        if #available(macOS 26, *), performanceProfile.allowsExpensiveEffects {
                             Capsule()
                                 .fill(.clear)
                                 .glassEffect(.regular.tint(color.opacity(0.5)), in: Capsule())
@@ -310,7 +267,7 @@ private struct FloatingTabSwitcher: View {
                         }
                     }
                 }
-                .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.72), value: isSelected)
+                .animation(performanceProfile == .reducedEffects ? nil : .easeOut(duration: 0.12), value: isSelected)
 
                 if isLocked {
                     Image(systemName: "lock.fill")
@@ -328,7 +285,7 @@ private struct FloatingTabSwitcher: View {
                         .background(color, in: Capsule())
                         .offset(x: -2, y: 2)
                         .contentTransition(.numericText())
-                        .animation(reduceMotion ? nil : .spring(response: 0.3), value: count)
+                        .animation(performanceProfile == .reducedEffects ? nil : .easeOut(duration: 0.12), value: count)
                 }
             }
         }
@@ -338,11 +295,11 @@ private struct FloatingTabSwitcher: View {
 
     @ViewBuilder
     private var pillBackground: some View {
-        if #available(macOS 26, *) {
+        if #available(macOS 26, *), performanceProfile.allowsExpensiveEffects {
             Color.clear
                 .glassEffect(.regular.tint(Color.black.opacity(0.3)), in: Capsule())
         } else {
-            if performanceProfile == .normal {
+            if performanceProfile.allowsExpensiveEffects {
                 PillBlurBackground()
             } else {
                 Capsule()
@@ -383,6 +340,10 @@ private struct PillBlurBackground: NSViewRepresentable {
 }
 
 private struct WindowConfigurator: NSViewRepresentable {
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
     func makeNSView(context: Context) -> NSView {
         NSView()
     }
@@ -396,6 +357,50 @@ private struct WindowConfigurator: NSViewRepresentable {
             window.backgroundColor = .clear
             window.isOpaque = false
             window.toolbar = nil
+            context.coordinator.track(window)
+        }
+    }
+
+    @MainActor
+    final class Coordinator {
+        private weak var trackedWindow: NSWindow?
+        private var resizeObserver: NSObjectProtocol?
+
+        deinit {
+            if let resizeObserver {
+                NotificationCenter.default.removeObserver(resizeObserver)
+            }
+        }
+
+        func track(_ window: NSWindow) {
+            guard trackedWindow !== window else {
+                updateWindowSize(window)
+                return
+            }
+
+            if let resizeObserver {
+                NotificationCenter.default.removeObserver(resizeObserver)
+            }
+
+            trackedWindow = window
+            updateWindowSize(window)
+            resizeObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResizeNotification,
+                object: window,
+                queue: .main
+            ) { [weak self] notification in
+                guard let window = notification.object as? NSWindow else { return }
+                Task { @MainActor in
+                    self?.updateWindowSize(window)
+                }
+            }
+        }
+
+        private func updateWindowSize(_ window: NSWindow) {
+            let size = window.frame.size
+            if AppStateManager.shared.windowSize != size {
+                AppStateManager.shared.windowSize = size
+            }
         }
     }
 }

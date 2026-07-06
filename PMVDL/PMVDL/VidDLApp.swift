@@ -4,7 +4,6 @@ import SwiftUI
 struct VidDLApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var appState = AppStateManager.shared
-    @StateObject private var favorites = FeedFavoritesStore.shared
 
     var body: some Scene {
         WindowGroup {
@@ -18,13 +17,8 @@ struct VidDLApp: App {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Navigate") {
                 Button("Home") { appState.select(.home) }.keyboardShortcut("1", modifiers: .command)
-                Button("Feed") { appState.select(.feed) }.keyboardShortcut("3", modifiers: .command)
-                if favorites.hasFavorites {
-                    Button("Favorites") { appState.select(.favorites) }
-                }
-                Button("Library") { appState.select(.library) }.keyboardShortcut("4", modifiers: .command)
-                Button("Files") { appState.select(.files) }.keyboardShortcut("5", modifiers: .command)
-                Button("Profile") { appState.select(.profile) }.keyboardShortcut("6", modifiers: .command)
+                Button("Feed") { appState.select(.feed) }.keyboardShortcut("2", modifiers: .command)
+                Button("Library") { appState.select(.library) }.keyboardShortcut("3", modifiers: .command)
                 Button("Settings") { appState.select(.settings) }.keyboardShortcut(",", modifiers: .command)
             }
             CommandMenu("Downloads") {
@@ -67,9 +61,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.setActivationPolicy(.regular)
         MegaManager.cleanupTempFiles()
         NotificationManager.shared.requestAuthorization()
-        SleepPreventionManager.shared.start()
         Task { await LicenseManager.shared.bootstrap() }
         Task { @MainActor in
+            await Task.yield()
+            LibraryPipelineStore.shared.hydrateFromStores(
+                libraryItems: VideoLibrary.shared.items,
+                completedUploads: HistoryManager.shared.completedUploads,
+                queueItems: DownloadQueue.shared.queue
+            )
+        }
+        Task { @MainActor in
+            await Task.yield()
+            SleepPreventionManager.shared.start()
+        }
+        Task { @MainActor in
+            await Task.yield()
             let seedboxWebdavPassword = UserDefaults.standard.string(forKey: "seedboxWebdavPassword") ?? ""
             DownloadQueue.shared.resumeInterruptedOnLaunch(seedboxWebdavPassword: seedboxWebdavPassword)
         }

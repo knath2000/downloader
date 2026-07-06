@@ -491,8 +491,8 @@ enum ProFeatureError: LocalizedError {
         switch self {
         case .audioRequiresPro: return "Audio-only downloads require VidDL Pro."
         case .subtitlesRequirePro: return "Subtitle downloads require VidDL Pro."
-        case .videoProcessingRequiresPro: return "Video processing tools require VidDL Pro."
-        case .localFileRequired: return "Download this item locally before using Pro processing tools."
+        case .videoProcessingRequiresPro: return "This tool requires VidDL Pro."
+        case .localFileRequired: return "Download this item locally before using this tool."
         }
     }
 }
@@ -697,7 +697,7 @@ enum VideoProcessingLauncher {
         displayName: String,
         onUpgradeRequired: () -> Void
     ) {
-        guard ProFeatureGate.canUseVideoProcessing else {
+        guard ProFeatureGate.isPro else {
             onUpgradeRequired()
             return
         }

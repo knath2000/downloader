@@ -21,12 +21,10 @@ struct ProFeatureGate {
     /// Higher concurrent download limits require Pro.
     static var canDownloadConcurrent: Bool { isPro }
 
-    static var canUseVideoProcessing: Bool { isPro }
     static var canDownloadAudio: Bool { isPro }
     static var canDownloadSubtitles: Bool { isPro }
     static var canUseFeed: Bool { isPro }
     static var canUseFavorites: Bool { isPro }
-    static var canUseProfile: Bool { isPro }
 
     nonisolated static var canDownloadAudioInBackground: Bool { storedIsPro }
     nonisolated static var canDownloadSubtitlesInBackground: Bool { storedIsPro }
@@ -39,11 +37,7 @@ struct ProFeatureGate {
         switch destination {
         case .feed:
             return canUseFeed
-        case .favorites:
-            return canUseFavorites
-        case .profile:
-            return canUseProfile
-        case .home, .library, .files, .settings:
+        case .home, .library, .settings:
             return true
         }
     }

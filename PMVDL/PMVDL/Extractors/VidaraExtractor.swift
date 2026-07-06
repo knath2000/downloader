@@ -13,7 +13,7 @@ struct VidaraExtractor: VideoSiteExtractor {
     }
 
     static func extract(fromHTML: String, url: URL) async throws -> VideoSource {
-        // Extract filecode from URL path: /v/<filecode> or /e/<filecode>
+        // Extract filecode from URL path: /v/<filecode>, /e/<filecode>, or /d/<filecode>
         let filecode = try extractFilecode(from: url)
 
         // Call the API to get streaming info
@@ -41,8 +41,7 @@ struct VidaraExtractor: VideoSiteExtractor {
 
     private static func extractFilecode(from url: URL) throws -> String {
         let path = url.path
-        // Match /v/<filecode> or /e/<filecode>
-        let pattern = #"/[ve]/([a-zA-Z0-9_-]+)"#
+        let pattern = #"/[ved]/([a-zA-Z0-9_-]+)"#
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: path, range: NSRange(path.startIndex..., in: path)),
               let range = Range(match.range(at: 1), in: path) else {
@@ -135,6 +134,10 @@ struct VidaraExtractor: VideoSiteExtractor {
     }
 
 #if DEBUG
+    static func extractFilecodeForTesting(from url: URL) throws -> String {
+        try extractFilecode(from: url)
+    }
+
     static func parseHlsVariantsForTesting(
         playlist: String,
         masterUrl: String,

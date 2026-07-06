@@ -1,6 +1,50 @@
 import SwiftUI
 import AppKit
 
+enum ExtractionRetrySupport {
+    static func failedIndices(in results: [ExtractResult]) -> [Int] {
+        results.enumerated().compactMap { index, result in
+            result.error == nil ? nil : index
+        }
+    }
+
+    static func retryableFailedIndices(in results: [ExtractResult], retryingIndices: Set<Int>) -> [Int] {
+        failedIndices(in: results).filter { !retryingIndices.contains($0) }
+    }
+
+    static func replacingResult(at index: Int, in results: [ExtractResult], with replacement: ExtractResult) -> [ExtractResult] {
+        guard results.indices.contains(index) else { return results }
+        var next = results
+        next[index] = replacement
+        return next
+    }
+}
+
+private struct HomeQueueStatusProgressBar: View {
+    let progress: Double
+    let tint: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Theme.surface2.opacity(0.42))
+
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(
+                        LinearGradient(
+                            colors: [tint, tint.opacity(0.66)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(0, geo.size.width * min(max(progress, 0), 1)))
+            }
+        }
+        .frame(height: 6)
+    }
+}
+
 struct HomeView: View {
     @ObservedObject var appState: AppStateManager
     @ObservedObject private var tracker = ActiveWorkTracker.shared
@@ -10,8 +54,15 @@ struct HomeView: View {
     @State private var isLoading = false
     @State private var loadProgress = ""
     @State private var activeBatchSubmission: BatchSubmission?
-    @State private var showingStatusPopover = false
+    @State private var retryingResultIndices: Set<Int> = []
+    @State private var extractionGeneration = UUID()
     @State private var showResultsSheet = false
+    @State private var showActiveDownloadsSheet = false
+    @State private var showCompletedDownloadsSheet = false
+    @State private var showCompletionBanner = false
+    @State private var hadActiveDownloads = false
+    @State private var completionBannerToken = UUID()
+    @State private var modalAddURLText = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var megaRemotePath: String
     var gdriveRemoteName: String
@@ -34,6 +85,30 @@ struct HomeView: View {
 
     private var inputModel: HomeURLInputModel {
         HomeURLInputModel(rawText: urlText)
+    }
+
+    private var hasActiveDownloads: Bool {
+        !activeDownloadItems.isEmpty
+    }
+
+    private var hasCompletedDownloads: Bool {
+        !completedDownloadItems.isEmpty
+    }
+
+    private var visibleDownloadItems: [DownloadQueueItem] {
+        downloadQueue.queue.filter(\.isVisibleInDownloads)
+    }
+
+    private var activeDownloadItems: [DownloadQueueItem] {
+        visibleDownloadItems.filter { $0.status != .completed }
+    }
+
+    private var completedDownloadItems: [DownloadQueueItem] {
+        visibleDownloadItems.filter { $0.status == .completed }
+    }
+
+    private var queueCounts: HomeQueueCounts {
+        HomeQueueCounts(items: visibleDownloadItems)
     }
 
     @State private var batchTarget: CloudTarget = .local
@@ -107,6 +182,22 @@ struct HomeView: View {
         return activeBatchSubmission?.progressText ?? ""
     }
 
+    private var failedResultIndices: [Int] {
+        ExtractionRetrySupport.failedIndices(in: results)
+    }
+
+    private var retryableFailedResultIndices: [Int] {
+        ExtractionRetrySupport.retryableFailedIndices(in: results, retryingIndices: retryingResultIndices)
+    }
+
+    private var isRetryingFailedResults: Bool {
+        !retryingResultIndices.isEmpty
+    }
+
+    private var hasNoActiveDownloads: Bool {
+        !hasActiveDownloads
+    }
+
     // Category rail items — quick-paste shortcuts for common platforms
     private let categoryItems: [CategoryIconRail.Item] = [
         .init(id: "youtube",     icon: "play.rectangle.fill",       label: "YouTube",    color: Theme.taoRed),
@@ -122,14 +213,29 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             mainColumn
-            .frame(maxWidth: HomeLayoutMetrics.pageMaxWidth, alignment: .top)
+            .frame(maxWidth: AppShellSurfaceMetrics.pageMaxWidth(for: appState.windowSize), alignment: .top)
             .frame(maxWidth: .infinity, alignment: .top)
             .padding(HomeLayoutMetrics.pagePadding)
         }
         .sheet(isPresented: $showResultsSheet) {
             resultsSheet
         }
+        .sheet(isPresented: $showActiveDownloadsSheet) {
+            HomeCompactQueue(
+                displayMode: .activeModal,
+                seedboxWebdavPassword: seedboxWebdavPassword,
+                onUpgradeRequired: onUpgradeRequired
+            )
+        }
+        .sheet(isPresented: $showCompletedDownloadsSheet) {
+            HomeCompactQueue(
+                displayMode: .completedModal,
+                seedboxWebdavPassword: seedboxWebdavPassword,
+                onUpgradeRequired: onUpgradeRequired
+            )
+        }
         .onAppear {
+            hadActiveDownloads = hasActiveDownloads
             if let pending = appState.pendingExtractURL {
                 consumePendingExtractURL(pending)
             } else if let clip = ClipboardManager.currentURL,
@@ -140,6 +246,21 @@ struct HomeView: View {
         .onChange(of: appState.pendingExtractURL) { _, newValue in
             if let url = newValue {
                 consumePendingExtractURL(url)
+            }
+        }
+        .onChange(of: hasActiveDownloads) { oldValue, newValue in
+            hadActiveDownloads = newValue
+            if !newValue {
+                showActiveDownloadsSheet = false
+            }
+            if oldValue && !newValue && hasCompletedDownloads {
+                presentCompletionBanner()
+            }
+        }
+        .onChange(of: completedDownloadItems.count) { _, newValue in
+            if newValue == 0 {
+                showCompletionBanner = false
+                showCompletedDownloadsSheet = false
             }
         }
     }
@@ -159,56 +280,203 @@ struct HomeView: View {
     }
 
     private var mainColumn: some View {
-        VStack(alignment: .leading, spacing: HomeLayoutMetrics.cardSpacing) {
-            HomeHeroHeader(
-                inputModel: inputModel,
-                resultCount: results.count,
-                queuedCount: batchTargetLinks.count,
-                isYtDlpReady: ScraperEngine.isYTDLPAvailable,
-                isPro: ProFeatureGate.isPro,
-                showingStatusPopover: $showingStatusPopover
-            )
+        noActiveDownloadStack
+    }
 
-            HomeURLInputCard(
+    private var noActiveDownloadStack: some View {
+        VStack(alignment: .center, spacing: HomeLayoutMetrics.cardSpacing) {
+            HomeStitchCommandPanel(
                 text: $urlText,
                 isLoading: isLoading,
+                isYtDlpReady: ScraperEngine.isYTDLPAvailable,
+                isPro: ProFeatureGate.isPro,
                 onPaste: pasteFromClipboard,
                 onClear: { urlText = "" },
-                onExtract: { extractAll() }
+                onExtract: { extractAll() },
+                completedContent: {
+                    queueStatusEntrypoints
+                },
+                resultsContent: {
+                    if !results.isEmpty {
+                        showResultsButton(isCompact: false)
+                            .transition(resultsReadyTransition)
+                    }
+                }
             )
             .modifier(HomeDropDestination(
                 onUrlPaste: appendURLText,
                 onFileDrop: { _ in }
             ))
 
-            HomeCompactQueue(
-                seedboxWebdavPassword: seedboxWebdavPassword,
-                onUpgradeRequired: onUpgradeRequired
-            )
-
-            supportedSources
             DependencySetupPanel(gdriveRemoteName: gdriveRemoteName)
+        }
+        .frame(maxWidth: AppShellSurfaceMetrics.mainPanelWidth(for: appState.windowSize))
+        .frame(maxWidth: .infinity)
+        .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.82), value: results.isEmpty)
+    }
 
-            Group {
-                if !results.isEmpty {
-                    showResultsButton
-                        .transition(resultsReadyTransition)
-                } else {
-                    emptyState
-                        .transition(.opacity)
+    @ViewBuilder
+    private var queueStatusEntrypoints: some View {
+        if hasActiveDownloads || hasCompletedDownloads || showCompletionBanner {
+            VStack(alignment: .leading, spacing: 10) {
+                if showCompletionBanner && hasCompletedDownloads {
+                    completionBanner
+                }
+
+                if hasActiveDownloads || hasCompletedDownloads {
+                    HStack(spacing: 10) {
+                        if hasActiveDownloads {
+                            queueEntrypointButton(
+                                title: "Active Downloads",
+                                subtitle: queueCounts.summaryText,
+                                systemImage: "arrow.down.circle.fill",
+                                tint: Theme.skyBlue,
+                                count: queueCounts.activeEntry,
+                                progress: queueCounts.aggregateProgress
+                            ) {
+                                showActiveDownloadsSheet = true
+                            }
+                        }
+
+                        if hasCompletedDownloads {
+                            queueEntrypointButton(
+                                title: "Completed",
+                                subtitle: completedDownloadItems.count == 1 ? "1 ready to review" : "\(completedDownloadItems.count) ready to review",
+                                systemImage: "checkmark.circle.fill",
+                                tint: Theme.success,
+                                count: completedDownloadItems.count,
+                                progress: 1
+                            ) {
+                                showCompletedDownloadsSheet = true
+                            }
+                        }
+                    }
                 }
             }
-            .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.82), value: results.isEmpty)
+            .transition(resultsReadyTransition)
         }
     }
 
-    private var supportedSources: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Popular supported sources")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.textSecondary)
-            CategoryIconRail(items: categoryItems) { _ in }
+    private var completionBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(Theme.success)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Downloads Complete")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(completedDownloadItems.count == 1 ? "1 completed download is ready." : "\(completedDownloadItems.count) completed downloads are ready.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+
+            Spacer(minLength: 10)
+
+            Button("View Completed") {
+                showCompletionBanner = false
+                showCompletedDownloadsSheet = true
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .tint(Theme.success)
+
+            Button("Dismiss") {
+                showCompletionBanner = false
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
         }
+        .padding(12)
+        .background(Theme.success.opacity(0.08), in: RoundedRectangle(cornerRadius: 13))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13)
+                .stroke(Theme.success.opacity(0.22), lineWidth: 1)
+        )
+    }
+
+    private func queueEntrypointButton(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        tint: Color,
+        count: Int,
+        progress: Double,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(spacing: 9) {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(tint)
+
+                    Text(title)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(Theme.textPrimary)
+
+                    Spacer(minLength: 8)
+
+                    Text("\(count)")
+                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .foregroundStyle(Theme.surface0)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(tint, in: Capsule())
+                        .contentTransition(.numericText())
+                }
+
+                Text(subtitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+
+                HomeQueueStatusProgressBar(progress: progress, tint: tint)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface0.opacity(0.36), in: RoundedRectangle(cornerRadius: 13))
+            .overlay(
+                RoundedRectangle(cornerRadius: 13)
+                    .stroke(tint.opacity(0.18), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func presentCompletionBanner() {
+        let token = UUID()
+        completionBannerToken = token
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+            showCompletionBanner = true
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            guard completionBannerToken == token else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                showCompletionBanner = false
+            }
+        }
+    }
+
+    private func urlInputCard(isCompact: Bool, isCommandCenter: Bool = false) -> some View {
+        HomeURLInputCard(
+            text: $urlText,
+            isLoading: isLoading,
+            isCompact: isCompact,
+            isCommandCenter: isCommandCenter,
+            isYtDlpReady: ScraperEngine.isYTDLPAvailable,
+            isPro: ProFeatureGate.isPro,
+            onPaste: pasteFromClipboard,
+            onClear: { urlText = "" },
+            onExtract: { extractAll() }
+        )
+        .modifier(HomeDropDestination(
+            onUrlPaste: appendURLText,
+            onFileDrop: { _ in }
+        ))
     }
 
     private var loadingState: some View {
@@ -244,13 +512,15 @@ struct HomeView: View {
             }
 
             LazyVStack(spacing: 10) {
-                ForEach(Array(results.enumerated()), id: \.offset) { _, result in
+                ForEach(Array(results.enumerated()), id: \.offset) { index, result in
                     VideoResultCard(
                         result: result,
+                        isRetrying: retryingResultIndices.contains(index),
                         localState: { tracker.localDownloads[$0] },
                         megaState: { tracker.megaUploads[$0] },
                         gdriveState: { tracker.gdriveUploads[$0] },
                         seedboxState: { tracker.seedboxUploads[$0] },
+                        onRetry: { retryExtractResult(at: index) },
                         onLocal: { url in Task { await startDownload(url: url, cloud: .local) } },
                         onMega: { url in Task { await startDownload(url: url, cloud: .mega) } },
                         onGDrive: { url in Task { await startDownload(url: url, cloud: .gdrive) } },
@@ -272,93 +542,63 @@ struct HomeView: View {
     }
 
     private var resultsSheet: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Extraction Results")
-                        .font(Theme.sectionHeader)
-                        .foregroundStyle(Theme.textPrimary)
-                    Text(resultsSheetSubtitle)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Theme.textSecondary)
-                }
-
-                Spacer()
-
-                Button {
-                    showResultsSheet = false
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .bold))
-                        .frame(width: 30, height: 30)
-                        .background(Theme.surface2.opacity(0.78), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .help("Dismiss")
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 18)
-            .padding(.bottom, 12)
-
-            Divider()
-                .opacity(0.35)
-
-            ScrollView {
-                resultsSheetContent
-                    .padding(20)
-                    .frame(maxWidth: 880, alignment: .topLeading)
-                    .frame(maxWidth: .infinity, alignment: .top)
-            }
-        }
-        .frame(minWidth: 720, idealWidth: 860, maxWidth: 980, minHeight: 420, idealHeight: 640, maxHeight: 760)
-        .background(Theme.surface0.opacity(0.94))
-    }
-
-    @ViewBuilder
-    private var resultsSheetContent: some View {
-        if isLoading {
-            loadingState
-        } else {
-            resultsSection
-        }
-    }
-
-    private var resultsSheetSubtitle: String {
-        if isLoading {
-            return loadProgress.isEmpty ? "Extracting..." : loadProgress
-        }
-        return "\(results.count) found"
+        ExtractionModalView(
+            addURLText: $modalAddURLText,
+            batchTarget: $batchTarget,
+            isLoading: isLoading,
+            loadProgress: loadProgress,
+            results: results,
+            retryingResultIndices: retryingResultIndices,
+            batchQueuedCount: batchTargetLinks.count,
+            isBatchSubmitting: isCurrentBatchSubmitting,
+            batchProgressText: currentBatchProgressText,
+            canRetryFailed: !retryableFailedResultIndices.isEmpty,
+            isYtDlpReady: ScraperEngine.isYTDLPAvailable,
+            localState: { tracker.localDownloads[$0] },
+            megaState: { tracker.megaUploads[$0] },
+            gdriveState: { tracker.gdriveUploads[$0] },
+            seedboxState: { tracker.seedboxUploads[$0] },
+            onAddURL: addURLFromResultsModal,
+            onRetryFailed: retryFailedResults,
+            onRetry: retryExtractResult,
+            onLocal: { url in Task { await startDownload(url: url, cloud: .local) } },
+            onMega: { url in Task { await startDownload(url: url, cloud: .mega) } },
+            onGDrive: { url in Task { await startDownload(url: url, cloud: .gdrive) } },
+            onSeedbox: { url in Task { await startDownload(url: url, cloud: .seedbox) } },
+            onBatchDownload: batchDownloadAll,
+            onClose: { showResultsSheet = false }
+        )
     }
 
     private var resultsReadyTransition: AnyTransition {
         reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.97))
     }
 
-    private var showResultsButton: some View {
+    private func showResultsButton(isCompact: Bool) -> some View {
         Button {
             showResultsSheet = true
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: isCompact ? 8 : 10) {
                 Image(systemName: "rectangle.stack.fill")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: isCompact ? 13 : 15, weight: .bold))
                     .foregroundStyle(Theme.skyBlue)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Results Ready")
-                        .font(.subheadline.weight(.semibold))
+                        .font((isCompact ? Font.caption : Font.subheadline).weight(.semibold))
                         .foregroundStyle(Theme.textPrimary)
                     Text("\(results.count) extracted URL\(results.count == 1 ? "" : "s")")
-                        .font(.caption)
+                        .font(isCompact ? .caption2 : .caption)
                         .foregroundStyle(Theme.textSecondary)
                 }
 
                 Spacer()
 
                 Image(systemName: "arrow.up.forward.square")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.system(size: isCompact ? 11 : 13, weight: .bold))
                     .foregroundStyle(Theme.textSecondary)
             }
-            .padding(14)
+            .padding(isCompact ? 10 : 14)
             .glassCard(tint: Theme.skyBlue.opacity(0.10), cornerRadius: HomeLayoutMetrics.cardCornerRadius)
         }
         .buttonStyle(.plain)
@@ -400,6 +640,9 @@ struct HomeView: View {
     private func extractAll(feedThumbnailURL: String? = nil) {
         let urls = urlLines
         guard !urls.isEmpty, inputModel.invalidLines.isEmpty else { return }
+        let generation = UUID()
+        extractionGeneration = generation
+        retryingResultIndices.removeAll()
         results = []
         isLoading = true
         showResultsSheet = true
@@ -424,38 +667,115 @@ struct HomeView: View {
                 }
                 for await (idx, res) in group {
                     localResults[idx] = res; completed += 1
-                    await MainActor.run { loadProgress = "Extracting… \(completed)/\(urls.count)" }
+                    await MainActor.run {
+                        guard extractionGeneration == generation else { return }
+                        loadProgress = "Extracting… \(completed)/\(urls.count)"
+                    }
                 }
             }
 
             var ordered: [ExtractResult] = []
             for i in 0 ..< urls.count { if let r = localResults[i] { ordered.append(r) } }
-            results = ordered
+            await MainActor.run {
+                guard extractionGeneration == generation else { return }
+                results = ordered
+                retryingResultIndices.removeAll()
+                for result in ordered {
+                    persistSuccessfulExtraction(result, feedThumbnailURL: feedThumbnailURL)
+                }
+                NotificationManager.shared.notifyScrapeComplete(count: ordered.filter { $0.source != nil }.count)
+                isLoading = false
+                loadProgress = ""
+                showResultsSheet = !ordered.isEmpty
+            }
+        }
+    }
 
-            // Add to library
-            for r in ordered {
-                if let src = r.source {
-                    let title = src.title ?? URL(string: r.url)?.pathComponents.last?.replacingOccurrences(of: "-", with: " ").capitalized ?? r.url
-                    VideoLibrary.shared.addIfNew(
-                        LibraryItem(
-                            url: r.url,
-                            title: title,
-                            mp4Url: src.mp4,
-                            hlsUrls: src.hls,
-                            thumbnailURL: src.thumbnail ?? feedThumbnailURL,
-                            uploaderName: src.uploader,
-                            uploaderURL: src.uploaderURL,
-                            sourceSiteName: src.siteName
-                        )
-                    )
-                    HistoryManager.shared.record(url: r.url, source: src)
+    private func addURLFromResultsModal() {
+        let model = HomeURLInputModel(rawText: modalAddURLText)
+        guard model.readyCount == 1,
+              model.invalidLines.isEmpty,
+              let url = model.validURLs.first else { return }
+        appendURLText(url)
+        modalAddURLText = ""
+        extractAdditionalURL(url)
+    }
+
+    private func extractAdditionalURL(_ url: String) {
+        let generation = UUID()
+        extractionGeneration = generation
+        isLoading = true
+        loadProgress = "Extracting 1 URL..."
+
+        Task {
+            let result = await extractResult(for: url)
+            await MainActor.run {
+                guard extractionGeneration == generation else { return }
+                results.append(result)
+                if result.source != nil {
+                    persistSuccessfulExtraction(result, feedThumbnailURL: nil)
+                }
+                isLoading = false
+                loadProgress = ""
+                showResultsSheet = true
+            }
+        }
+    }
+
+    @MainActor
+    private func persistSuccessfulExtraction(_ result: ExtractResult, feedThumbnailURL: String?) {
+        guard let src = result.source else { return }
+        let title = src.title ?? URL(string: result.url)?.pathComponents.last?.replacingOccurrences(of: "-", with: " ").capitalized ?? result.url
+        VideoLibrary.shared.addIfNew(
+            LibraryItem(
+                url: result.url,
+                title: title,
+                mp4Url: src.mp4,
+                hlsUrls: src.hls,
+                thumbnailURL: src.thumbnail ?? feedThumbnailURL,
+                uploaderName: src.uploader,
+                uploaderURL: src.uploaderURL,
+                sourceSiteName: src.siteName
+            )
+        )
+        HistoryManager.shared.record(url: result.url, source: src)
+    }
+
+    private func extractResult(for url: String) async -> ExtractResult {
+        do {
+            return ExtractResult(url: url, source: try await ScraperEngine.extract(from: url), error: nil)
+        } catch {
+            return ExtractResult(url: url, source: nil, error: error.localizedDescription)
+        }
+    }
+
+    @MainActor
+    private func retryFailedResults() {
+        for index in retryableFailedResultIndices {
+            retryExtractResult(at: index)
+        }
+    }
+
+    @MainActor
+    private func retryExtractResult(at index: Int) {
+        guard results.indices.contains(index),
+              retryingResultIndices.insert(index).inserted else { return }
+
+        let url = results[index].url
+        let generation = extractionGeneration
+
+        Task {
+            let retried = await extractResult(for: url)
+            await MainActor.run {
+                guard extractionGeneration == generation else { return }
+                retryingResultIndices.remove(index)
+                guard results.indices.contains(index),
+                      results[index].url == url else { return }
+                results = ExtractionRetrySupport.replacingResult(at: index, in: results, with: retried)
+                if retried.source != nil {
+                    persistSuccessfulExtraction(retried, feedThumbnailURL: nil)
                 }
             }
-            NotificationManager.shared.notifyScrapeComplete(count: ordered.filter { $0.source != nil }.count)
-
-            isLoading = false
-            loadProgress = ""
-            showResultsSheet = !ordered.isEmpty
         }
     }
 

@@ -9,9 +9,12 @@ struct HomeQueueCounts: Equatable {
     let paused: Int
     let completed: Int
     let failed: Int
+    let activeEntry: Int
+    let aggregateProgress: Double
 
     init(items: [DownloadQueueItem]) {
         total = items.count
+        activeEntry = items.filter { $0.status != .completed }.count
         active = items.filter { Self.isActive($0.status) }.count
         queued = items.filter { $0.status == .pending }.count
         paused = items.filter { $0.status == .paused }.count
@@ -21,6 +24,12 @@ struct HomeQueueCounts: Equatable {
             return false
         }.count
         remaining = active + queued + paused
+        let unfinished = items.filter { $0.status != .completed }
+        if unfinished.isEmpty {
+            aggregateProgress = completed > 0 ? 1 : 0
+        } else {
+            aggregateProgress = unfinished.map { min(max($0.progress / 100, 0), 1) }.reduce(0, +) / Double(unfinished.count)
+        }
     }
 
     var summaryText: String {
@@ -51,14 +60,26 @@ struct HomeQueueCounts: Equatable {
     }
 }
 
+enum HomeCompactQueueDisplayMode: Equatable {
+    case activeQueue
+    case completedSummary
+    case activeModal
+    case completedModal
+}
+
 struct HomeCompactQueue: View {
     @StateObject private var queue = DownloadQueue.shared
+    @ObservedObject private var appState = AppStateManager.shared
     @State private var isExpanded = true
+    @State private var showCompletedDetails = false
     @State private var showAllActive = false
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    let displayMode: HomeCompactQueueDisplayMode
     let seedboxWebdavPassword: String
     let onUpgradeRequired: () -> Void
+    var isEmbedded = false
     private let activeVisibleLimit = 5
 
     private var items: [DownloadQueueItem] {
@@ -70,7 +91,7 @@ struct HomeCompactQueue: View {
     }
 
     private var visibleActiveItems: [DownloadQueueItem] {
-        showAllActive ? activeItems : Array(activeItems.prefix(activeVisibleLimit))
+        isModal ? activeItems : (showAllActive ? activeItems : Array(activeItems.prefix(activeVisibleLimit)))
     }
 
     private var completedItems: [DownloadQueueItem] {
@@ -85,63 +106,335 @@ struct HomeCompactQueue: View {
         HomeQueueCounts(items: items)
     }
 
+    private var isModal: Bool {
+        displayMode == .activeModal || displayMode == .completedModal
+    }
+
     var body: some View {
         if !items.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                header
+            if isModal {
+                modalContent
+                    .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.82), value: items.map(\.id))
+            } else if isEmbedded {
+                content
+                    .padding(12)
+                    .background(Theme.surface0.opacity(0.42), in: RoundedRectangle(cornerRadius: 14))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Theme.success.opacity(0.18), lineWidth: 1)
+                    )
+                    .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.82), value: isExpanded)
+                    .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.82), value: showCompletedDetails)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: items.map(\.id))
+            } else {
+                content
+                    .padding(14)
+                    .glassCard(tint: cardTint, cornerRadius: HomeLayoutMetrics.cardCornerRadius)
+                    .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.82), value: isExpanded)
+                    .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.82), value: showCompletedDetails)
+                    .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: items.map(\.id))
+            }
+        }
+    }
 
-                if isExpanded {
-                    VStack(spacing: 6) {
-                        ForEach(visibleActiveItems) { item in
-                            HomeCompactQueueRow(
-                                item: item,
-                                pause: { queue.pause(item) },
-                                resume: { resume(item) },
-                                retry: { retry(item) },
-                                remove: { queue.remove(item) },
-                                moveToFront: { moveToFront(item) },
-                                showInFinder: { showInFinder(item) },
-                                showSource: { showSource(item) },
-                                copyError: { copyError(item) },
-                                process: { process(item, preset: $0) },
-                                onUpgradeRequired: onUpgradeRequired
-                            )
-                            .equatable()
-                        }
+    @ViewBuilder
+    private var content: some View {
+        if displayMode == .completedSummary && activeItems.isEmpty {
+            completedSummary
+        } else {
+            activeQueue
+        }
+    }
 
-                        if activeItems.count > activeVisibleLimit {
-                            activeOverflowButton
-                        }
+    private var cardTint: Color {
+        (displayMode == .completedSummary || displayMode == .completedModal) && activeItems.isEmpty
+            ? Theme.success.opacity(0.08)
+            : Theme.electricLime.opacity(0.09)
+    }
 
-                        if !completedItems.isEmpty {
-                            completedHeader
+    private var modalContent: some View {
+        VStack(spacing: 14) {
+            modalHeader
+            modalRows
+            modalFooter
+        }
+        .padding(24)
+        .frame(
+            minWidth: 760,
+            idealWidth: AppShellSurfaceMetrics.workflowModalWidth(for: appState.windowSize),
+            maxWidth: AppShellSurfaceMetrics.workflowModalWidth(for: appState.windowSize),
+            minHeight: 460,
+            idealHeight: AppShellSurfaceMetrics.workflowModalHeight(for: appState.windowSize),
+            maxHeight: AppShellSurfaceMetrics.workflowModalHeight(for: appState.windowSize)
+        )
+        .background(
+            LinearGradient(
+                colors: [
+                    Theme.surfaceGlass.opacity(0.88),
+                    Theme.surface0.opacity(0.96)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+    }
 
-                            ForEach(completedItems) { item in
-                                HomeCompactQueueRow(
-                                    item: item,
-                                    pause: {},
-                                    resume: {},
-                                    retry: {},
-                                    remove: { queue.remove(item) },
-                                    moveToFront: { moveToFront(item) },
-                                    showInFinder: { showInFinder(item) },
-                                    showSource: { showSource(item) },
-                                    copyError: { copyError(item) },
-                                    process: { process(item, preset: $0) },
-                                    onUpgradeRequired: onUpgradeRequired
-                                )
-                                .equatable()
-                            }
-                        }
-                    }
-                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+    private var modalTitle: String {
+        displayMode == .completedModal ? "Completed Downloads" : "Active Downloads"
+    }
+
+    private var modalSubtitle: String {
+        if displayMode == .completedModal {
+            return completedItems.count == 1 ? "1 completed item ready for review." : "\(completedItems.count) completed items ready for review."
+        }
+        return counts.summaryText
+    }
+
+    private var modalTint: Color {
+        displayMode == .completedModal ? Theme.success : Theme.skyBlue
+    }
+
+    private var modalHeader: some View {
+        HStack(spacing: 12) {
+            Image(systemName: displayMode == .completedModal ? "checkmark.circle.fill" : "arrow.down.circle.fill")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(modalTint)
+                .frame(width: 42, height: 42)
+                .background(modalTint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(modalTitle)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(modalSubtitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 12)
+
+            if displayMode == .activeModal {
+                queueMetric(title: "Active", value: counts.active, tint: Theme.electricLime)
+                queueMetric(title: "Queued", value: counts.queued, tint: Theme.skyBlue)
+                queueMetric(title: "Paused", value: counts.paused, tint: Theme.warning)
+                if counts.failed > 0 {
+                    queueMetric(title: "Failed", value: counts.failed, tint: Theme.error)
                 }
             }
-            .padding(12)
-            .glassCard(tint: Theme.electricLime.opacity(0.08), cornerRadius: HomeLayoutMetrics.cardCornerRadius)
-            .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.82), value: isExpanded)
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: items.map(\.id))
+
+            Button(action: { dismiss() }) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .frame(width: 28, height: 28)
+                    .background(Theme.surface2.opacity(0.72), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .help("Close")
         }
+        .padding(12)
+        .background(Theme.surfaceGlass.opacity(0.46), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Theme.borderSubtle, lineWidth: 1)
+        )
+    }
+
+    private var modalRows: some View {
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                if displayMode == .completedModal {
+                    if completedItems.isEmpty {
+                        modalEmptyState(title: "No completed downloads", icon: "checkmark.circle")
+                    } else {
+                        ForEach(completedItems) { item in
+                            queueRow(item, isHistory: true)
+                        }
+                    }
+                } else if activeItems.isEmpty {
+                    modalEmptyState(title: "No active downloads", icon: "arrow.down.circle")
+                } else {
+                    ForEach(activeItems) { item in
+                        queueRow(item)
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+        .frame(maxHeight: .infinity)
+    }
+
+    private func modalEmptyState(title: String, icon: String) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 34, weight: .semibold))
+                .foregroundStyle(modalTint)
+            Text(title)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(Theme.textPrimary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 260)
+        .background(Theme.surface0.opacity(0.28), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Theme.borderSubtle, lineWidth: 1)
+        )
+    }
+
+    private var modalFooter: some View {
+        HStack(spacing: 12) {
+            if displayMode == .completedModal {
+                Button {
+                    AppStateManager.shared.select(.library)
+                    dismiss()
+                } label: {
+                    Label("Open Library", systemImage: "books.vertical.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(Theme.success)
+
+                Spacer(minLength: 8)
+
+                Button("Clear All") {
+                    clearCompleted()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(completedItems.isEmpty)
+            } else {
+                HomeQueueProgressBar(progress: counts.aggregateProgress, tint: Theme.electricLime, height: 7)
+                    .frame(maxWidth: 320)
+
+                Text(counts.summaryText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+
+                Spacer(minLength: 8)
+
+                if counts.paused > 0 {
+                    Button {
+                        resumeAll()
+                    } label: {
+                        Label("Resume All", systemImage: "play.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(Theme.electricLime)
+                    .disabled(resumableItems.isEmpty)
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Theme.surface0.opacity(0.48), in: RoundedRectangle(cornerRadius: 13))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13)
+                .stroke(Theme.borderSubtle, lineWidth: 1)
+        )
+    }
+
+    private var activeQueue: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            header
+
+            if isExpanded {
+                VStack(spacing: 8) {
+                    ForEach(visibleActiveItems) { item in
+                        queueRow(item)
+                    }
+
+                    if activeItems.count > activeVisibleLimit {
+                        activeOverflowButton
+                    }
+
+                    if !completedItems.isEmpty {
+                        completedHeader
+
+                        ForEach(completedItems) { item in
+                            queueRow(item)
+                        }
+                    }
+                }
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private var completedSummary: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundStyle(Theme.success)
+                    .frame(width: 36, height: 36)
+                    .background(Theme.success.opacity(0.12), in: Circle())
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Downloads Complete")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text(completedItems.count == 1 ? "1 completed" : "\(completedItems.count) completed")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+
+                Spacer(minLength: 12)
+
+                Button {
+                    AppStateManager.shared.select(.library)
+                } label: {
+                    Label("Open Library", systemImage: "books.vertical.fill")
+                        .font(.caption.weight(.bold))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(Theme.success)
+
+                Button(showCompletedDetails ? "Hide Details" : "Show Details") {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                        showCompletedDetails.toggle()
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(Theme.textSecondary)
+
+                Button("Clear All") {
+                    clearCompleted()
+                }
+                .buttonStyle(.plain)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Theme.success)
+                .help("Clear completed downloads")
+            }
+
+            if showCompletedDetails {
+                VStack(spacing: 8) {
+                    ForEach(completedItems) { item in
+                        queueRow(item, isHistory: true)
+                    }
+                }
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private func queueRow(_ item: DownloadQueueItem, isHistory: Bool = false) -> some View {
+        HomeCompactQueueRow(
+            item: item,
+            isHistory: isHistory,
+            pause: { queue.pause(item) },
+            resume: { resume(item) },
+            retry: { retry(item) },
+            remove: { queue.remove(item) },
+            moveToFront: { moveToFront(item) },
+            showInFinder: { showInFinder(item) },
+            showSource: { showSource(item) },
+            copyError: { copyError(item) },
+            onUpgradeRequired: onUpgradeRequired
+        )
+        .equatable()
     }
 
     private var activeOverflowButton: some View {
@@ -161,66 +454,94 @@ struct HomeCompactQueue: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
-            Button {
-                toggleExpanded()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "arrow.down.circle.fill")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(Theme.electricLime)
-
-                    Text("Downloads")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Theme.textPrimary)
-
-                    Text("\(items.count)")
-                        .font(.system(size: 10, weight: .heavy))
-                        .foregroundStyle(Theme.surface0)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Theme.electricLime, in: Capsule())
-                        .contentTransition(.numericText())
-
-                    Text(counts.summaryText)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Theme.textSecondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text(isExpanded ? "Collapse downloads" : "Expand downloads"))
-
-            Spacer(minLength: 8)
-
-            if counts.paused > 0 {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
                 Button {
-                    resumeAll()
+                    toggleExpanded()
                 } label: {
-                    Label("Resume All", systemImage: "play.fill")
-                        .font(.caption.weight(.bold))
+                    HStack(spacing: 9) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Theme.electricLime)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 7) {
+                                Text("Active Downloads")
+                                    .font(.subheadline.weight(.bold))
+                                    .foregroundStyle(Theme.textPrimary)
+
+                                Text("\(items.count)")
+                                    .font(.system(size: 10, weight: .heavy))
+                                    .foregroundStyle(Theme.surface0)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Theme.electricLime, in: Capsule())
+                                    .contentTransition(.numericText())
+                            }
+
+                            Text(counts.summaryText)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(Theme.textSecondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                        }
+                    }
+                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .tint(Theme.electricLime)
-                .disabled(resumableItems.isEmpty)
-                .help(resumableItems.isEmpty ? "Paused downloads cannot be resumed" : "Resume all paused downloads")
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(isExpanded ? "Collapse downloads" : "Expand downloads"))
+
+                Spacer(minLength: 8)
+
+                queueMetric(title: "Active", value: counts.active, tint: Theme.electricLime)
+                queueMetric(title: "Queued", value: counts.queued, tint: Theme.skyBlue)
+                if counts.failed > 0 {
+                    queueMetric(title: "Failed", value: counts.failed, tint: Theme.error)
+                }
+
+                if counts.paused > 0 {
+                    Button {
+                        resumeAll()
+                    } label: {
+                        Label("Resume All", systemImage: "play.fill")
+                            .font(.caption.weight(.bold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(Theme.electricLime)
+                    .disabled(resumableItems.isEmpty)
+                    .help(resumableItems.isEmpty ? "Paused downloads cannot be resumed" : "Resume all paused downloads")
+                }
+
+                Button {
+                    toggleExpanded()
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .frame(width: 22, height: 22)
+                        .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(isExpanded ? "Collapse downloads" : "Expand downloads"))
             }
 
-            Button {
-                toggleExpanded()
-            } label: {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Theme.textSecondary)
-                    .frame(width: 22, height: 22)
-                    .rotationEffect(.degrees(isExpanded ? 0 : -90))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text(isExpanded ? "Collapse downloads" : "Expand downloads"))
+            HomeQueueProgressBar(progress: counts.aggregateProgress, tint: Theme.electricLime, height: 5)
+                .accessibilityLabel(Text("Overall download progress"))
         }
+    }
+
+    private func queueMetric(title: String, value: Int, tint: Color) -> some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text("\(value)")
+                .font(.system(size: 13, weight: .black, design: .rounded))
+                .foregroundStyle(tint)
+            Text(title)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+                .textCase(.uppercase)
+        }
+        .frame(minWidth: 42, alignment: .trailing)
     }
 
     private var completedHeader: some View {
@@ -236,9 +557,7 @@ struct HomeCompactQueue: View {
             Spacer()
 
             Button("Clear All") {
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
-                    completedItems.forEach { queue.remove($0) }
-                }
+                clearCompleted()
             }
             .buttonStyle(.plain)
             .font(.caption.weight(.bold))
@@ -247,6 +566,12 @@ struct HomeCompactQueue: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
+    }
+
+    private func clearCompleted() {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+            completedItems.forEach { queue.remove($0) }
+        }
     }
 
     private func resume(_ item: DownloadQueueItem) {
@@ -336,18 +661,11 @@ struct HomeCompactQueue: View {
         }
     }
 
-    private func process(_ item: DownloadQueueItem, preset: VideoProcessingPreset) {
-        VideoProcessingLauncher.run(
-            preset: preset,
-            inputPath: item.finalPath,
-            displayName: item.displayTitle ?? item.filename,
-            onUpgradeRequired: onUpgradeRequired
-        )
-    }
 }
 
 private struct HomeCompactQueueRow: View, Equatable {
     let item: DownloadQueueItem
+    let isHistory: Bool
     let pause: () -> Void
     let resume: () -> Void
     let retry: () -> Void
@@ -356,58 +674,101 @@ private struct HomeCompactQueueRow: View, Equatable {
     let showInFinder: () -> Void
     let showSource: () -> Void
     let copyError: () -> Void
-    let process: (VideoProcessingPreset) -> Void
     let onUpgradeRequired: () -> Void
 
     static func == (lhs: HomeCompactQueueRow, rhs: HomeCompactQueueRow) -> Bool {
-        lhs.item == rhs.item
+        lhs.item == rhs.item && lhs.isHistory == rhs.isHistory
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovered = false
 
     private var tint: Color {
-        DownloadStatusFormatting.statusTint(item)
+        if isHistory && item.status == .completed {
+            return Theme.success
+        }
+        return DownloadStatusFormatting.statusTint(item)
+    }
+
+    private var details: HomeQueueRowDetails {
+        HomeQueueRowDetails(item: item)
     }
 
     var body: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 8) {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
                 HomeCompactQueueThumbnail(item: item, tint: tint)
 
-                Text(item.displayTitle ?? item.filename)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(item.displayTitle ?? item.filename)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    HStack(spacing: 6) {
+                        HomeCompactQueueStageChip(title: details.stage, tint: tint)
+
+                        Text(details.location)
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+
+                    if let failure = details.failureMessage {
+                        Text(failure)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Theme.error)
+                            .lineLimit(2)
+                            .truncationMode(.tail)
+                    } else if !details.detailLine.isEmpty {
+                        Text(details.detailLine)
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(Theme.textSecondary.opacity(0.92))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
 
                 Spacer(minLength: 8)
 
                 Text(String(format: "%.1f%%", item.progress))
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .black, design: .monospaced))
                     .foregroundStyle(tint)
                     .lineLimit(1)
-                    .frame(width: 52, alignment: .trailing)
+                    .frame(width: 58, alignment: .trailing)
 
-                primaryActionButton
+                HStack(spacing: 6) {
+                    primaryActionButton
 
-                HomeCompactQueueIconButton(
-                    systemName: "xmark",
-                    tint: Theme.textSecondary,
-                    help: "Remove",
-                    action: remove
-                )
+                    HomeCompactQueueIconButton(
+                        systemName: "xmark",
+                        tint: Theme.textSecondary,
+                        help: "Remove",
+                        action: remove
+                    )
+                }
+                .opacity(rowControlOpacity)
             }
 
-            GradientProgressBar(progress: min(max(item.progress / 100, 0), 1), height: 4, isAnimated: false)
+            HomeQueueProgressBar(progress: min(max(item.progress / 100, 0), 1), tint: progressTint, height: isHistory ? 3 : 4)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
         .background(rowBackground)
         .overlay(rowBorder)
-        .help(DownloadStatusFormatting.metricsLine(for: item))
+        .help(details.helpText)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(accessibilityLabel))
         .contextMenu { contextMenu }
+        .onHover { isHovered = $0 }
+    }
+
+    private var rowControlOpacity: Double {
+        if isHovered || isFailed || item.status == .paused { return 1 }
+        if item.status == .completed { return isHistory ? 0.78 : 0.88 }
+        return 0.94
     }
 
     @ViewBuilder
@@ -449,9 +810,6 @@ private struct HomeCompactQueueRow: View, Equatable {
         }
         Button("Show Source") { showSource() }
         Button("Show in Finder") { showInFinder() }
-        if item.status == .completed {
-            VideoProcessingMenuItems(process: process)
-        }
         if !item.status.isTerminal && item.status != .processing {
             Button("Move to Front") { moveToFront() }
         }
@@ -464,7 +822,7 @@ private struct HomeCompactQueueRow: View, Equatable {
 
     private var rowBackground: some View {
         RoundedRectangle(cornerRadius: 8)
-            .fill(Theme.surface1.opacity(0.28))
+            .fill(isHistory ? Theme.surface1.opacity(0.20) : Theme.surface1.opacity(0.30))
     }
 
     private var rowBorder: some View {
@@ -473,7 +831,17 @@ private struct HomeCompactQueueRow: View, Equatable {
     }
 
     private var borderTint: Color {
-        isFailed ? Theme.error.opacity(0.55) : tint.opacity(0.16)
+        if isFailed {
+            return Theme.error.opacity(0.55)
+        }
+        return tint.opacity(isHistory ? 0.11 : 0.16)
+    }
+
+    private var progressTint: Color {
+        if isHistory && item.status == .completed {
+            return Theme.success
+        }
+        return isFailed ? Theme.error : tint
     }
 
     private var isFailed: Bool {
@@ -482,7 +850,62 @@ private struct HomeCompactQueueRow: View, Equatable {
     }
 
     private var accessibilityLabel: String {
-        "\(item.displayTitle ?? item.filename), \(DownloadStatusFormatting.statusLabel(item)), \(Int(item.progress)) percent"
+        details.accessibilityLabel
+    }
+}
+
+private struct HomeQueueRowDetails: Equatable {
+    let stage: String
+    let location: String
+    let detailLine: String
+    let failureMessage: String?
+    let helpText: String
+    let accessibilityLabel: String
+
+    init(item: DownloadQueueItem) {
+        stage = DownloadStatusFormatting.stageLabel(for: item)
+        location = DownloadStatusFormatting.transferLocation(for: item)
+        detailLine = DownloadStatusFormatting.homeDetailLine(for: item)
+        failureMessage = DownloadStatusFormatting.failureMessage(for: item)
+
+        var helpParts = [stage, location]
+        if !detailLine.isEmpty {
+            helpParts.append(detailLine)
+        }
+        if let failureMessage, !helpParts.contains(failureMessage) {
+            helpParts.append(failureMessage)
+        }
+        helpText = helpParts.joined(separator: "\n")
+
+        var accessibilityParts = [
+            item.displayTitle ?? item.filename,
+            stage,
+            location,
+            "\(Int(item.progress)) percent"
+        ]
+        if !detailLine.isEmpty {
+            accessibilityParts.append(detailLine)
+        }
+        if let failureMessage, !accessibilityParts.contains(failureMessage) {
+            accessibilityParts.append(failureMessage)
+        }
+        accessibilityLabel = accessibilityParts.joined(separator: ", ")
+    }
+}
+
+private struct HomeCompactQueueStageChip: View {
+    let title: String
+    let tint: Color
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(tint)
+            .lineLimit(1)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(tint.opacity(0.14), in: Capsule())
+            .overlay(Capsule().strokeBorder(tint.opacity(0.2), lineWidth: 0.5))
     }
 }
 
@@ -557,8 +980,8 @@ private struct HomeCompactQueueThumbnail: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             thumbnailSurface
-                .frame(width: 48, height: 32)
-                .clipShape(RoundedRectangle(cornerRadius: 5))
+                .frame(width: 56, height: 38)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
 
             Image(systemName: DownloadStatusFormatting.statusIcon(item))
                 .font(.system(size: 9, weight: .bold))
@@ -587,6 +1010,10 @@ private struct HomeCompactQueueThumbnail: View {
                 ProgressView()
                     .controlSize(.small)
                     .scaleEffect(0.55)
+            } else {
+                Image(systemName: "film")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(tint.opacity(0.58))
             }
         }
     }
@@ -671,6 +1098,32 @@ private struct HomeCompactQueueThumbnail: View {
         requestHeaders?.first { field, _ in
             field.caseInsensitiveCompare(name) == .orderedSame
         }?.value
+    }
+}
+
+private struct HomeQueueProgressBar: View {
+    let progress: Double
+    let tint: Color
+    var height: CGFloat
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: height / 2)
+                    .fill(Theme.surface2.opacity(0.38))
+
+                RoundedRectangle(cornerRadius: height / 2)
+                    .fill(
+                        LinearGradient(
+                            colors: [tint, tint.opacity(0.68)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: max(0, geo.size.width * min(max(progress, 0), 1)))
+            }
+        }
+        .frame(height: height)
     }
 }
 

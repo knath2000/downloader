@@ -117,6 +117,31 @@ struct DownloadedFeedIndex: Equatable {
     }
 }
 
+enum FeedSelectionStore {
+    static func key(for item: FeedItem) -> String {
+        DownloadedFeedIndex.normalizedURL(item.url).lowercased()
+    }
+
+    static func toggled(_ item: FeedItem, in selectedItems: [String: FeedItem]) -> [String: FeedItem] {
+        var next = selectedItems
+        let key = key(for: item)
+        if next[key] == nil {
+            next[key] = item
+        } else {
+            next.removeValue(forKey: key)
+        }
+        return next
+    }
+
+    static func adding(_ items: [FeedItem], to selectedItems: [String: FeedItem]) -> [String: FeedItem] {
+        var next = selectedItems
+        for item in items {
+            next[key(for: item)] = item
+        }
+        return next
+    }
+}
+
 private enum LibraryDisplayTitle {
     static func title(for item: LibraryItem) -> String {
         let stripped = item.title.replacingOccurrences(
@@ -132,21 +157,25 @@ private enum LibraryDisplayTitle {
 struct FeedView: View {
     @StateObject private var model = FeedViewModel.shared
     @StateObject private var favorites = FeedFavoritesStore.shared
-    @StateObject private var profileVM = ProfileViewModel.shared
     @StateObject private var library = VideoLibrary.shared
     @StateObject private var pornHubSession = PornHubSessionManager.shared
+    @StateObject private var epornerSession = EpornerSessionManager.shared
+    @StateObject private var feedBrowser = PornHubBrowserViewModel()
     @State private var showsAdvancedFilters = false
-    @State private var selectedItemIDs: Set<String> = []
+    @State private var selectedItems: [String: FeedItem] = [:]
     @State private var isScrollingFeed = false
     @State private var scrollIdleTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var isSelecting: Bool { !selectedItemIDs.isEmpty }
+    private var isSelecting: Bool { !selectedItems.isEmpty }
     private var capabilities: FeedSiteCapabilities {
         FeedSiteCapabilities.capabilities(for: model.selectedSite)
     }
     private var siteTheme: FeedSiteTheme {
         FeedSiteTheme.theme(for: model.selectedSite)
+    }
+    private var isBrowserBackedFeed: Bool {
+        FeedBrowserSite(host: model.selectedSite) != nil
     }
 
     private var sortModeBinding: Binding<FeedSortMode> {
@@ -154,6 +183,7 @@ struct FeedView: View {
             model.sortMode
         } set: { value in
             model.discardPornHubReturnState()
+            model.discardEpornerReturnState()
             model.sortMode = value
         }
     }
@@ -166,41 +196,31 @@ struct FeedView: View {
             )
 
             VStack(spacing: FeedLayout.outerSpacing) {
-                FeedPageHeader(
-                    selectedSite: model.selectedSite,
-                    visibleCount: model.filteredItems.count,
-                    totalCount: model.items.count,
-                    isLoading: model.isLoading,
-                    theme: siteTheme,
-                    refreshAction: { Task { await model.refresh() } }
-                )
+                if !isBrowserBackedFeed {
+                    FeedPageHeader(
+                        selectedSite: model.selectedSite,
+                        visibleCount: model.filteredItems.count,
+                        totalCount: model.items.count,
+                        isLoading: model.isLoading,
+                        theme: siteTheme,
+                        refreshAction: { Task { await model.refresh() } }
+                    )
 
-                FeedToolbar(
-                    selectedSite: $model.selectedSite,
-                    filters: $model.filters,
-                    sortMode: sortModeBinding,
-                    showsAdvancedFilters: $showsAdvancedFilters,
-                    capabilities: capabilities,
-                    theme: siteTheme,
-                    availableStudios: model.availableStudios,
-                    availableCategories: model.availableCategories,
-                    availableTags: model.availableTags,
-                    availableQualityLabels: model.availableQualityLabels,
-                    activeChips: model.filters.activeChips,
-                    removeActiveFilter: removeActiveFilter,
-                    clearFilters: model.clearFilters
-                )
-
-                if model.selectedSite == PornHubFeedScraper.supportedHost {
-                    PornHubSectionPicker(model: model, accent: siteTheme.accent)
-                    PornHubLoginBanner {
-                        Task { await model.refresh() }
-                    }
-                }
-
-                if model.sortMode == .profileCurated,
-                   case .idle = profileVM.state {
-                    profileCuratedNoBanner
+                    FeedToolbar(
+                        selectedSite: $model.selectedSite,
+                        filters: $model.filters,
+                        sortMode: sortModeBinding,
+                        showsAdvancedFilters: $showsAdvancedFilters,
+                        capabilities: capabilities,
+                        theme: siteTheme,
+                        availableStudios: model.availableStudios,
+                        availableCategories: model.availableCategories,
+                        availableTags: model.availableTags,
+                        availableQualityLabels: model.availableQualityLabels,
+                        activeChips: model.filters.activeChips,
+                        removeActiveFilter: removeActiveFilter,
+                        clearFilters: model.clearFilters
+                    )
                 }
 
                 if let error = model.error, !model.items.isEmpty {
@@ -227,28 +247,49 @@ struct FeedView: View {
         .task {
             await model.loadInitial()
             await model.loadPornHubSubscriptionsIfNeeded()
+            await model.loadEpornerSubscriptionsIfNeeded()
         }
         .onChange(of: model.filters.date) { _, _ in
             model.resetPaginationForFilter()
         }
         .onChange(of: model.filters) { _, _ in
             model.discardPornHubReturnState()
+            model.discardEpornerReturnState()
         }
         .onChange(of: model.selectedSite) { _, newSite in
             applySiteCapabilities(for: newSite)
-            selectedItemIDs = []
             if newSite != PornHubFeedScraper.supportedHost {
                 model.clearPornHubContext()
             } else {
+                feedBrowser.configure(site: .pornHub)
+                feedBrowser.loadHome(feedModel: model)
                 Task { await model.loadPornHubSubscriptionsIfNeeded() }
+            }
+            if let browserSite = FeedBrowserSite(host: newSite), newSite != PornHubFeedScraper.supportedHost {
+                feedBrowser.configure(site: browserSite)
+                feedBrowser.loadHome(feedModel: model)
+            }
+            if newSite != EpornerFeedScraper.supportedHost {
+                model.clearEpornerContext()
+            } else {
+                Task { await model.loadEpornerSubscriptionsIfNeeded() }
             }
             Task { await model.refresh() }
         }
         .onChange(of: model.selectedPornHubSection) { _, _ in
-            selectedItemIDs = []
+            if model.selectedSite == PornHubFeedScraper.supportedHost {
+                feedBrowser.loadHome(feedModel: model)
+            }
         }
-        .onReceive(profileVM.$state) { _ in
-            model.rebuildDerivedState()
+        .onChange(of: model.pornHubUploaderURL) { _, _ in
+            if model.selectedSite == PornHubFeedScraper.supportedHost {
+                feedBrowser.loadHome(feedModel: model)
+            }
+        }
+        .onChange(of: model.selectedEpornerSection) { _, _ in
+            if model.selectedSite == EpornerFeedScraper.supportedHost {
+                feedBrowser.loadHome(feedModel: model)
+            }
         }
         .onChange(of: pornHubSession.isLoggedIn) { _, isLoggedIn in
             if isLoggedIn && model.selectedSite == PornHubFeedScraper.supportedHost {
@@ -258,30 +299,107 @@ struct FeedView: View {
                 model.pornHubSubscriptionsError = nil
             }
         }
+        .onChange(of: epornerSession.isLoggedIn) { _, isLoggedIn in
+            if isLoggedIn && model.selectedSite == EpornerFeedScraper.supportedHost {
+                Task { await model.loadEpornerSubscriptionsIfNeeded() }
+            } else if !isLoggedIn {
+                model.epornerSubscriptions = []
+                model.epornerSubscriptionsError = nil
+            }
+        }
     }
 
     @ViewBuilder
     private func contentArea(availableWidth: CGFloat) -> some View {
-        let railWidth = min(max(availableWidth * 0.18, 190), 240)
-        if shouldShowSubscriptionRail(availableWidth: availableWidth) {
-            HStack(alignment: .top, spacing: 12) {
-                PornHubSubscriptionRail(
-                    model: model,
-                    accent: siteTheme.accent
-                )
-                .frame(width: railWidth)
-                .frame(maxHeight: .infinity)
-
-                content(availableWidth: max(availableWidth - railWidth - 12, 0))
-            }
+        if FeedBrowserSite(host: model.selectedSite) != nil {
+            feedBrowserArea(availableWidth: availableWidth)
         } else {
-            content(availableWidth: availableWidth)
+            let railWidth = min(max(availableWidth * 0.18, 190), 240)
+            if shouldShowSubscriptionRail(availableWidth: availableWidth) {
+                HStack(alignment: .top, spacing: 12) {
+                    if model.selectedSite == PornHubFeedScraper.supportedHost {
+                        PornHubSubscriptionRail(
+                            model: model,
+                            accent: siteTheme.accent
+                        )
+                        .frame(width: railWidth)
+                        .frame(maxHeight: .infinity)
+                    } else if model.selectedSite == EpornerFeedScraper.supportedHost {
+                        EpornerSubscriptionRail(
+                            model: model,
+                            accent: siteTheme.accent
+                        )
+                        .frame(width: railWidth)
+                        .frame(maxHeight: .infinity)
+                    }
+
+                    content(availableWidth: max(availableWidth - railWidth - 12, 0))
+                }
+            } else {
+                content(availableWidth: availableWidth)
+            }
+        }
+    }
+
+    private func feedBrowserArea(availableWidth: CGFloat) -> some View {
+        VStack(spacing: FeedLayout.sectionSpacing) {
+            let currentItem = feedBrowser.currentFeedItem
+            let downloadedIndex = DownloadedFeedIndex(items: library.items)
+            let currentDownloadedMatch = currentItem.flatMap { downloadedIndex.match(for: $0) }
+
+            if model.selectedSite == PornHubFeedScraper.supportedHost ||
+                model.selectedSite == EpornerFeedScraper.supportedHost {
+                inlineSubscriptionPicker
+            }
+
+            PornHubBrowserChrome(
+                browser: feedBrowser,
+                selectedSite: $model.selectedSite,
+                accent: siteTheme.accent,
+                currentPageIsFavorite: currentItem.map { favorites.contains(url: $0.url) } ?? false,
+                currentPageDownloadedMatch: currentDownloadedMatch,
+                goHome: { feedBrowser.loadHome(feedModel: model) },
+                extractCurrentPage: extractCurrentBrowserPage,
+                toggleFavoriteCurrentPage: toggleFavoriteCurrentBrowserPage
+            )
+
+            PornHubBrowserWebView(
+                browser: feedBrowser,
+                initialURL: feedBrowser.homeURL(feedModel: model),
+                isSelected: { item in selectedItems[FeedSelectionStore.key(for: item)] != nil },
+                toggleSelection: { item in toggleSelection(item) },
+                onNavigationFinished: {
+                    Task { @MainActor in
+                        if model.selectedSite == PornHubFeedScraper.supportedHost {
+                            await PornHubSessionManager.shared.syncFromWebView()
+                        } else if model.selectedSite == EpornerFeedScraper.supportedHost {
+                            await EpornerSessionManager.shared.syncFromWebView()
+                        }
+                    }
+                }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(siteTheme.accent.opacity(0.18), lineWidth: 0.8))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            if let browserSite = FeedBrowserSite(host: model.selectedSite) {
+                feedBrowser.configure(site: browserSite)
+            }
+            if feedBrowser.currentURL == nil {
+                feedBrowser.loadHome(feedModel: model)
+            }
         }
     }
 
     private func shouldShowSubscriptionRail(availableWidth: CGFloat) -> Bool {
-        model.selectedSite == PornHubFeedScraper.supportedHost &&
-            pornHubSession.isLoggedIn &&
+        let isPH = model.selectedSite == PornHubFeedScraper.supportedHost &&
+            pornHubSession.isLoggedIn
+        let isEP = model.selectedSite == EpornerFeedScraper.supportedHost &&
+            epornerSession.isLoggedIn
+        return (isPH || isEP) &&
             availableWidth >= 1040
     }
 
@@ -391,47 +509,35 @@ struct FeedView: View {
     @ViewBuilder
     private var inlineSubscriptionPicker: some View {
         if shouldShowInlineSubscriptionPicker {
-            PornHubSubscriptionsInlinePicker(model: model, accent: siteTheme.accent)
+            if model.selectedSite == EpornerFeedScraper.supportedHost {
+                EpornerSubscriptionsInlinePicker(model: model, accent: siteTheme.accent)
+            } else {
+                PornHubSubscriptionsInlinePicker(model: model, accent: siteTheme.accent)
+            }
         }
     }
 
     private var shouldShowInlineSubscriptionPicker: Bool {
-        model.selectedSite == PornHubFeedScraper.supportedHost &&
+        (model.selectedSite == PornHubFeedScraper.supportedHost &&
             pornHubSession.isLoggedIn &&
             model.selectedPornHubSection == .subscriptions &&
-            model.pornHubUploaderURL == nil
-    }
-
-    private var profileCuratedNoBanner: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "person.crop.circle.badge.exclamationmark")
-                .foregroundStyle(Theme.gold)
-            Text("No profile generated yet. Go to Profile tab to generate one.")
-                .font(.caption)
-                .foregroundStyle(Theme.textSecondary)
-            Spacer()
-            Button("Go to Profile") {
-                AppStateManager.shared.select(.profile)
-            }
-            .buttonStyle(.bordered)
-            .tint(Theme.gold)
-            .controlSize(.small)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .glassCard(tint: Theme.gold.opacity(0.12), cornerRadius: 14)
+            model.pornHubUploaderURL == nil) ||
+            (model.selectedSite == EpornerFeedScraper.supportedHost &&
+            epornerSession.isLoggedIn &&
+            model.selectedEpornerSection == .subscriptions &&
+            model.epornerUploaderURL == nil)
     }
 
     private var batchSelectionBar: some View {
         HStack(spacing: 12) {
-            Text("\(selectedItemIDs.count) selected")
+            Text("\(selectedItems.count) selected")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Theme.textPrimary)
 
             Spacer()
 
             Button("Clear") {
-                selectedItemIDs = []
+                selectedItems = [:]
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -457,8 +563,6 @@ struct FeedView: View {
         favoriteIDs: Set<String>,
         prefetchThreshold: Int
     ) -> some View {
-        let profileMatchReasons = model.sortMode == .profileCurated ? model.profileMatchReasons : [:]
-
         return LazyVGrid(
             columns: layout.columns,
             alignment: .leading,
@@ -482,8 +586,7 @@ struct FeedView: View {
                         } else {
                             extract(item)
                         }
-                    },
-                    profileMatch: profileMatchReasons[item.id]
+                    }
                 )
                 .id(item.id)
                 .onAppear {
@@ -508,28 +611,30 @@ struct FeedView: View {
     }
 
     private func selectionBadge(for item: FeedItem) -> some View {
-        Image(systemName: selectedItemIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
+        let isSelected = selectedItems[FeedSelectionStore.key(for: item)] != nil
+        return Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
             .font(.system(size: 20, weight: .bold))
-            .foregroundStyle(selectedItemIDs.contains(item.id) ? siteTheme.accent : .white.opacity(0.7))
+            .foregroundStyle(isSelected ? siteTheme.accent : .white.opacity(0.7))
             .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 1)
             .padding(10)
     }
 
     @ViewBuilder
     private func cardContextMenu(for item: FeedItem, downloadedMatch: DownloadedFeedMatch?) -> some View {
-        Button(selectedItemIDs.contains(item.id) ? "Deselect" : "Select") {
+        let isSelected = selectedItems[FeedSelectionStore.key(for: item)] != nil
+        Button(isSelected ? "Deselect" : "Select") {
             toggleSelection(item)
         }
         Button("Select All Visible") {
-            selectedItemIDs = Set(model.filteredItems.map(\.id))
+            selectedItems = FeedSelectionStore.adding(model.filteredItems, to: selectedItems)
         }
         if isSelecting {
             Divider()
-            Button("Extract Selected (\(selectedItemIDs.count))") {
+            Button("Extract Selected (\(selectedItems.count))") {
                 extractSelected()
             }
             Button("Clear Selection") {
-                selectedItemIDs = []
+                selectedItems = [:]
             }
         }
         Divider()
@@ -590,22 +695,30 @@ struct FeedView: View {
         AppStateManager.shared.select(.home)
     }
 
-    private func toggleSelection(_ item: FeedItem) {
-        if selectedItemIDs.contains(item.id) {
-            selectedItemIDs.remove(item.id)
-        } else {
-            selectedItemIDs.insert(item.id)
+    private func extractCurrentBrowserPage() {
+        guard let item = feedBrowser.currentFeedItem else { return }
+        extract(item)
+    }
+
+    private func toggleFavoriteCurrentBrowserPage() {
+        guard let item = feedBrowser.currentFeedItem else { return }
+        withAnimation {
+            favorites.toggle(feedItem: item)
         }
     }
 
+    private func toggleSelection(_ item: FeedItem) {
+        selectedItems = FeedSelectionStore.toggled(item, in: selectedItems)
+    }
+
     private func extractSelected() {
-        let selected = model.filteredItems.filter { selectedItemIDs.contains($0.id) }
+        let selected = Array(selectedItems.values)
         guard !selected.isEmpty else { return }
 
         AppStateManager.shared.pendingExtractThumbnailURL = nil
         AppStateManager.shared.pendingExtractShouldStart = true
         AppStateManager.shared.pendingExtractURL = selected.map(\.url).joined(separator: "\n")
-        selectedItemIDs = []
+        selectedItems = [:]
         AppStateManager.shared.select(.home)
     }
 
@@ -889,6 +1002,7 @@ private struct FeedToolbar: View {
                 Text(RentryFeedScraper.supportedHost).tag(RentryFeedScraper.supportedHost)
                 Text(HQPornerFeedScraper.supportedHost).tag(HQPornerFeedScraper.supportedHost)
                 Text(PornHubFeedScraper.supportedHost).tag(PornHubFeedScraper.supportedHost)
+                Text(EpornerFeedScraper.supportedHost).tag(EpornerFeedScraper.supportedHost)
             }
             .pickerStyle(.menu)
             .labelsHidden()
@@ -1477,6 +1591,8 @@ private enum FeedSiteDisplay {
             return "HQPorner"
         case PornHubFeedScraper.supportedHost:
             return "PornHub"
+        case EpornerFeedScraper.supportedHost:
+            return "Eporner"
         default:
             return site
                 .replacingOccurrences(of: "https://", with: "")
@@ -1765,6 +1881,291 @@ private struct PornHubLoginBanner: View {
             if loggedIn {
                 refresh()
             }
+        }
+    }
+}
+
+private struct EpornerSectionPicker: View {
+    @ObservedObject var model: FeedViewModel
+    @StateObject private var session = EpornerSessionManager.shared
+
+    let accent: Color
+
+    @ViewBuilder
+    var body: some View {
+        if let uploaderName = model.epornerUploaderName {
+            HStack(spacing: 10) {
+                Button {
+                    Task { await model.epornerUploaderBack() }
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(accent)
+
+                Text(uploaderName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 4)
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(EpornerSection.allCases) { section in
+                        sectionButton(section)
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+        }
+    }
+
+    private func sectionButton(_ section: EpornerSection) -> some View {
+        let isSelected = model.selectedEpornerSection == section
+        let needsLogin = section.requiresLogin && !session.isLoggedIn
+
+        return Button {
+            Task { await model.selectEpornerSection(section) }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: needsLogin ? "lock.fill" : section.icon)
+                    .font(.system(size: 11, weight: .bold))
+                Text(section.title)
+            }
+            .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(isSelected ? accent.opacity(0.22) : Color.white.opacity(0.06), in: Capsule())
+            .foregroundStyle(isSelected ? accent : .white.opacity(needsLogin ? 0.50 : 0.65))
+            .overlay(Capsule().strokeBorder(isSelected ? accent.opacity(0.32) : .white.opacity(0.08), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .help(needsLogin ? "Log in to use \(section.title)" : section.title)
+    }
+}
+
+private struct EpornerLoginBanner: View {
+    @StateObject private var session = EpornerSessionManager.shared
+    @State private var showLogin = false
+
+    let accent: Color
+    let refresh: () -> Void
+
+    var body: some View {
+        Group {
+            if !session.isLoggedIn {
+                HStack(spacing: 12) {
+                    Image(systemName: "person.crop.circle.badge.exclamationmark")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Not logged in to Eporner")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(Theme.textPrimary)
+                        Text("Log in to access Subscriptions, Liked, Favorites, Watch Later, and History.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                    Spacer()
+                    Button("Log In") {
+                        showLogin = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(accent)
+                    .controlSize(.small)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .glassCard(tint: accent.opacity(0.12), cornerRadius: 14)
+            }
+        }
+        .sheet(isPresented: $showLogin) {
+            EpornerLoginView()
+        }
+        .onChange(of: session.isLoggedIn) { _, loggedIn in
+            if loggedIn {
+                refresh()
+            }
+        }
+    }
+}
+
+private struct EpornerSubscriptionRail: View {
+    @ObservedObject var model: FeedViewModel
+
+    let accent: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "bell.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(accent)
+                Text("Subscriptions")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Theme.textPrimary)
+                Spacer()
+                Button {
+                    Task { await model.refreshEpornerSubscriptions() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 10, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.textSecondary)
+                .disabled(model.isLoadingEpornerSubscriptions)
+                .help("Refresh subscriptions")
+            }
+
+            allSubscriptionsButton
+
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 5) {
+                    if model.isLoadingEpornerSubscriptions {
+                        subscriptionLoadingRow
+                    } else if model.epornerSubscriptions.isEmpty {
+                        subscriptionEmptyRow
+                    } else {
+                        ForEach(model.epornerSubscriptions) { subscription in
+                            subscriptionButton(subscription)
+                        }
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .padding(10)
+        .glassCard(tint: accent.opacity(0.08), cornerRadius: 16)
+        .task {
+            await model.loadEpornerSubscriptionsIfNeeded()
+        }
+    }
+
+    private var allSubscriptionsButton: some View {
+        let isSelected = model.epornerUploaderURL == nil && model.selectedEpornerSection == .subscriptions
+        return Button {
+            Task {
+                if model.epornerUploaderURL != nil {
+                    await model.epornerUploaderBack()
+                } else {
+                    await model.selectEpornerSection(.subscriptions)
+                }
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "rectangle.stack.fill")
+                    .font(.system(size: 10, weight: .bold))
+                Text("All")
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .font(.system(size: 12, weight: isSelected ? .bold : .semibold))
+            .foregroundStyle(isSelected ? accent : Theme.textSecondary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+            .background(isSelected ? accent.opacity(0.18) : Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var subscriptionLoadingRow: some View {
+        HStack(spacing: 7) {
+            ProgressView()
+                .controlSize(.small)
+                .scaleEffect(0.62)
+            Text("Loading")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 7)
+    }
+
+    private var subscriptionEmptyRow: some View {
+        Text(model.epornerSubscriptionsError ?? "None found")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(Theme.textSecondary)
+            .lineLimit(2)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+    }
+
+    private func subscriptionButton(_ subscription: PornHubSubscription) -> some View {
+        let isSelected = model.epornerUploaderURL?.lowercased() == subscription.url.lowercased()
+        return Button {
+            Task {
+                await model.navigateToEpornerUploader(url: subscription.url, name: subscription.name)
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "person.crop.circle")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(subscription.name)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+            }
+            .font(.system(size: 12, weight: isSelected ? .bold : .regular))
+            .foregroundStyle(isSelected ? accent : Theme.textPrimary.opacity(0.84))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 7)
+            .background(isSelected ? accent.opacity(0.18) : Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(isSelected ? accent.opacity(0.28) : .white.opacity(0.05), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .help(subscription.name)
+    }
+}
+
+private struct EpornerSubscriptionsInlinePicker: View {
+    @ObservedObject var model: FeedViewModel
+
+    let accent: Color
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                if model.isLoadingEpornerSubscriptions {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.65)
+                        .padding(.horizontal, 8)
+                } else if model.epornerSubscriptions.isEmpty {
+                    Text(model.epornerSubscriptionsError ?? "No subscriptions found")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .padding(.horizontal, 2)
+                } else {
+                    ForEach(model.epornerSubscriptions) { subscription in
+                        Button {
+                            Task {
+                                await model.navigateToEpornerUploader(url: subscription.url, name: subscription.name)
+                            }
+                        } label: {
+                            Text(subscription.name)
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(Theme.textPrimary)
+                                .lineLimit(1)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.white.opacity(0.06), in: Capsule())
+                                .overlay(Capsule().strokeBorder(accent.opacity(0.18), lineWidth: 0.5))
+                        }
+                        .buttonStyle(.plain)
+                        .help(subscription.name)
+                    }
+                }
+            }
+            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .task {
+            await model.loadEpornerSubscriptionsIfNeeded()
         }
     }
 }

@@ -174,13 +174,111 @@ final class DownloadQueueProjectionTests: XCTestCase {
         let counts = HomeQueueCounts(items: items)
 
         XCTAssertEqual(counts.total, 8)
-        XCTAssertEqual(counts.remaining, 6)
-        XCTAssertEqual(counts.active, 4)
+        XCTAssertEqual(counts.remaining, 5)
+        XCTAssertEqual(counts.active, 3)
         XCTAssertEqual(counts.queued, 1)
         XCTAssertEqual(counts.paused, 1)
         XCTAssertEqual(counts.completed, 1)
         XCTAssertEqual(counts.failed, 1)
-        XCTAssertEqual(counts.summaryText, "6 remaining · 4 active · 1 queued · 1 paused")
+        XCTAssertEqual(counts.activeEntry, 7)
+        XCTAssertEqual(counts.summaryText, "5 remaining · 3 active · 1 queued · 1 paused")
+    }
+
+    func testHomeQueueModalEntryCountsExcludeOnlyCompletedItems() {
+        let items = [
+            queueItem(status: .pending),
+            queueItem(status: .paused),
+            queueItem(status: .failed("Network")),
+            queueItem(status: .completed)
+        ]
+
+        let counts = HomeQueueCounts(items: items)
+
+        XCTAssertEqual(counts.activeEntry, 3)
+        XCTAssertEqual(counts.completed, 1)
+        XCTAssertEqual(counts.failed, 1)
+        XCTAssertEqual(counts.paused, 1)
+    }
+
+    func testHomeDetailLineForLocalDownloadIncludesMetricsWithoutRepeatingLocation() {
+        var item = queueItem(status: .downloading)
+        item.progress = 42.5
+        item.bytesDownloaded = 512 * 1024 * 1024
+        item.totalBytes = 1024 * 1024 * 1024
+        item.bytesPerSecond = 2 * 1024 * 1024
+        item.statusMessage = "Downloading… 42%"
+
+        XCTAssertEqual(DownloadStatusFormatting.stageLabel(for: item), "Downloading")
+        XCTAssertEqual(DownloadStatusFormatting.transferLocation(for: item), DownloadPaths.downloadDir.path)
+        XCTAssertEqual(
+            DownloadStatusFormatting.homeDetailLine(for: item),
+            "512.0 MB of 1.0 GB · 2.0 MB/s · 4m 16s left · 42.5% · Downloading… 42%"
+        )
+    }
+
+    func testHomeTransferLocationUsesRemoteTargetsFromRetryPayload() {
+        let payload = DownloadRetryPayload(
+            resolution: makeRetryTestResolution(),
+            target: .gdrive,
+            context: DownloadJobContext(
+                megaRemotePath: "/Cloud/VidDL/",
+                gdriveRemoteName: "gdrive",
+                gdriveRemotePath: "VidDL/Inbox/",
+                seedboxTransferMode: "rclone",
+                seedboxRemoteName: "seedbox",
+                seedboxRemotePath: "/downloads/inbox/"
+            ).retryContext,
+            gdriveMegaRemotePath: nil
+        )
+
+        var driveItem = DownloadQueueItem(
+            url: payload.resolution.requestedUrl,
+            quality: payload.resolution.queueQuality,
+            targetCloud: .gdrive,
+            displayTitle: payload.resolution.title,
+            retryPayload: payload
+        )
+        driveItem.status = .uploading
+
+        XCTAssertEqual(DownloadStatusFormatting.transferLocation(for: driveItem), "gdrive:VidDL/Inbox/")
+
+        let megaItem = DownloadQueueItem(
+            url: payload.resolution.requestedUrl,
+            quality: payload.resolution.queueQuality,
+            targetCloud: .mega,
+            displayTitle: payload.resolution.title,
+            retryPayload: payload
+        )
+        XCTAssertEqual(DownloadStatusFormatting.transferLocation(for: megaItem), "/Cloud/VidDL/")
+
+        let seedboxItem = DownloadQueueItem(
+            url: payload.resolution.requestedUrl,
+            quality: payload.resolution.queueQuality,
+            targetCloud: .seedbox,
+            displayTitle: payload.resolution.title,
+            retryPayload: payload
+        )
+        XCTAssertEqual(DownloadStatusFormatting.transferLocation(for: seedboxItem), "seedbox:/downloads/inbox/")
+    }
+
+    func testHomeTransferLocationPrefersCompletedFinalPath() {
+        var item = queueItem(status: .completed)
+        item.finalPath = "/tmp/VidDL/video.mp4"
+
+        XCTAssertEqual(DownloadStatusFormatting.stageLabel(for: item), "Completed")
+        XCTAssertEqual(DownloadStatusFormatting.transferLocation(for: item), "/tmp/VidDL/video.mp4")
+    }
+
+    func testHomeFailureMessagePrefersFailedReason() {
+        var item = queueItem(status: .failed("Seedbox authentication failed"))
+        item.statusMessage = "Upload failed"
+
+        XCTAssertEqual(DownloadStatusFormatting.stageLabel(for: item), "Failed")
+        XCTAssertEqual(DownloadStatusFormatting.failureMessage(for: item), "Seedbox authentication failed")
+        XCTAssertEqual(
+            DownloadStatusFormatting.homeDetailLine(for: item),
+            "0.0% · Upload failed · Seedbox authentication failed"
+        )
     }
 
     @MainActor

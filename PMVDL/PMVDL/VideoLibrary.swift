@@ -38,6 +38,7 @@ class VideoLibrary: ObservableObject {
         if let encoded = try? JSONEncoder().encode(items) {
             UserDefaults.standard.set(encoded, forKey: userDefaultsKey)
         }
+        LibraryPipelineStore.shared.rebuild(libraryItems: items)
     }
 
     func purgeExpired() {

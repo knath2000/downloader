@@ -232,7 +232,7 @@ struct DoodStreamExtractor: VideoSiteExtractor {
     randomSuffix: () -> String,
     nowMilliseconds: () -> String
   ) async -> String? {
-    guard let passPath = extractJsStringValue(pattern: #"\$\.get\(\s*['"]([^'"]+)['"]"#, in: html),
+    guard let passPath = extractPlaymogoPassPath(from: html),
           let passURL = URL(string: passPath, relativeTo: pageURL)?.absoluteURL,
           let tokenPrefix = extractPlaymogoTokenPrefix(from: html) else {
       return nil
@@ -252,11 +252,34 @@ struct DoodStreamExtractor: VideoSiteExtractor {
     }
   }
 
+  private static func extractPlaymogoPassPath(from html: String) -> String? {
+    let patterns = [
+      #"\$\.get\(\s*['"]([^'"]+)['"]"#,
+      #"\.get\(\s*['"]([^'"]*/pass_md5/[^'"]+)['"]"#,
+      #"\burl\s*:\s*['"]([^'"]*/pass_md5/[^'"]+)['"]"#,
+      #"\bfetch\(\s*['"]([^'"]*/pass_md5/[^'"]+)['"]"#,
+      #"['"]([^'"]*/pass_md5/[^'"]+)['"]"#
+    ]
+    for pattern in patterns {
+      if let path = extractJsStringValue(pattern: pattern, in: html) {
+        return path
+      }
+    }
+    return nil
+  }
+
   private static func extractPlaymogoTokenPrefix(from html: String) -> String? {
-    extractJsStringValue(
-      pattern: #"return\s+a\s*\+\s*['"]([^'"]+)['"]\s*\+\s*Date\.now\(\)"#,
-      in: html
-    )
+    let patterns = [
+      #"return\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\+\s*['"]([^'"]+)['"]\s*\+\s*Date\s*\.\s*now\s*\(\s*\)"#,
+      #"[A-Za-z_$][A-Za-z0-9_$]*\s*\+\s*['"]([^'"]+\?token=[^'"]+)['"]\s*\+\s*Date\s*\.\s*now\s*\(\s*\)"#,
+      #"['"]([^'"]+\?token=[^'"]+&expiry=)['"]\s*\+\s*Date\s*\.\s*now\s*\(\s*\)"#
+    ]
+    for pattern in patterns {
+      if let token = extractJsStringValue(pattern: pattern, in: html) {
+        return token
+      }
+    }
+    return nil
   }
 
   private static func fetchPlaymogoPassBase(passURL: URL, referer: URL) async throws -> String {
@@ -341,7 +364,7 @@ struct DoodStreamExtractor: VideoSiteExtractor {
    }
 
   private static func findDoodOrCloudCandidate(in text: String) -> String? {
-    let pattern = #"(?:https?:)?//[^"'\s<>]+(?:dood\.video|cloudatacdn\.com)[^"'\s<>]*"#
+    let pattern = #"(?:https?:)?(?:\\?/\\?/|//)[^"'\s<>]+(?:dood\.video|cloudatacdn\.com)[^"'\s<>]*"#
     guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { return nil }
     let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
     for match in matches {
@@ -357,6 +380,7 @@ struct DoodStreamExtractor: VideoSiteExtractor {
 
   private static func normalizeCandidate(_ rawUrl: String) -> String {
     let trimmed = rawUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+      .replacingOccurrences(of: "\\/", with: "/")
     if trimmed.hasPrefix("//") {
       return "https:" + trimmed
     }
@@ -636,6 +660,16 @@ struct DoodStreamExtractor: VideoSiteExtractor {
     }
     return nil
   }
+
+#if DEBUG
+  static func extractPlaymogoPassPathForTesting(from html: String) -> String? {
+    extractPlaymogoPassPath(from: html)
+  }
+
+  static func extractPlaymogoTokenPrefixForTesting(from html: String) -> String? {
+    extractPlaymogoTokenPrefix(from: html)
+  }
+#endif
 
   enum DoodStreamError: LocalizedError {
   case noVideoSource

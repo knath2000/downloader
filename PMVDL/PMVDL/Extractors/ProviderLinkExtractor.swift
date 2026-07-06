@@ -60,7 +60,20 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
             entries.append(contentsOf: parseVideoUrlsObject(videoUrlsObject))
         }
 
+        if entries.isEmpty {
+            entries.append(contentsOf: parseInlineVideoUrls(from: html))
+        }
+
         return entries
+    }
+
+    private static func parseInlineVideoUrls(from html: String) -> [ProviderEntry] {
+        guard let videoUrlsRange = html.range(of: #""video_urls"\s*:"#, options: .regularExpression),
+              let bracePos = html[videoUrlsRange.upperBound...].firstIndex(of: "{"),
+              let videoUrlsObject = extractObject(from: html, start: bracePos) else {
+            return []
+        }
+        return parseVideoUrlsObject(videoUrlsObject)
     }
 
     private static func extractNextFPushStrings(from html: String) -> [String] {
@@ -386,6 +399,7 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
             || host == "mixdrop.pw" || host.hasSuffix(".mixdrop.pw")
             || host == "mixdrop.top" || host.hasSuffix(".mixdrop.top")
             || host == "m1xdrop.click" || host.hasSuffix(".m1xdrop.click")
+            || host == "miiixdrop.net" || host.hasSuffix(".miiixdrop.net")
             || host == "doodstream.com" || host.hasSuffix(".doodstream.com")
             || host == "doodstream.org" || host.hasSuffix(".doodstream.org")
             || host == "dood.wf" || host.hasSuffix(".dood.wf")
@@ -397,6 +411,7 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
             || host == "dood.la" || host.hasSuffix(".dood.la")
             || host == "dood.sh" || host.hasSuffix(".dood.sh")
             || host == "playmogo.com" || host.hasSuffix(".playmogo.com")
+            || host == "vidara.so" || host.hasSuffix(".vidara.so")
     }
 
     // MARK: - JSON Helpers

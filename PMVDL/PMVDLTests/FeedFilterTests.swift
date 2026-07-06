@@ -120,6 +120,8 @@ final class FeedFilterTests: XCTestCase {
             selectedSite: PornHubFeedScraper.supportedHost,
             selectedPornHubSection: .liked,
             pornHubUploaderURL: nil,
+            selectedEpornerSection: .recommended,
+            epornerUploaderURL: nil,
             filters: filters,
             pageItems: [oldItem]
         ))
@@ -128,6 +130,8 @@ final class FeedFilterTests: XCTestCase {
             selectedSite: HQPornerFeedScraper.supportedHost,
             selectedPornHubSection: .recommended,
             pornHubUploaderURL: nil,
+            selectedEpornerSection: .recommended,
+            epornerUploaderURL: nil,
             filters: filters,
             pageItems: [oldItem]
         ))
@@ -181,30 +185,6 @@ final class FeedFilterTests: XCTestCase {
         XCTAssertEqual(model.pendingScrollRestoreID, second.id)
     }
 
-    @MainActor
-    func testProfileUploaderNavigationConfiguresPornHubUploaderContext() {
-        let model = FeedViewModel()
-        model.selectedSite = PornHubFeedScraper.supportedHost
-        model.selectedPornHubSection = .liked
-        model.filters.query = "old"
-        model.sortMode = .newest
-        model.items = [feedItem(id: "old", title: "Old", siteName: PornHubFeedScraper.supportedHost)]
-        model.capturePornHubReturnStateIfNeeded()
-
-        XCTAssertTrue(model.configurePornHubUploaderFromProfile(
-            url: "https://www.pornhub.com/pornstar/fixture-performer/videos?page=2",
-            name: "Fixture Performer"
-        ))
-
-        XCTAssertEqual(model.selectedSite, PornHubFeedScraper.supportedHost)
-        XCTAssertEqual(model.selectedPornHubSection, .recommended)
-        XCTAssertEqual(model.pornHubUploaderURL, "https://www.pornhub.com/pornstar/fixture-performer")
-        XCTAssertEqual(model.pornHubUploaderName, "Fixture Performer")
-        XCTAssertTrue(model.filters.isDefault)
-        XCTAssertEqual(model.sortMode, .feedOrder)
-        XCTAssertFalse(model.restorePornHubReturnState())
-    }
-
     func testActiveFilterChipsAndRemoval() {
         var filters = FeedFilterState()
         filters.date = .last7Days
@@ -238,6 +218,30 @@ final class FeedFilterTests: XCTestCase {
         XCTAssertEqual(FeedGridLayout(availableWidth: 1200).spacing, 18)
         XCTAssertEqual(FeedGridLayout(availableWidth: 900).prefetchItemThreshold, 12)
         XCTAssertEqual(FeedGridLayout(availableWidth: 1500).prefetchItemThreshold, 16)
+    }
+
+    func testFeedSelectionStorePreservesItemsAcrossSites() {
+        let rentry = feedItem(id: "rentry", title: "Rentry", siteName: RentryFeedScraper.supportedHost)
+        let eporner = feedItem(id: "eporner", title: "Eporner", siteName: EpornerFeedScraper.supportedHost)
+
+        var selected: [String: FeedItem] = [:]
+        selected = FeedSelectionStore.toggled(rentry, in: selected)
+        selected = FeedSelectionStore.toggled(eporner, in: selected)
+
+        XCTAssertEqual(Set(selected.values.map(\.siteName)), [RentryFeedScraper.supportedHost, EpornerFeedScraper.supportedHost])
+        XCTAssertEqual(Set(selected.values.map(\.url)), [rentry.url, eporner.url])
+    }
+
+    func testFeedSelectionStoreSelectAllVisibleAddsWithoutClearingPriorSelection() {
+        let prior = feedItem(id: "prior", title: "Prior", siteName: PornHubFeedScraper.supportedHost)
+        let visibleOne = feedItem(id: "visible-1", title: "Visible 1", siteName: HQPornerFeedScraper.supportedHost)
+        let visibleTwo = feedItem(id: "visible-2", title: "Visible 2", siteName: HQPornerFeedScraper.supportedHost)
+
+        var selected: [String: FeedItem] = [:]
+        selected = FeedSelectionStore.toggled(prior, in: selected)
+        selected = FeedSelectionStore.adding([visibleOne, visibleTwo], to: selected)
+
+        XCTAssertEqual(Set(selected.values.map(\.url)), [prior.url, visibleOne.url, visibleTwo.url])
     }
 
     func testViewportPrefetchTriggerIDsUsesTrailingVisibleWindow() {

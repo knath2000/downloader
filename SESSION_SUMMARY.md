@@ -1,3 +1,9 @@
+# Latest Session - 2026-07-04 Startup Deadlock Fix, Home Queue Detail Work, and Local Unsigned DMG
+
+See `docs/SESSION_2026_07_04_STARTUP_QUEUE_DMG.md` for the durable summary of the Home compact queue detail work, singleton-init launch deadlock diagnosis and fix, external-Xcode unsigned Debug build path, and local unsigned/unnotarized DMG packaging.
+
+---
+
 # Latest Session - 2026-05-09 Settings Scope Cleanup, Updater Removal, and Profile Formatting
 
 See `docs/SESSION_2026_05_09_SETTINGS_PROFILE_CLEANUP.md` for the durable summary of the selector-driven Cloud Destinations settings section, legacy upload automation removal, updater removal, legacy companion-scope removal, Profile AI Analysis formatting repair for flattened cached narratives, validation, and launch work.

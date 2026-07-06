@@ -25,6 +25,7 @@
 	A10017 /* DownloadQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20017; };
 	A10018 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20018; };
 	A10019 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20019; };
+	A10130 /* LibraryPipelineStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20130 /* LibraryPipelineStore.swift */; };
 	A10089 /* LibraryThumbnailResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20089 /* LibraryThumbnailResolver.swift */; };
 	A10020 /* DownloadQueueView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20020; };
 	A10052 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20052; };
@@ -59,6 +60,7 @@
 	A10071 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20071 /* SettingsView.swift */; };
 	A10087 /* SettingsDependencyState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20087 /* SettingsDependencyState.swift */; };
 	A10088 /* SettingsDependencyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20088 /* SettingsDependencyStore.swift */; };
+	A10129 /* RcloneRemoteSetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20129 /* RcloneRemoteSetup.swift */; };
 	A10072 /* DependencySetupPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20072 /* DependencySetupPanel.swift */; };
 	A10073 /* VideoResultRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20073 /* VideoResultRow.swift */; };
 	A10090 /* HomeLayoutMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20090 /* HomeLayoutMetrics.swift */; };
@@ -66,6 +68,7 @@
 	A10092 /* HomeHeroHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20092 /* HomeHeroHeader.swift */; };
 	A10093 /* HomeURLInputCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20093 /* HomeURLInputCard.swift */; };
 	A10119 /* HomeCompactQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20119 /* HomeCompactQueue.swift */; };
+	A10131 /* ExtractionModalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20131 /* ExtractionModalView.swift */; };
 	A10094 /* VideoResultPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20094 /* VideoResultPresentation.swift */; };
 	A10095 /* BatchDownloadBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20095 /* BatchDownloadBar.swift */; };
 	A10096 /* HomeStatusRail.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20096 /* HomeStatusRail.swift */; };
@@ -75,11 +78,11 @@
 	A10100 /* FeedViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20100 /* FeedViewModel.swift */; };
 	A10101 /* FeedCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20101 /* FeedCardView.swift */; };
 	A10102 /* FeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20102 /* FeedView.swift */; };
-	A10121 /* PornHubSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20121 /* PornHubSessionManager.swift */; };
-	A10122 /* PornHubLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20122 /* PornHubLoginView.swift */; };
-	A10123 /* XAIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20123 /* XAIClient.swift */; };
-	A10124 /* ProfileViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20124 /* ProfileViewModel.swift */; };
-	A10125 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20125 /* ProfileView.swift */; };
+		A10121 /* PornHubSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20121 /* PornHubSessionManager.swift */; };
+		A10122 /* PornHubLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20122 /* PornHubLoginView.swift */; };
+		A10128 /* PornHubBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20128 /* PornHubBrowserView.swift */; };
+		A10126 /* EpornerSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20126 /* EpornerSessionManager.swift */; };
+		A10127 /* EpornerLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20127 /* EpornerLoginView.swift */; };
 	A10103 /* FeedFavoriteItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20103 /* FeedFavoriteItem.swift */; };
 	A10104 /* FeedFavoritesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20104 /* FeedFavoritesStore.swift */; };
 	A10105 /* FavoritesDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20105 /* FavoritesDisplay.swift */; };
@@ -93,7 +96,6 @@
 	A10113 /* WebDAVRemoteFileClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20113 /* WebDAVRemoteFileClient.swift */; };
 	A10114 /* SeedboxRemoteFileClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20114 /* SeedboxRemoteFileClient.swift */; };
 	A10115 /* RemoteFilesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20115 /* RemoteFilesViewModel.swift */; };
-	A10116 /* RemoteFilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20116 /* RemoteFilesView.swift */; };
 	A10117 /* RemoteFileEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20117 /* RemoteFileEditorView.swift */; };
 	A10118 /* RemoteFilesDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20118 /* RemoteFilesDisplay.swift */; };
 	A10074 /* String+Parsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20074 /* String+Parsing.swift */; };
@@ -130,6 +132,9 @@
 	T10020 /* VideoProcessingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20020 /* VideoProcessingTests.swift */; };
 	T10021 /* ProfileNarrativeFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20021 /* ProfileNarrativeFormatterTests.swift */; };
 	T10022 /* NavigationGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20022 /* NavigationGateTests.swift */; };
+	T10023 /* PornHubBrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20023 /* PornHubBrowserTests.swift */; };
+	T10024 /* DownloadPathsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20024 /* DownloadPathsTests.swift */; };
+	T10025 /* RcloneRemoteSetupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20025 /* RcloneRemoteSetupTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -150,6 +155,7 @@
 	A20017 /* DownloadQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadQueue.swift; sourceTree = "<group>"; };
 	A20018 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 	A20019 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+	A20130 /* LibraryPipelineStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPipelineStore.swift; sourceTree = "<group>"; };
 	A20089 /* LibraryThumbnailResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryThumbnailResolver.swift; sourceTree = "<group>"; };
 	A20020 /* DownloadQueueView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadQueueView.swift; sourceTree = "<group>"; };
 	A20021 /* DropHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DropHandler.swift; sourceTree = "<group>"; };
@@ -189,6 +195,7 @@
 	A20071 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 	A20087 /* SettingsDependencyState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDependencyState.swift; sourceTree = "<group>"; };
 	A20088 /* SettingsDependencyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDependencyStore.swift; sourceTree = "<group>"; };
+	A20129 /* RcloneRemoteSetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RcloneRemoteSetup.swift; sourceTree = "<group>"; };
 	A20072 /* DependencySetupPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DependencySetupPanel.swift; sourceTree = "<group>"; };
 	A20073 /* VideoResultRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoResultRow.swift; sourceTree = "<group>"; };
 	A20090 /* HomeLayoutMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeLayoutMetrics.swift; sourceTree = "<group>"; };
@@ -196,6 +203,7 @@
 	A20092 /* HomeHeroHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeHeroHeader.swift; sourceTree = "<group>"; };
 	A20093 /* HomeURLInputCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeURLInputCard.swift; sourceTree = "<group>"; };
 	A20119 /* HomeCompactQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeCompactQueue.swift; sourceTree = "<group>"; };
+	A20131 /* ExtractionModalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtractionModalView.swift; sourceTree = "<group>"; };
 	A20094 /* VideoResultPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoResultPresentation.swift; sourceTree = "<group>"; };
 	A20095 /* BatchDownloadBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchDownloadBar.swift; sourceTree = "<group>"; };
 	A20096 /* HomeStatusRail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeStatusRail.swift; sourceTree = "<group>"; };
@@ -205,11 +213,11 @@
 	A20100 /* FeedViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedViewModel.swift; sourceTree = "<group>"; };
 	A20101 /* FeedCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedCardView.swift; sourceTree = "<group>"; };
 	A20102 /* FeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedView.swift; sourceTree = "<group>"; };
-	A20121 /* PornHubSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PornHubSessionManager.swift; sourceTree = "<group>"; };
-	A20122 /* PornHubLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PornHubLoginView.swift; sourceTree = "<group>"; };
-	A20123 /* XAIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XAIClient.swift; sourceTree = "<group>"; };
-	A20124 /* ProfileViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileViewModel.swift; sourceTree = "<group>"; };
-	A20125 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		A20121 /* PornHubSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PornHubSessionManager.swift; sourceTree = "<group>"; };
+		A20122 /* PornHubLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PornHubLoginView.swift; sourceTree = "<group>"; };
+		A20128 /* PornHubBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PornHubBrowserView.swift; sourceTree = "<group>"; };
+		A20126 /* EpornerSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpornerSessionManager.swift; sourceTree = "<group>"; };
+		A20127 /* EpornerLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EpornerLoginView.swift; sourceTree = "<group>"; };
 	A20103 /* FeedFavoriteItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedFavoriteItem.swift; sourceTree = "<group>"; };
 	A20104 /* FeedFavoritesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedFavoritesStore.swift; sourceTree = "<group>"; };
 	A20105 /* FavoritesDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesDisplay.swift; sourceTree = "<group>"; };
@@ -223,7 +231,6 @@
 	A20113 /* WebDAVRemoteFileClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebDAVRemoteFileClient.swift; sourceTree = "<group>"; };
 	A20114 /* SeedboxRemoteFileClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeedboxRemoteFileClient.swift; sourceTree = "<group>"; };
 	A20115 /* RemoteFilesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesViewModel.swift; sourceTree = "<group>"; };
-	A20116 /* RemoteFilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesView.swift; sourceTree = "<group>"; };
 	A20117 /* RemoteFileEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileEditorView.swift; sourceTree = "<group>"; };
 	A20118 /* RemoteFilesDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesDisplay.swift; sourceTree = "<group>"; };
 	A20074 /* String+Parsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Parsing.swift"; sourceTree = "<group>"; };
@@ -261,6 +268,9 @@
 	T20020 /* VideoProcessingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoProcessingTests.swift; sourceTree = "<group>"; };
 	T20021 /* ProfileNarrativeFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileNarrativeFormatterTests.swift; sourceTree = "<group>"; };
 	T20022 /* NavigationGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationGateTests.swift; sourceTree = "<group>"; };
+	T20023 /* PornHubBrowserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PornHubBrowserTests.swift; sourceTree = "<group>"; };
+	T20024 /* DownloadPathsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadPathsTests.swift; sourceTree = "<group>"; };
+	T20025 /* RcloneRemoteSetupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RcloneRemoteSetupTests.swift; sourceTree = "<group>"; };
 	T30001 /* VidDLTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VidDLTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -301,7 +311,6 @@
 			A50019 /* Feed */,
 			A50020 /* Favorites */,
 			A50021 /* RemoteFiles */,
-			A50022 /* Profile */,
 			A50014 /* Settings */,
 			A50015 /* Home */,
 			A50016 /* Extensions */,
@@ -309,6 +318,7 @@
 			A50018 /* Infrastructure */,
 			A20018 /* HomeView.swift */,
 			A20019 /* LibraryView.swift */,
+			A20130 /* LibraryPipelineStore.swift */,
 			A20020 /* DownloadQueueView.swift */,
 			A20002 /* VideoScraper.swift */,
 			A20003 /* ClipboardManager.swift */,
@@ -369,6 +379,9 @@
 			A20102 /* FeedView.swift */,
 			A20121 /* PornHubSessionManager.swift */,
 			A20122 /* PornHubLoginView.swift */,
+			A20128 /* PornHubBrowserView.swift */,
+			A20126 /* EpornerSessionManager.swift */,
+			A20127 /* EpornerLoginView.swift */,
 		);
 		path = Feed;
 		sourceTree = "<group>";
@@ -396,21 +409,10 @@
 			A20113 /* WebDAVRemoteFileClient.swift */,
 			A20114 /* SeedboxRemoteFileClient.swift */,
 			A20115 /* RemoteFilesViewModel.swift */,
-			A20116 /* RemoteFilesView.swift */,
 			A20117 /* RemoteFileEditorView.swift */,
 			A20118 /* RemoteFilesDisplay.swift */,
 		);
 		path = RemoteFiles;
-		sourceTree = "<group>";
-	};
-	A50022 /* Profile */ = {
-		isa = PBXGroup;
-		children = (
-			A20123 /* XAIClient.swift */,
-			A20124 /* ProfileViewModel.swift */,
-			A20125 /* ProfileView.swift */,
-		);
-		path = Profile;
 		sourceTree = "<group>";
 	};
 	A50014 /* Settings */ = {
@@ -419,6 +421,7 @@
 			A20071 /* SettingsView.swift */,
 			A20087 /* SettingsDependencyState.swift */,
 			A20088 /* SettingsDependencyStore.swift */,
+			A20129 /* RcloneRemoteSetup.swift */,
 		);
 		path = Settings;
 		sourceTree = "<group>";
@@ -431,6 +434,7 @@
 				A20092 /* HomeHeroHeader.swift */,
 				A20093 /* HomeURLInputCard.swift */,
 				A20119 /* HomeCompactQueue.swift */,
+				A20131 /* ExtractionModalView.swift */,
 				A20094 /* VideoResultPresentation.swift */,
 				A20095 /* BatchDownloadBar.swift */,
 			A20096 /* HomeStatusRail.swift */,
@@ -506,6 +510,9 @@
 			T20020 /* VideoProcessingTests.swift */,
 			T20021 /* ProfileNarrativeFormatterTests.swift */,
 			T20022 /* NavigationGateTests.swift */,
+			T20023 /* PornHubBrowserTests.swift */,
+			T20024 /* DownloadPathsTests.swift */,
+			T20025 /* RcloneRemoteSetupTests.swift */,
 		);
 		path = PMVDLTests;
 		sourceTree = "<group>";
@@ -548,6 +555,7 @@
 			A70001 /* Sources */,
 			A40001 /* Frameworks */,
 			A70002 /* Resources */,
+			A70003 /* Remove test artifacts from app bundle */,
 		);
 		buildRules = (
 		);
@@ -618,6 +626,28 @@
 	};
 /* End PBXProject section */
 
+/* Begin PBXShellScriptBuildPhase section */
+	A70003 /* Remove test artifacts from app bundle */ = {
+		isa = PBXShellScriptBuildPhase;
+		alwaysOutOfDate = 1;
+		buildActionMask = 2147483647;
+		files = (
+		);
+		inputFileListPaths = (
+		);
+		inputPaths = (
+		);
+		name = "Remove test artifacts from app bundle";
+		outputFileListPaths = (
+		);
+		outputPaths = (
+		);
+		runOnlyForDeploymentPostprocessing = 0;
+		shellPath = /bin/sh;
+		shellScript = "APP_CONTENTS=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}\"\nrm -rf \"${APP_CONTENTS}/PlugIns\"/*.xctest\nrm -rf \"${APP_CONTENTS}/Frameworks\"/XCTest*.framework\nrm -rf \"${APP_CONTENTS}/Frameworks\"/XCUIAutomation.framework\nrm -rf \"${APP_CONTENTS}/Frameworks\"/XCTAutomationSupport.framework\nrm -rf \"${APP_CONTENTS}/Frameworks\"/XCUnit.framework\nrm -rf \"${APP_CONTENTS}/Frameworks\"/Testing.framework\nrm -f \"${APP_CONTENTS}/Frameworks\"/libXCTest*.dylib\n";
+	};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXResourcesBuildPhase section */
 	A70002 /* Resources */ = {
 		isa = PBXResourcesBuildPhase;
@@ -648,6 +678,7 @@
 			A10017 /* DownloadQueue.swift in Sources */,
 			A10018 /* HomeView.swift in Sources */,
 			A10019 /* LibraryView.swift in Sources */,
+			A10130 /* LibraryPipelineStore.swift in Sources */,
 			A10089 /* LibraryThumbnailResolver.swift in Sources */,
 			A10020 /* DownloadQueueView.swift in Sources */,
 			A10021 /* DropHandler.swift in Sources */,
@@ -688,6 +719,7 @@
 			A10071 /* SettingsView.swift in Sources */,
 			A10087 /* SettingsDependencyState.swift in Sources */,
 			A10088 /* SettingsDependencyStore.swift in Sources */,
+			A10129 /* RcloneRemoteSetup.swift in Sources */,
 				A10072 /* DependencySetupPanel.swift in Sources */,
 				A10073 /* VideoResultRow.swift in Sources */,
 				A10090 /* HomeLayoutMetrics.swift in Sources */,
@@ -695,6 +727,7 @@
 				A10092 /* HomeHeroHeader.swift in Sources */,
 				A10093 /* HomeURLInputCard.swift in Sources */,
 				A10119 /* HomeCompactQueue.swift in Sources */,
+				A10131 /* ExtractionModalView.swift in Sources */,
 				A10094 /* VideoResultPresentation.swift in Sources */,
 				A10095 /* BatchDownloadBar.swift in Sources */,
 			A10096 /* HomeStatusRail.swift in Sources */,
@@ -706,9 +739,9 @@
 				A10102 /* FeedView.swift in Sources */,
 				A10121 /* PornHubSessionManager.swift in Sources */,
 				A10122 /* PornHubLoginView.swift in Sources */,
-				A10123 /* XAIClient.swift in Sources */,
-				A10124 /* ProfileViewModel.swift in Sources */,
-				A10125 /* ProfileView.swift in Sources */,
+				A10128 /* PornHubBrowserView.swift in Sources */,
+				A10126 /* EpornerSessionManager.swift in Sources */,
+				A10127 /* EpornerLoginView.swift in Sources */,
 				A10103 /* FeedFavoriteItem.swift in Sources */,
 			A10104 /* FeedFavoritesStore.swift in Sources */,
 			A10105 /* FavoritesDisplay.swift in Sources */,
@@ -722,7 +755,6 @@
 			A10113 /* WebDAVRemoteFileClient.swift in Sources */,
 			A10114 /* SeedboxRemoteFileClient.swift in Sources */,
 			A10115 /* RemoteFilesViewModel.swift in Sources */,
-			A10116 /* RemoteFilesView.swift in Sources */,
 			A10117 /* RemoteFileEditorView.swift in Sources */,
 			A10118 /* RemoteFilesDisplay.swift in Sources */,
 			A10074 /* String+Parsing.swift in Sources */,
@@ -766,6 +798,9 @@
 			T10020 /* VideoProcessingTests.swift in Sources */,
 			T10021 /* ProfileNarrativeFormatterTests.swift in Sources */,
 			T10022 /* NavigationGateTests.swift in Sources */,
+			T10023 /* PornHubBrowserTests.swift in Sources */,
+			T10024 /* DownloadPathsTests.swift in Sources */,
+			T10025 /* RcloneRemoteSetupTests.swift in Sources */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};
