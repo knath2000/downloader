@@ -41,6 +41,8 @@ extension EnvironmentValues {
 }
 
 enum AppShellSurfaceMetrics {
+    static let appModalBackdropInset: CGFloat = 6
+
     static func pageMaxWidth(for windowSize: CGSize) -> CGFloat {
         clamped(windowSize.width * 0.96, min: 1180, max: 1900)
     }
@@ -51,6 +53,22 @@ enum AppShellSurfaceMetrics {
 
     static func mainPanelHeight(for windowSize: CGSize) -> CGFloat {
         clamped(windowSize.height * 0.70, min: 560, max: 820)
+    }
+
+    static func browserSurfaceWidth(for windowSize: CGSize) -> CGFloat {
+        appModalSurfaceWidth(for: windowSize)
+    }
+
+    static func browserSurfaceHeight(for windowSize: CGSize) -> CGFloat {
+        appModalSurfaceHeight(for: windowSize)
+    }
+
+    static func appModalSurfaceWidth(for windowSize: CGSize) -> CGFloat {
+        max(windowSize.width - appModalBackdropInset * 2, 760)
+    }
+
+    static func appModalSurfaceHeight(for windowSize: CGSize) -> CGFloat {
+        max(windowSize.height - appModalBackdropInset * 2, 560)
     }
 
     static func workflowModalWidth(for windowSize: CGSize) -> CGFloat {
@@ -432,6 +450,33 @@ struct GradientProgressBar: View {
             .frame(width: max(width + 48, 0))
             .offset(x: stripeOffset)
             .allowsHitTesting(false)
+    }
+}
+
+// MARK: - AppModalOverlay
+
+struct AppModalOverlay<Content: View>: View {
+    @ObservedObject private var appState = AppStateManager.shared
+    let dismiss: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.001)
+                .ignoresSafeArea()
+                .onTapGesture { dismiss() }
+
+            content()
+                .frame(
+                    width: AppShellSurfaceMetrics.appModalSurfaceWidth(for: appState.windowSize),
+                    height: AppShellSurfaceMetrics.appModalSurfaceHeight(for: appState.windowSize)
+                )
+                .contentShape(Rectangle())
+                .onTapGesture {}
+        }
+        .padding(AppShellSurfaceMetrics.appModalBackdropInset)
+        .ignoresSafeArea()
+        .onExitCommand(perform: dismiss)
     }
 }
 

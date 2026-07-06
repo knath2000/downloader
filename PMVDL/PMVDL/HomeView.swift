@@ -211,28 +211,44 @@ struct HomeView: View {
     ]
 
     var body: some View {
-        ScrollView {
-            mainColumn
-            .frame(maxWidth: AppShellSurfaceMetrics.pageMaxWidth(for: appState.windowSize), alignment: .top)
-            .frame(maxWidth: .infinity, alignment: .top)
-            .padding(HomeLayoutMetrics.pagePadding)
-        }
-        .sheet(isPresented: $showResultsSheet) {
-            resultsSheet
-        }
-        .sheet(isPresented: $showActiveDownloadsSheet) {
-            HomeCompactQueue(
-                displayMode: .activeModal,
-                seedboxWebdavPassword: seedboxWebdavPassword,
-                onUpgradeRequired: onUpgradeRequired
-            )
-        }
-        .sheet(isPresented: $showCompletedDownloadsSheet) {
-            HomeCompactQueue(
-                displayMode: .completedModal,
-                seedboxWebdavPassword: seedboxWebdavPassword,
-                onUpgradeRequired: onUpgradeRequired
-            )
+        ZStack {
+            ScrollView {
+                mainColumn
+                .frame(maxWidth: AppShellSurfaceMetrics.pageMaxWidth(for: appState.windowSize), alignment: .top)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .padding(HomeLayoutMetrics.pagePadding)
+            }
+
+            if showResultsSheet {
+                AppModalOverlay(dismiss: { showResultsSheet = false }) {
+                    resultsSheet
+                }
+                .zIndex(20)
+            }
+
+            if showActiveDownloadsSheet {
+                AppModalOverlay(dismiss: { showActiveDownloadsSheet = false }) {
+                    HomeCompactQueue(
+                        displayMode: .activeModal,
+                        seedboxWebdavPassword: seedboxWebdavPassword,
+                        onUpgradeRequired: onUpgradeRequired,
+                        onClose: { showActiveDownloadsSheet = false }
+                    )
+                }
+                .zIndex(21)
+            }
+
+            if showCompletedDownloadsSheet {
+                AppModalOverlay(dismiss: { showCompletedDownloadsSheet = false }) {
+                    HomeCompactQueue(
+                        displayMode: .completedModal,
+                        seedboxWebdavPassword: seedboxWebdavPassword,
+                        onUpgradeRequired: onUpgradeRequired,
+                        onClose: { showCompletedDownloadsSheet = false }
+                    )
+                }
+                .zIndex(22)
+            }
         }
         .onAppear {
             hadActiveDownloads = hasActiveDownloads

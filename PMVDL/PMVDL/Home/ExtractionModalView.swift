@@ -58,12 +58,8 @@ struct ExtractionModalView: View {
         }
         .padding(24)
         .frame(
-            minWidth: 760,
-            idealWidth: AppShellSurfaceMetrics.workflowModalWidth(for: appState.windowSize),
-            maxWidth: AppShellSurfaceMetrics.workflowModalWidth(for: appState.windowSize),
-            minHeight: 460,
-            idealHeight: AppShellSurfaceMetrics.workflowModalHeight(for: appState.windowSize),
-            maxHeight: AppShellSurfaceMetrics.workflowModalHeight(for: appState.windowSize)
+            width: AppShellSurfaceMetrics.appModalSurfaceWidth(for: appState.windowSize),
+            height: AppShellSurfaceMetrics.appModalSurfaceHeight(for: appState.windowSize)
         )
         .background(
             LinearGradient(

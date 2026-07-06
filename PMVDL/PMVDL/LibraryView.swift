@@ -82,165 +82,198 @@ struct LibraryView: View {
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            ScrollView {
-                VStack(spacing: 0) {
-                    LibraryCommandPanel(
-                        searchText: $searchText,
-                        timelineFilter: $timelineFilter,
-                        viewMode: $viewMode,
-                        visibleCount: filteredEntries.count,
-                        totalCount: timelineEntries.count,
-                        counts: LibraryTimelineFilterCounts(entries: timelineEntries, favoriteURLs: favoriteURLs),
-                        isRefreshing: thumbnailStore.isRefreshing,
-                        canRefreshThumbnails: !visibleVideoItems.isEmpty,
-                        searchFocused: $searchFocused,
-                        refreshAction: regenerateAllThumbnails,
-                        favoritesAllowed: ProFeatureGate.canUseFavorites,
-                        onFavoritesRequested: {
-                            if ProFeatureGate.canUseFavorites {
-                                timelineFilter = .favorites
-                            } else {
-                                onUpgradeRequired()
-                            }
-                        }
-                    ) {
-                        content
-                    }
-                    .frame(maxWidth: AppShellSurfaceMetrics.mainPanelWidth(for: appState.windowSize))
+        libraryShell
+            .safeAreaInset(edge: .bottom) {
+                selectionBar
+            }
+            .confirmationDialog(
+                "Delete selected library items?",
+                isPresented: $showingBulkDeleteConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete \(selection.count) Items", role: .destructive) {
+                    deleteSelectedItems()
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 24)
-                .padding(.top, max(28, proxy.size.height * 0.07))
-                .padding(.bottom, selection.isEmpty ? 120 : 152)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This removes the selected items from the library. This cannot be undone.")
             }
+            .confirmationDialog(
+                "Delete from library?",
+                isPresented: Binding(
+                    get: { pendingDeleteItem != nil },
+                    set: { if !$0 { pendingDeleteItem = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    if let item = pendingDeleteItem {
+                        withAnimation {
+                            library.remove(item)
+                            favorites.remove(url: item.url)
+                            selection.remove(item.id)
+                        }
+                    }
+                    pendingDeleteItem = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    pendingDeleteItem = nil
+                }
+            } message: {
+                Text(pendingDeleteItem.map { "Remove \"\(LibraryDisplay.title(for: $0))\" from the library?" } ?? "")
+            }
+            .confirmationDialog(
+                "Remove from Favorites?",
+                isPresented: Binding(
+                    get: { pendingFavoriteRemoval != nil },
+                    set: { if !$0 { pendingFavoriteRemoval = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Remove", role: .destructive) {
+                    if let item = pendingFavoriteRemoval {
+                        favorites.remove(id: item.id)
+                    }
+                    pendingFavoriteRemoval = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    pendingFavoriteRemoval = nil
+                }
+            } message: {
+                Text(pendingFavoriteRemoval.map { "Remove \"\($0.title)\" from Favorites?" } ?? "")
+            }
+            .onExitCommand {
+                handleExitCommand()
+            }
+            .onDeleteCommand {
+                handleDeleteCommand()
+            }
+            .onChange(of: filteredEntryIDs) { _, _ in
+                syncSelectedEntry()
+            }
+            .onChange(of: appState.pendingLibraryItemID) { _, newValue in
+                focusLibraryItem(id: newValue)
+            }
+            .onAppear {
+                syncSelectedEntry()
+                focusLibraryItem(id: appState.pendingLibraryItemID)
+            }
+            .background(searchShortcut)
+    }
+
+    private var libraryShell: some View {
+        ZStack {
+            libraryScrollPanel
+            selectedEntryModal
         }
-        .safeAreaInset(edge: .bottom) {
-            if !selection.isEmpty {
-                LibrarySelectionBar(
-                    count: selection.count,
-                    deleteAction: { showingBulkDeleteConfirmation = true },
-                    uploadMegaAction: { uploadSelected(to: .mega) },
-                    uploadDriveAction: { uploadSelected(to: .gdrive) },
-                    clearAction: { selection.removeAll() }
+    }
+
+    private var libraryScrollPanel: some View {
+        ScrollView {
+            commandPanel
+                .frame(
+                    width: AppShellSurfaceMetrics.appModalSurfaceWidth(for: appState.windowSize),
+                    alignment: .topLeading
                 )
-                .padding(.horizontal, 18)
-                .padding(.bottom, 10)
-                .frame(maxWidth: AppShellSurfaceMetrics.mainPanelWidth(for: appState.windowSize))
-                .frame(maxWidth: .infinity)
-            }
+                .frame(
+                    minHeight: AppShellSurfaceMetrics.appModalSurfaceHeight(for: appState.windowSize),
+                    alignment: .topLeading
+                )
+                .padding(AppShellSurfaceMetrics.appModalBackdropInset)
+                .padding(.bottom, selection.isEmpty ? 92 : 132)
         }
-        .sheet(
-            isPresented: Binding(
-                get: { viewMode == .list && selectedEntry != nil },
-                set: { if !$0 { selectedEntryID = nil } }
-            )
+    }
+
+    private var commandPanel: some View {
+        LibraryCommandPanel(
+            searchText: $searchText,
+            timelineFilter: $timelineFilter,
+            viewMode: $viewMode,
+            visibleCount: filteredEntries.count,
+            totalCount: timelineEntries.count,
+            counts: LibraryTimelineFilterCounts(entries: timelineEntries, favoriteURLs: favoriteURLs),
+            isRefreshing: thumbnailStore.isRefreshing,
+            canRefreshThumbnails: !visibleVideoItems.isEmpty,
+            searchFocused: $searchFocused,
+            refreshAction: regenerateAllThumbnails,
+            favoritesAllowed: ProFeatureGate.canUseFavorites,
+            onFavoritesRequested: showFavoritesOrUpgrade
         ) {
-            if let selectedEntry {
+            content
+        }
+    }
+
+    @ViewBuilder
+    private var selectedEntryModal: some View {
+        if viewMode == .list, let selectedEntry {
+            AppModalOverlay(dismiss: { selectedEntryID = nil }) {
                 LibraryDetailModalShell {
                     detailPanel(for: selectedEntry)
                 }
             }
+            .zIndex(20)
         }
-        .confirmationDialog(
-            "Delete selected library items?",
-            isPresented: $showingBulkDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete \(selection.count) Items", role: .destructive) {
-                deleteSelectedItems()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes the selected items from the library. This cannot be undone.")
+    }
+
+    @ViewBuilder
+    private var selectionBar: some View {
+        if !selection.isEmpty {
+            LibrarySelectionBar(
+                count: selection.count,
+                deleteAction: { showingBulkDeleteConfirmation = true },
+                uploadMegaAction: { uploadSelected(to: .mega) },
+                uploadDriveAction: { uploadSelected(to: .gdrive) },
+                clearAction: { selection.removeAll() }
+            )
+            .padding(.horizontal, 18)
+            .padding(.bottom, 10)
+            .frame(maxWidth: AppShellSurfaceMetrics.appModalSurfaceWidth(for: appState.windowSize))
+            .frame(maxWidth: .infinity)
         }
-        .confirmationDialog(
-            "Delete from library?",
-            isPresented: Binding(
-                get: { pendingDeleteItem != nil },
-                set: { if !$0 { pendingDeleteItem = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                if let item = pendingDeleteItem {
-                    withAnimation {
-                        library.remove(item)
-                        favorites.remove(url: item.url)
-                        selection.remove(item.id)
-                    }
-                }
-                pendingDeleteItem = nil
-            }
-            Button("Cancel", role: .cancel) {
-                pendingDeleteItem = nil
-            }
-        } message: {
-            Text(pendingDeleteItem.map { "Remove \"\(LibraryDisplay.title(for: $0))\" from the library?" } ?? "")
+    }
+
+    private var searchShortcut: some View {
+        Button("") { searchFocused = true }
+            .keyboardShortcut("f", modifiers: .command)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+    }
+
+    private func showFavoritesOrUpgrade() {
+        if ProFeatureGate.canUseFavorites {
+            timelineFilter = .favorites
+        } else {
+            onUpgradeRequired()
         }
-        .confirmationDialog(
-            "Remove from Favorites?",
-            isPresented: Binding(
-                get: { pendingFavoriteRemoval != nil },
-                set: { if !$0 { pendingFavoriteRemoval = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Remove", role: .destructive) {
-                if let item = pendingFavoriteRemoval {
-                    favorites.remove(id: item.id)
-                }
-                pendingFavoriteRemoval = nil
+    }
+
+    private func handleExitCommand() {
+        if searchFocused {
+            if searchText.isEmpty {
+                searchFocused = false
+            } else {
+                searchText = ""
             }
-            Button("Cancel", role: .cancel) {
-                pendingFavoriteRemoval = nil
-            }
-        } message: {
-            Text(pendingFavoriteRemoval.map { "Remove \"\($0.title)\" from Favorites?" } ?? "")
+        } else if !selection.isEmpty {
+            selection.removeAll()
+        } else if selectedEntryID != nil {
+            selectedEntryID = nil
         }
-        .onExitCommand {
-            if searchFocused {
-                if searchText.isEmpty {
-                    searchFocused = false
-                } else {
-                    searchText = ""
-                }
-            } else if !selection.isEmpty {
-                selection.removeAll()
-            } else if selectedEntryID != nil {
-                selectedEntryID = nil
+    }
+
+    private func handleDeleteCommand() {
+        if !selection.isEmpty {
+            showingBulkDeleteConfirmation = true
+        } else if let selectedEntry {
+            switch selectedEntry {
+            case .video(let item):
+                pendingDeleteItem = item
+            case .favorite(let item):
+                pendingFavoriteRemoval = item
+            default:
+                break
             }
         }
-        .onDeleteCommand {
-            if !selection.isEmpty {
-                showingBulkDeleteConfirmation = true
-            } else if let selectedEntry {
-                switch selectedEntry {
-                case .video(let item):
-                    pendingDeleteItem = item
-                case .favorite(let item):
-                    pendingFavoriteRemoval = item
-                default:
-                    break
-                }
-            }
-        }
-        .onChange(of: filteredEntryIDs) { _, _ in
-            syncSelectedEntry()
-        }
-        .onChange(of: appState.pendingLibraryItemID) { _, newValue in
-            focusLibraryItem(id: newValue)
-        }
-        .onAppear {
-            syncSelectedEntry()
-            focusLibraryItem(id: appState.pendingLibraryItemID)
-        }
-        .background(
-            Button("") { searchFocused = true }
-                .keyboardShortcut("f", modifiers: .command)
-                .opacity(0)
-                .frame(width: 0, height: 0)
-        )
     }
 
     @ViewBuilder
@@ -617,7 +650,7 @@ private struct LibraryCommandPanel<Content: View>: View {
             content()
         }
         .padding(28)
-        .frame(minHeight: AppShellSurfaceMetrics.mainPanelHeight(for: appState.windowSize), alignment: .topLeading)
+        .frame(minHeight: AppShellSurfaceMetrics.appModalSurfaceHeight(for: appState.windowSize), alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 18)
                 .fill(
@@ -1420,12 +1453,8 @@ private struct LibraryDetailModalShell<Content: View>: View {
                 .padding(22)
         }
         .frame(
-            minWidth: 500,
-            idealWidth: AppShellSurfaceMetrics.detailModalWidth(for: appState.windowSize),
-            maxWidth: AppShellSurfaceMetrics.detailModalWidth(for: appState.windowSize),
-            minHeight: 560,
-            idealHeight: AppShellSurfaceMetrics.detailModalHeight(for: appState.windowSize),
-            maxHeight: AppShellSurfaceMetrics.detailModalHeight(for: appState.windowSize)
+            width: AppShellSurfaceMetrics.appModalSurfaceWidth(for: appState.windowSize),
+            height: AppShellSurfaceMetrics.appModalSurfaceHeight(for: appState.windowSize)
         )
         .background(
             LinearGradient(

@@ -76,7 +76,6 @@
 	A10098 /* FeedItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20098 /* FeedItem.swift */; };
 	A10099 /* FeedScraper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20099 /* FeedScraper.swift */; };
 	A10100 /* FeedViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20100 /* FeedViewModel.swift */; };
-	A10101 /* FeedCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20101 /* FeedCardView.swift */; };
 	A10102 /* FeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20102 /* FeedView.swift */; };
 		A10121 /* PornHubSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20121 /* PornHubSessionManager.swift */; };
 		A10122 /* PornHubLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20122 /* PornHubLoginView.swift */; };
@@ -211,7 +210,6 @@
 	A20098 /* FeedItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedItem.swift; sourceTree = "<group>"; };
 	A20099 /* FeedScraper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedScraper.swift; sourceTree = "<group>"; };
 	A20100 /* FeedViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedViewModel.swift; sourceTree = "<group>"; };
-	A20101 /* FeedCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedCardView.swift; sourceTree = "<group>"; };
 	A20102 /* FeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedView.swift; sourceTree = "<group>"; };
 		A20121 /* PornHubSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PornHubSessionManager.swift; sourceTree = "<group>"; };
 		A20122 /* PornHubLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PornHubLoginView.swift; sourceTree = "<group>"; };
@@ -375,7 +373,6 @@
 			A20098 /* FeedItem.swift */,
 			A20099 /* FeedScraper.swift */,
 			A20100 /* FeedViewModel.swift */,
-			A20101 /* FeedCardView.swift */,
 			A20102 /* FeedView.swift */,
 			A20121 /* PornHubSessionManager.swift */,
 			A20122 /* PornHubLoginView.swift */,
@@ -735,7 +732,6 @@
 			A10098 /* FeedItem.swift in Sources */,
 			A10099 /* FeedScraper.swift in Sources */,
 				A10100 /* FeedViewModel.swift in Sources */,
-				A10101 /* FeedCardView.swift in Sources */,
 				A10102 /* FeedView.swift in Sources */,
 				A10121 /* PornHubSessionManager.swift in Sources */,
 				A10122 /* PornHubLoginView.swift in Sources */,
@@ -847,12 +843,9 @@
 		buildSettings = {
 			ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 			ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-			CODE_SIGN_ENTITLEMENTS = PMVDL/PMVDL.entitlements;
-			CODE_SIGN_IDENTITY = "Developer ID Application";
 			CODE_SIGN_STYLE = Manual;
 			DEAD_CODE_STRIPPING = YES;
 			DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-			DEVELOPMENT_TEAM = FILL_IN_TEAM_ID;
 			ENABLE_HARDENED_RUNTIME = YES;
 			INFOPLIST_FILE = PMVDL/Info.plist;
 			PRODUCT_NAME = VidDL;

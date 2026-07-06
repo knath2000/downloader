@@ -48,17 +48,14 @@ This session continued native VidDL Home queue presentation work, fixed an Xcode
 
 ## Local DMG Build
 
-- Signed/notarized packaging scripts remain for release only:
-  - `scripts/build-dmg.sh`
-  - `scripts/release.sh`
-- Local packaging for this session used a separate manual path:
+- Signed/notarized packaging has been removed from the active project because this app is for personal local use.
+- `scripts/build-dmg.sh` is the single supported packaging command and now produces an unsigned, unnotarized local DMG:
   1. `DEVELOPER_DIR=/Volumes/MyPassport/Applications/Xcode.app/Contents/Developer`
   2. unsigned `xcodebuild` Debug build with `CODE_SIGNING_ALLOWED=NO`
   3. `hdiutil create` using a staging folder containing `VidDL.app` and an `Applications` symlink
 - The external Xcode app provided a working `xcodebuild`; the shell did not have `xcrun` under that Xcode path.
-- Release configuration builds in this shell path stalled during compilation/codegen, so the DMG was produced from the successful unsigned Debug build instead.
 - Output artifact:
-  - `VidDL-2.0.0-build2-unsigned.dmg`
+  - `VidDL-<version>-build<build>-unsigned.dmg`
 
 ## Validation
 

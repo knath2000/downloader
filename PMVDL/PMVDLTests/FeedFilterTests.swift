@@ -210,16 +210,6 @@ final class FeedFilterTests: XCTestCase {
         XCTAssertEqual(filters.date, .all)
     }
 
-    func testFeedGridLayoutUsesWiderCardsOnLargeScreens() {
-        XCTAssertEqual(FeedGridLayout(availableWidth: 900).columnMinWidth, 260)
-        XCTAssertEqual(FeedGridLayout(availableWidth: 1500).columnMinWidth, 305)
-        XCTAssertEqual(FeedGridLayout(availableWidth: 1900).columnMinWidth, 320)
-        XCTAssertEqual(FeedGridLayout(availableWidth: 900).spacing, 12)
-        XCTAssertEqual(FeedGridLayout(availableWidth: 1200).spacing, 18)
-        XCTAssertEqual(FeedGridLayout(availableWidth: 900).prefetchItemThreshold, 12)
-        XCTAssertEqual(FeedGridLayout(availableWidth: 1500).prefetchItemThreshold, 16)
-    }
-
     func testFeedSelectionStorePreservesItemsAcrossSites() {
         let rentry = feedItem(id: "rentry", title: "Rentry", siteName: RentryFeedScraper.supportedHost)
         let eporner = feedItem(id: "eporner", title: "Eporner", siteName: EpornerFeedScraper.supportedHost)

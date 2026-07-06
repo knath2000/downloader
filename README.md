@@ -6,11 +6,19 @@ Minimum macOS version: macOS 14.0 Sonoma.
 
 ## Installation
 
-1. Download the VidDL DMG from the GitHub Releases page: `https://github.com/knath2000/downloader/releases`.
+Build a local unsigned DMG from this checkout:
+
+```sh
+bash scripts/build-dmg.sh
+```
+
+Then:
+
+1. Open the generated `VidDL-<version>-build<build>-unsigned.dmg`.
 2. Open the DMG and drag VidDL into `Applications`.
 3. Open VidDL from `Applications`.
 
-On first launch, macOS may say VidDL is from an unidentified developer. Open System Settings, go to Privacy & Security, then allow VidDL from the security prompt. After that, open VidDL again.
+On first launch, macOS may say VidDL is from an unidentified developer because the local DMG is unsigned and unnotarized. Open System Settings, go to Privacy & Security, then allow VidDL from the security prompt. After that, open VidDL again.
 
 ## Required Dependencies
 
@@ -36,32 +44,7 @@ brew install ffmpeg
 
 ## Optional Cloud Upload Setup
 
-Cloud uploads are optional. Configure them in VidDL Settings after installing the required tools for the service you want to use.
-
-### MEGA Uploads
-
-MEGA uploads use MEGAcmd.
-
-Install MEGAcmd:
-
-```sh
-brew install --cask megacmd-app
-```
-
-Then sign in with your MEGA account:
-
-1. Open the MEGAcmd app and sign in, or
-2. Run this from Terminal:
-
-```sh
-mega-login your@email.com
-```
-
-In VidDL Settings, configure the MEGA upload path. The default path is:
-
-```text
-/Cloud/VidDL/
-```
+Cloud uploads are optional. Current Settings exposes a minimal Cloud Destination tile for Google Drive setup. Click the tile to open the detailed modal after installing `rclone`.
 
 ### Google Drive Uploads
 
@@ -93,40 +76,6 @@ The default Google Drive upload path is:
 VidDL/
 ```
 
-### Seedbox Transfers
-
-Seedbox transfers can use either `rclone` or direct WebDAV.
-
-Option A: rclone
-
-```sh
-brew install rclone
-rclone config
-```
-
-Create a seedbox remote named:
-
-```text
-seedbox
-```
-
-You can use a different remote name, but it must match the seedbox remote name in VidDL Settings.
-
-Option B: WebDAV
-
-In VidDL Settings, choose WebDAV mode and enter:
-
-- WebDAV URL
-- Username
-- Password
-- Remote path
-
-The default seedbox remote path is:
-
-```text
-/
-```
-
 ## First Launch
 
 The Home tab shows a Setup panel when VidDL finds missing tools or incomplete cloud setup.
@@ -136,14 +85,13 @@ The setup panel includes copyable install or setup commands, such as:
 ```sh
 brew install yt-dlp
 brew install ffmpeg
-brew install --cask megacmd-app
 brew install rclone
 rclone config
 ```
 
 After installing or configuring tools, click Refresh Checks to verify them.
 
-Cloud services are configured in the Settings tab under their respective sections.
+Cloud setup, notifications, download options, helper checks, Pro licensing, and app info are configured from minimal Settings tiles. Each tile opens a modal with the detailed controls.
 
 ## Licensing
 
@@ -163,7 +111,6 @@ If you use cloud uploads, also keep optional upload tools current:
 
 ```sh
 brew upgrade rclone
-brew upgrade --cask megacmd-app
 ```
 
 ## Automation URL Scheme

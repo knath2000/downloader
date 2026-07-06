@@ -121,11 +121,9 @@ struct ContentView: View {
                 .padding(.bottom, floatingTabContentInset)
         case .library:
             LibraryView(onUpgradeRequired: presentUpgradeOverlay)
-                .padding()
                 .padding(.bottom, floatingTabContentInset)
         case .feed:
             FeedView()
-                .padding()
                 .padding(.bottom, floatingTabContentInset)
         case .settings:
             SettingsView(gdriveRemoteName: $gdriveRemoteName,

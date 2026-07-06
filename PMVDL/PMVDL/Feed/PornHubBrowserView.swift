@@ -2,12 +2,24 @@ import AppKit
 import SwiftUI
 import WebKit
 
-enum FeedBrowserSite {
+enum FeedBrowserSite: CaseIterable {
     case allPornStream
     case eporner
     case hqPorner
     case pornHub
     case rentry
+
+    static let allCases: [FeedBrowserSite] = [
+        .allPornStream,
+        .rentry,
+        .hqPorner,
+        .pornHub,
+        .eporner
+    ]
+
+    static var allHosts: [String] {
+        allCases.map(\.host)
+    }
 
     init?(host: String) {
         switch host {
@@ -681,11 +693,16 @@ struct PornHubBrowserChrome: View {
     let extractCurrentPage: () -> Void
     let toggleFavoriteCurrentPage: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.performanceProfile) private var performanceProfile
+
+    private var allowsMotion: Bool {
+        !reduceMotion && performanceProfile != .reducedEffects
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                sitePicker
-
                 iconButton("chevron.left", enabled: browser.canGoBack, help: "Back") {
                     browser.goBack()
                 }
@@ -715,6 +732,7 @@ struct PornHubBrowserChrome: View {
                 .tint(accent)
                 .controlSize(.small)
                 .disabled(browser.currentFeedItem == nil)
+                .pressEffect(scale: allowsMotion ? 0.98 : 1)
 
                 Button {
                     toggleFavoriteCurrentPage()
@@ -725,6 +743,7 @@ struct PornHubBrowserChrome: View {
                 .tint(accent)
                 .controlSize(.small)
                 .disabled(browser.currentFeedItem == nil)
+                .pressEffect(scale: allowsMotion ? 0.98 : 1)
 
                 if let currentPageDownloadedMatch {
                     Button {
@@ -737,6 +756,7 @@ struct PornHubBrowserChrome: View {
                     .tint(Theme.success)
                     .controlSize(.small)
                     .help(currentPageDownloadedMatch.tooltip)
+                    .pressEffect(scale: allowsMotion ? 0.98 : 1)
                 }
 
                 Spacer(minLength: 0)
@@ -772,21 +792,52 @@ struct PornHubBrowserChrome: View {
     }
 
     private var pageTitlePill: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "safari")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(accent)
-            Text(browser.pageTitle.isEmpty ? browser.displayName : browser.pageTitle)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.textPrimary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+        Menu {
+            ForEach(FeedBrowserSite.allHosts, id: \.self) { host in
+                Button {
+                    selectedSite = host
+                } label: {
+                    if host == selectedSite {
+                        Label(FeedSiteTheme.theme(for: host).displayName, systemImage: "checkmark")
+                    } else {
+                        Text(FeedSiteTheme.theme(for: host).displayName)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: FeedSiteTheme.theme(for: selectedSite).icon)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(accent)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(FeedSiteTheme.theme(for: selectedSite).displayName)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                    if !browser.pageTitle.isEmpty,
+                       browser.pageTitle != browser.displayName,
+                       browser.pageTitle != FeedSiteTheme.theme(for: selectedSite).displayName {
+                        Text(browser.pageTitle)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            .padding(.horizontal, 9)
+            .frame(minHeight: 28, maxHeight: 28)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(Theme.surfaceGlass.opacity(0.46), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.borderSubtle.opacity(0.9), lineWidth: 0.6))
         }
-        .padding(.horizontal, 9)
-        .frame(minHeight: 28, maxHeight: 28)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surfaceGlass.opacity(0.46), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.borderSubtle.opacity(0.9), lineWidth: 0.6))
+        .menuStyle(.borderlessButton)
+        .buttonStyle(.plain)
+        .help("Switch feed site")
     }
 
     private func iconButton(_ systemImage: String, enabled: Bool, help: String, action: @escaping () -> Void) -> some View {
@@ -800,61 +851,9 @@ struct PornHubBrowserChrome: View {
         .background(Theme.surfaceGlass.opacity(enabled ? 0.38 : 0.18), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(enabled ? Theme.borderSubtle : Theme.borderSubtle.opacity(0.5), lineWidth: 0.5))
         .disabled(!enabled)
+        .pressEffect(scale: enabled && allowsMotion ? 0.94 : 1)
         .help(help)
     }
-
-    private var sitePicker: some View {
-        Menu {
-            ForEach(Self.browserSiteHosts, id: \.self) { host in
-                Button {
-                    selectedSite = host
-                } label: {
-                    if host == selectedSite {
-                        Label(FeedSiteTheme.theme(for: host).displayName, systemImage: "checkmark")
-                    } else {
-                        Text(FeedSiteTheme.theme(for: host).displayName)
-                    }
-                }
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "globe")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(accent)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Feed Site")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(Theme.textSecondary)
-                    Text(FeedSiteTheme.theme(for: selectedSite).displayName)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Theme.textPrimary)
-                        .lineLimit(1)
-                }
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Theme.textSecondary)
-            }
-            .padding(.horizontal, 10)
-            .frame(width: 188, alignment: .leading)
-            .frame(minHeight: 34, maxHeight: 34)
-            .background(Theme.surfaceGlass.opacity(0.82), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(accent.opacity(0.58), lineWidth: 1)
-            )
-        }
-        .menuStyle(.borderlessButton)
-        .buttonStyle(.plain)
-        .help("Switch feed site")
-    }
-
-    private static let browserSiteHosts = [
-        AllPornStreamFeedScraper.supportedHost,
-        RentryFeedScraper.supportedHost,
-        HQPornerFeedScraper.supportedHost,
-        PornHubFeedScraper.supportedHost,
-        EpornerFeedScraper.supportedHost
-    ]
 
 }
 
@@ -1185,6 +1184,45 @@ struct PornHubBrowserWebView: NSViewRepresentable {
     }
 }
 
+struct PornHubBrowserLoadingOverlay: View {
+    let progress: Double
+    let accent: Color
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.performanceProfile) private var performanceProfile
+
+    private var allowsMotion: Bool {
+        !reduceMotion && performanceProfile.allowsLoadingAnimation
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.black.opacity(0.28))
+                    Capsule()
+                        .fill(accent.opacity(0.72))
+                        .frame(width: max(36, proxy.size.width * max(0.08, min(progress, 1))))
+                        .shadow(color: accent.opacity(allowsMotion ? 0.22 : 0), radius: 5)
+                }
+            }
+            .frame(width: 180, height: 4)
+
+            Text("Loading")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.black.opacity(0.54), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(accent.opacity(0.22), lineWidth: 0.7))
+        .opacity(allowsMotion ? 0.92 : 0.78)
+        .transition(allowsMotion ? .opacity.combined(with: .scale(scale: 0.985)) : .opacity)
+        .allowsHitTesting(false)
+    }
+}
+
 private final class PornHubContextMenuWebView: WKWebView {
     func contextMenuAnchorPoint(clientX: Double, clientY: Double) -> NSPoint {
         let x = min(max(CGFloat(clientX), bounds.minX), bounds.maxX)
@@ -1211,6 +1249,13 @@ private struct PornHubContextMenuView: View {
     let openLibrary: () -> Void
     let copyLink: () -> Void
     let openExternally: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.performanceProfile) private var performanceProfile
+
+    private var allowsMotion: Bool {
+        !reduceMotion && performanceProfile != .reducedEffects
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1289,6 +1334,7 @@ private struct PornHubContextMenuView: View {
             )
         }
         .buttonStyle(.plain)
+        .pressEffect(scale: allowsMotion ? 0.97 : 1)
     }
 }
 

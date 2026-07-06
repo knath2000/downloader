@@ -19,6 +19,7 @@ struct SettingsView: View {
     @State private var activationResult = ""
     @State private var isActivating = false
     @State private var showsGDriveManualFields = false
+    @State private var activePanel: SettingsPanel?
 
     private var trimmedActivationEmail: String {
         activateEmail.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -53,34 +54,115 @@ struct SettingsView: View {
     }
 
     var body: some View {
+        ZStack {
+            settingsLandingPage
+
+            if let activePanel {
+                AppModalOverlay(dismiss: { self.activePanel = nil }) {
+                    settingsModal(for: activePanel)
+                }
+                .transition(.opacity)
+                .zIndex(5)
+            }
+        }
+        .animation(.easeInOut(duration: 0.18), value: activePanel)
+        .task(id: dependencyInput) {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            if Task.isCancelled { return }
+            await dependencyStore.refresh(input: dependencyInput)
+        }
+    }
+
+    private var settingsLandingPage: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 24) {
-                settingsSection(.cloud) {
-                    cloudSection
-                }
-
-                settingsSection(.preferences) {
-                    preferencesSection
-                }
-
-                settingsSection(.pro) {
-                    proSection
-                }
-
-                settingsSection(.info) {
-                    infoSection
+            LazyVGrid(columns: SettingsLayoutMetrics.tileColumns, alignment: .leading, spacing: 12) {
+                ForEach(SettingsPanel.allCases) { panel in
+                    Button {
+                        activePanel = panel
+                    } label: {
+                        SettingsTile(
+                            panel: panel,
+                            detail: tileDetail(for: panel),
+                            status: tileStatus(for: panel),
+                            isEmphasized: panel == .cloud && dependencyModel.gdrive.tone != .success
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .pressEffect(scale: 0.985)
                 }
             }
             .frame(maxWidth: SettingsLayoutMetrics.contentMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(.top, 18)
             .padding(.bottom, 28)
         }
-        .task(id: dependencyInput) {
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            if Task.isCancelled { return }
-            await dependencyStore.refresh(input: dependencyInput)
+    }
+
+    private func tileDetail(for panel: SettingsPanel) -> String {
+        switch panel {
+        case .cloud:
+            return dependencyModel.gdrive.detail
+        case .notifications:
+            let enabled = [
+                NotificationManager.shared.isEnabled(.uploadComplete),
+                NotificationManager.shared.isEnabled(.uploadFailed),
+                NotificationManager.shared.isEnabled(.scrapeComplete)
+            ].filter { $0 }.count
+            return "\(enabled) of 3 alerts enabled"
+        case .downloads:
+            return DownloadPaths.hasCustomDownloadDir ? "Custom folder selected" : "Default download folder"
+        case .pro:
+            return ProFeatureGate.isPro ? "Activated for \(license.activationEmail.isEmpty ? "this Mac" : license.activationEmail)" : "\(license.freeDownloadsRemaining) free downloads remaining"
+        case .about:
+            return "VidDL \(currentVersion)"
+        }
+    }
+
+    private func tileStatus(for panel: SettingsPanel) -> String? {
+        switch panel {
+        case .cloud:
+            return dependencyModel.gdrive.status
+        case .notifications:
+            return nil
+        case .downloads:
+            let readyCount = [dependencyModel.ytDlp.isReady, dependencyModel.ffmpeg.isReady].filter { $0 }.count
+            return "\(readyCount)/2 tools"
+        case .pro:
+            return ProFeatureGate.isPro ? "Active" : "Free"
+        case .about:
+            return nil
+        }
+    }
+
+    private func panelTint(for panel: SettingsPanel) -> Color {
+        switch panel {
+        case .cloud:
+            return color(for: dependencyModel.gdrive.tone)
+        default:
+            return panel.color
+        }
+    }
+
+    private func settingsModal(for panel: SettingsPanel) -> some View {
+        SettingsModalSurface(panel: panel, tint: panelTint(for: panel), dismiss: { activePanel = nil }) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    switch panel {
+                    case .cloud:
+                        cloudSection
+                    case .notifications:
+                        notificationsCard
+                    case .downloads:
+                        downloadBehaviorCard
+                    case .pro:
+                        proSection
+                    case .about:
+                        infoSection
+                    }
+                }
+                .padding(18)
+            }
         }
     }
 
@@ -103,18 +185,6 @@ struct SettingsView: View {
               let url = panel.url else { return }
         customDownloadDirectory = url.path
         DownloadPaths.setCustomDownloadDir(url)
-    }
-
-    @ViewBuilder
-    private func settingsSection<Content: View>(
-        _ section: SettingsSection,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SettingsSectionHeader(section: section)
-            content()
-        }
-        .id(section.id)
     }
 
     private var cloudSection: some View {
@@ -270,13 +340,6 @@ struct SettingsView: View {
 
     private var downloadLocationDisplay: String {
         DownloadPaths.downloadDir.path
-    }
-
-    private var preferencesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            notificationsCard
-            downloadBehaviorCard
-        }
     }
 
     private var notificationsCard: some View {
@@ -672,88 +735,196 @@ private enum SettingsLayoutMetrics {
     static let cardCornerRadius: CGFloat = 14
     static let controlCornerRadius: CGFloat = 9
     static let iconBoxSize: CGFloat = 34
+    static let tileColumns = [
+        GridItem(.adaptive(minimum: 240, maximum: 352), spacing: 12, alignment: .top)
+    ]
 }
 
-private enum SettingsSection: String, CaseIterable, Identifiable {
+private enum SettingsPanel: String, CaseIterable, Identifiable {
     case cloud
-    case preferences
+    case notifications
+    case downloads
     case pro
-    case info
+    case about
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .cloud: return "Cloud"
-        case .preferences: return "Preferences"
-        case .pro: return "Pro"
-        case .info: return "Info"
-        }
-    }
-
-    var fullTitle: String {
-        switch self {
-        case .cloud: return "Cloud Destinations"
-        case .preferences: return "Preferences"
-        case .pro: return "Pro"
-        case .info: return "Info"
+        case .cloud: return "Cloud Destination"
+        case .notifications: return "Notifications"
+        case .downloads: return "Downloads & Helpers"
+        case .pro: return "VidDL Pro"
+        case .about: return "About"
         }
     }
 
     var subtitle: String {
         switch self {
-        case .cloud: return "Choose and configure one upload destination at a time."
-        case .preferences: return "Notifications, download behavior, and helper tools."
-        case .pro: return "Your VidDL Pro license."
-        case .info: return "Version and about VidDL."
+        case .cloud: return "Google Drive upload remote."
+        case .notifications: return "Event alerts."
+        case .downloads: return "Saving, subtitles, and tools."
+        case .pro: return "License and unlocks."
+        case .about: return "Version and app info."
+        }
+    }
+
+    var modalSubtitle: String {
+        switch self {
+        case .cloud: return "Configure the Google Drive remote used after downloads finish."
+        case .notifications: return "Choose which VidDL events can notify you."
+        case .downloads: return "Fine-tune downloads, subtitles, sleep prevention, and helper tools."
+        case .pro: return "Manage your VidDL Pro purchase and activation."
+        case .about: return "Check the installed version and open the system About panel."
         }
     }
 
     var icon: String {
         switch self {
         case .cloud: return "cloud.fill"
-        case .preferences: return "slider.horizontal.3"
+        case .notifications: return "bell.badge.fill"
+        case .downloads: return "arrow.down.circle.fill"
         case .pro: return "crown.fill"
-        case .info: return "info.circle.fill"
+        case .about: return "info.circle.fill"
         }
     }
 
     var color: Color {
         switch self {
         case .cloud: return Theme.electricLime
-        case .preferences: return Theme.gold
+        case .notifications: return Theme.amber
+        case .downloads: return Theme.gold
         case .pro: return Theme.coral
-        case .info: return Theme.skyBlue
+        case .about: return Theme.skyBlue
         }
     }
 }
 
-private struct SettingsSectionHeader: View {
-    let section: SettingsSection
+private struct SettingsTile: View {
+    let panel: SettingsPanel
+    let detail: String
+    let status: String?
+    let isEmphasized: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(section.color.opacity(0.18))
-                    .frame(width: 32, height: 32)
-                Image(systemName: section.icon)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(section.color)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(panel.color.opacity(0.16))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: panel.icon)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(panel.color)
+                }
+
+                Spacer(minLength: 8)
+
+                if let status {
+                    Text(status.uppercased())
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundStyle(panel.color)
+                        .lineLimit(1)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(panel.color.opacity(0.13), in: Capsule())
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary.opacity(0.75))
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(section.fullTitle)
+                Text(panel.title)
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(Theme.textPrimary)
-                Text(section.subtitle)
+                    .lineLimit(1)
+                Text(detail.isEmpty ? panel.subtitle : detail)
                     .font(.caption2)
                     .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            Spacer()
         }
+        .padding(14)
+        .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
+        .background(Theme.obsidian.opacity(0.58), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(isEmphasized ? panel.color.opacity(0.28) : Theme.borderSubtle, lineWidth: 0.8)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct SettingsModalSurface<Content: View>: View {
+    let panel: SettingsPanel
+    let tint: Color
+    let dismiss: () -> Void
+    let content: Content
+
+    init(
+        panel: SettingsPanel,
+        tint: Color,
+        dismiss: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.panel = panel
+        self.tint = tint
+        self.dismiss = dismiss
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(tint.opacity(0.16))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: panel.icon)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(tint)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(panel.title)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text(panel.modalSubtitle)
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 10)
+
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.textSecondary)
+                .background(Theme.surfaceGlass.opacity(0.58), in: Circle())
+                .overlay(Circle().strokeBorder(Theme.borderSubtle, lineWidth: 0.6))
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 15)
+            .background(Theme.obsidian.opacity(0.68))
+
+            SettingsDivider()
+
+            content
+        }
+        .background(Theme.obsidian.opacity(0.94), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(tint.opacity(0.18), lineWidth: 0.8)
+        )
     }
 }
 

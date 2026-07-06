@@ -79,6 +79,7 @@ struct HomeCompactQueue: View {
     let displayMode: HomeCompactQueueDisplayMode
     let seedboxWebdavPassword: String
     let onUpgradeRequired: () -> Void
+    var onClose: (() -> Void)? = nil
     var isEmbedded = false
     private let activeVisibleLimit = 5
 
@@ -160,12 +161,8 @@ struct HomeCompactQueue: View {
         }
         .padding(24)
         .frame(
-            minWidth: 760,
-            idealWidth: AppShellSurfaceMetrics.workflowModalWidth(for: appState.windowSize),
-            maxWidth: AppShellSurfaceMetrics.workflowModalWidth(for: appState.windowSize),
-            minHeight: 460,
-            idealHeight: AppShellSurfaceMetrics.workflowModalHeight(for: appState.windowSize),
-            maxHeight: AppShellSurfaceMetrics.workflowModalHeight(for: appState.windowSize)
+            width: AppShellSurfaceMetrics.appModalSurfaceWidth(for: appState.windowSize),
+            height: AppShellSurfaceMetrics.appModalSurfaceHeight(for: appState.windowSize)
         )
         .background(
             LinearGradient(
@@ -223,7 +220,7 @@ struct HomeCompactQueue: View {
                 }
             }
 
-            Button(action: { dismiss() }) {
+            Button(action: closeModal) {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .bold))
                     .frame(width: 28, height: 28)
@@ -286,7 +283,7 @@ struct HomeCompactQueue: View {
             if displayMode == .completedModal {
                 Button {
                     AppStateManager.shared.select(.library)
-                    dismiss()
+                    closeModal()
                 } label: {
                     Label("Open Library", systemImage: "books.vertical.fill")
                 }
@@ -332,6 +329,14 @@ struct HomeCompactQueue: View {
             RoundedRectangle(cornerRadius: 13)
                 .stroke(Theme.borderSubtle, lineWidth: 1)
         )
+    }
+
+    private func closeModal() {
+        if let onClose {
+            onClose()
+        } else {
+            dismiss()
+        }
     }
 
     private var activeQueue: some View {

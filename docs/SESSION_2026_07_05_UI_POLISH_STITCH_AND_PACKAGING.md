@@ -47,8 +47,8 @@ This session moved VidDL toward a cleaner macOS utility experience while preserv
 
 ## Packaging
 
-- For local test distribution, distinguish unsigned/unnotarized DMGs from the signed release pipeline.
-- For the requested local artifact, version was bumped to 2.1 and a local unsigned/unnotarized install DMG path was used rather than Developer ID signing/notarization.
+- Active packaging is unsigned and unnotarized only; the signed/notarized release pipeline was intentionally removed for personal local use.
+- Use `bash scripts/build-dmg.sh` to build the current app and create `VidDL-<version>-build<build>-unsigned.dmg`.
 - The reliable local build path uses the external Xcode developer directory at `/Volumes/MyPassport/Applications/Xcode.app/Contents/Developer`.
 
 ## Verification Pattern
