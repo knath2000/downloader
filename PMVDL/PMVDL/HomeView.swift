@@ -502,11 +502,7 @@ struct HomeView: View {
                 .font(.caption.weight(.medium))
                 .foregroundStyle(Theme.textSecondary)
 
-            VStack(spacing: 8) {
-                ForEach(0..<3, id: \.self) { _ in
-                    ShimmerCard(height: 68)
-                }
-            }
+            ShimmerCard(height: 68)
         }
         .padding(14)
         .glassCard(tint: Theme.skyBlue.opacity(0.08), cornerRadius: HomeLayoutMetrics.cardCornerRadius)

@@ -1,6 +1,6 @@
 # Latest Session - 2026-07-06 Feed Browser, Modal Settings, App Shell Responsiveness, and VidDL 2.2.1 DMG
 
-See `docs/SESSION_2026_07_06_FEED_SETTINGS_DMG.md` for the durable summary of the browser-only Feed cleanup, restored Feed multi-select action overlay, modal-first Settings redesign, instant cold tab placeholders, larger collapsible bottom navigation pill, unsigned personal-use packaging path, and VidDL `2.2.1` local DMG.
+See `docs/SESSION_2026_07_06_FEED_SETTINGS_DMG.md` for the durable summary of the browser-only Feed cleanup, restored Feed multi-select action overlay, session-persistent Feed selection above the collapsible navigation pill, single-pane extraction loading, extraction result scroll-performance polish, modal-first Settings redesign, instant cold tab placeholders, larger collapsible bottom navigation pill, unsigned personal-use packaging path, and VidDL `2.2.1` local DMG.
 
 ---
 

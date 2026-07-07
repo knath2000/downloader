@@ -50,6 +50,16 @@ struct ExtractionModalView: View {
         return "\(countText) • \(progressText)"
     }
 
+    private var resultRows: [ExtractionResultRowModel] {
+        results.enumerated().map { index, result in
+            ExtractionResultRowModel(index: index, result: result)
+        }
+    }
+
+    private var usesLightweightResultRows: Bool {
+        !isLoading && results.count >= 8
+    }
+
     var body: some View {
         VStack(spacing: 14) {
             addURLBar
@@ -112,33 +122,29 @@ struct ExtractionModalView: View {
         ScrollView {
             LazyVStack(spacing: 12) {
                 if results.isEmpty, isLoading {
-                    ForEach(0..<3, id: \.self) { index in
-                        ExtractionLoadingRow(index: index, subtitle: subtitle)
-                            .id("loading-\(index)")
-                    }
+                    ExtractionLoadingRow(subtitle: subtitle)
                 } else if results.isEmpty {
                     emptyState
                 } else {
-                    ForEach(Array(results.enumerated()), id: \.offset) { index, result in
+                    ForEach(resultRows) { row in
                         ExtractionResultRow(
-                            result: result,
-                            isRetrying: retryingResultIndices.contains(index),
+                            row: row,
+                            isRetrying: retryingResultIndices.contains(row.index),
+                            usesLightweightThumbnail: usesLightweightResultRows,
                             localState: localState,
                             megaState: megaState,
                             gdriveState: gdriveState,
                             seedboxState: seedboxState,
-                            onRetry: { onRetry(index) },
+                            onRetry: { onRetry(row.index) },
                             onLocal: onLocal,
                             onMega: onMega,
                             onGDrive: onGDrive,
                             onSeedbox: onSeedbox
                         )
-                        .id(resultRowID(index: index, result: result))
                     }
 
                     if isLoading {
-                        ExtractionLoadingRow(index: 0, subtitle: loadProgress.isEmpty ? "Extracting another URL..." : loadProgress)
-                            .id("loading-inline-\(results.count)")
+                        ExtractionLoadingRow(subtitle: loadProgress.isEmpty ? "Extracting another URL..." : loadProgress)
                     }
                 }
             }
@@ -249,16 +255,38 @@ struct ExtractionModalView: View {
         guard canAddURL else { return }
         onAddURL()
     }
+}
 
-    private func resultRowID(index: Int, result: ExtractResult) -> String {
-        let title = result.source?.title ?? result.error ?? "result"
-        return "result-\(index)-\(result.url)-\(title)"
+private struct ExtractionResultRowModel: Identifiable, Equatable {
+    let index: Int
+    let result: ExtractResult
+    let presentation: VideoResultPresentation
+
+    var id: String {
+        "\(index)-\(Self.normalizedURL(result.source?.mp4 ?? result.url).lowercased())"
+    }
+
+    init(index: Int, result: ExtractResult) {
+        self.index = index
+        self.result = result
+        self.presentation = VideoResultPresentation(result: result)
+    }
+
+    private static func normalizedURL(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              var components = URLComponents(string: trimmed) else { return trimmed }
+        components.scheme = components.scheme?.lowercased()
+        components.host = components.host?.lowercased()
+        components.fragment = nil
+        return components.string ?? trimmed
     }
 }
 
 private struct ExtractionResultRow: View {
-    let result: ExtractResult
+    let row: ExtractionResultRowModel
     let isRetrying: Bool
+    let usesLightweightThumbnail: Bool
     let localState: (String) -> UploadState?
     let megaState: (String) -> UploadState?
     let gdriveState: (String) -> UploadState?
@@ -272,8 +300,12 @@ private struct ExtractionResultRow: View {
     @State private var selectedQualityID: String?
     @State private var selectedTarget: CloudTarget = .local
 
+    private var result: ExtractResult {
+        row.result
+    }
+
     private var presentation: VideoResultPresentation {
-        VideoResultPresentation(result: result)
+        row.presentation
     }
 
     private var selectedQuality: VideoQualityChoice? {
@@ -339,7 +371,8 @@ private struct ExtractionResultRow: View {
                 .fill(tint.opacity(0.15))
                 .frame(width: 110, height: 76)
 
-            if let value = presentation.thumbnailURL,
+            if !usesLightweightThumbnail,
+               let value = presentation.thumbnailURL,
                let url = URL(string: value),
                result.error == nil {
                 AsyncImage(url: url) { phase in
@@ -395,7 +428,6 @@ private struct ExtractionResultRow: View {
                             )
                         )
                         .frame(width: proxy.size.width * progressValue)
-                        .shadow(color: tint.opacity(0.38), radius: 6)
                 }
             }
             .frame(height: 7)
@@ -521,7 +553,6 @@ private struct ExtractionResultRow: View {
                 Capsule()
                     .stroke(tint.opacity(0.32), lineWidth: 1)
             )
-            .shadow(color: tint.opacity(0.25), radius: 6)
     }
 
     private var statusLabel: String {
@@ -582,7 +613,6 @@ private struct ExtractionResultRow: View {
 }
 
 private struct ExtractionLoadingRow: View {
-    let index: Int
     let subtitle: String
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -596,15 +626,15 @@ private struct ExtractionLoadingRow: View {
     }
 
     private var tint: Color {
-        index == 1 ? Theme.warning : Theme.skyBlue
+        Theme.skyBlue
     }
 
     private var titleWidth: CGFloat {
-        index == 1 ? 250 : 310
+        310
     }
 
     private var staticProgress: CGFloat {
-        [0.55, 0.85, 0.2][index]
+        0.55
     }
 
     var body: some View {
@@ -658,7 +688,7 @@ private struct ExtractionLoadingRow: View {
 
             Spacer()
 
-            Text(index == 1 ? "Processing" : "Extracting")
+            Text("Extracting")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(tint)
                 .padding(.horizontal, 9)
@@ -682,13 +712,13 @@ private struct ExtractionLoadingRow: View {
                 isPresented = true
                 return
             }
-            withAnimation(.easeOut(duration: 0.18).delay(Double(index) * 0.04)) {
+            withAnimation(.easeOut(duration: 0.18)) {
                 isPresented = true
             }
-            withAnimation(.linear(duration: 1.35).repeatForever(autoreverses: false).delay(Double(index) * 0.12)) {
+            withAnimation(.linear(duration: 1.35).repeatForever(autoreverses: false)) {
                 shimmerPhase = 1
             }
-            withAnimation(.linear(duration: 1.55).repeatForever(autoreverses: false).delay(Double(index) * 0.10)) {
+            withAnimation(.linear(duration: 1.55).repeatForever(autoreverses: false)) {
                 sweepPhase = 1
             }
         }

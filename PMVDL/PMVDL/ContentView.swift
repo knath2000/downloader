@@ -145,7 +145,7 @@ struct ContentView: View {
             LibraryView(onUpgradeRequired: presentUpgradeOverlay)
                 .padding(.bottom, floatingTabContentInset)
         case .feed:
-            FeedView()
+            FeedView(bottomChromeInset: floatingTabContentInset)
                 .padding(.bottom, floatingTabContentInset)
         case .settings:
             SettingsView(gdriveRemoteName: $gdriveRemoteName,

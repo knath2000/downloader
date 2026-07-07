@@ -10,6 +10,8 @@ This session completed the current Lustre/Obsidian pass for Feed, Settings, and 
 - The Feed browser multi-select action pane was restored as a compact bottom overlay inside the browser surface, positioned above the floating app tab switcher.
 - Right-click Select/Deselect still toggles session-scoped `FeedItem` selection. Clear empties selection, and Extract Selected sends newline-joined URLs to Home before clearing selection.
 - Lightweight browser motion was added for the selection pane, button press feedback, page loading mask, and state transitions while respecting reduced-effects/performance gates.
+- After the larger collapsible navigation pill landed, Feed now receives the current app-shell bottom chrome inset and positions the selection action pane above either the expanded nav or collapsed hamburger-only pill with a small breathing gap.
+- Feed selection is now held in a private session-scoped store instead of transient local `FeedView` state. Selected videos persist when switching away from Feed and returning during the same app session, then clear only through Clear, Extract Selected handoff, or app exit.
 
 ## Settings
 
@@ -26,6 +28,13 @@ This session completed the current Lustre/Obsidian pass for Feed, Settings, and 
 - The bottom navigation pill is larger and more tactile. It starts expanded each launch, includes a leading hamburger button, and toggles to a session-only hamburger-only condensed state.
 - The expanded nav keeps all destinations, locked/feed indicators, and the Home queue badge. The condensed state intentionally hides navigation items and badges until expanded again.
 - Content and tab-opening placeholders now receive a bottom inset based on the expanded or collapsed pill height, preventing primary controls from sitting underneath the floating navigation.
+
+## Extraction Loading and Result Performance
+
+- Multi-URL extraction now presents one aggregate loading pane while extraction is in progress and no results are ready, instead of rendering three simultaneous skeleton panes.
+- The Home loading state mirrors the modal behavior with one loading card.
+- Completed extraction rows in the results modal were made lighter for large batches: stable row models, precomputed presentation data, less per-row visual work, no extra row identity churn, and lightweight thumbnails for larger completed result sets.
+- Existing extraction behavior was preserved: retry, Add URL, quality picker, target picker, copy URL, local download, cloud upload actions, and batch download still flow through the existing callbacks.
 
 ## Packaging
 
@@ -52,4 +61,11 @@ DEVELOPER_DIR=/Volumes/MyPassport/Applications/Xcode.app/Contents/Developer xcod
 ```sh
 DEVELOPER_DIR=/Volumes/MyPassport/Applications/Xcode.app/Contents/Developer xcrun swiftc -parse PMVDL/PMVDL/ContentView.swift
 DEVELOPER_DIR=/Volumes/MyPassport/Applications/Xcode.app/Contents/Developer xcodebuild -project PMVDL/PMVDL.xcodeproj -scheme PMVDL -configuration Debug -derivedDataPath /tmp/viddl-collapsible-nav CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build
+```
+
+- Feed selection/loading/performance follow-up validation used:
+
+```sh
+DEVELOPER_DIR=/Volumes/MyPassport/Applications/Xcode.app/Contents/Developer xcrun swiftc -parse PMVDL/PMVDL/ContentView.swift PMVDL/PMVDL/Feed/FeedView.swift PMVDL/PMVDL/HomeView.swift PMVDL/PMVDL/Home/ExtractionModalView.swift
+DEVELOPER_DIR=/Volumes/MyPassport/Applications/Xcode.app/Contents/Developer xcodebuild -project PMVDL/PMVDL.xcodeproj -scheme PMVDL -configuration Debug -derivedDataPath /tmp/viddl-feed-selection-loading-polish CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build
 ```

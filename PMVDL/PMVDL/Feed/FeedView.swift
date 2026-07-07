@@ -5,7 +5,8 @@ private enum FeedLayout {
     static let contentMaxWidth: CGFloat = 2400
     static let outerSpacing: CGFloat = 12
     static let sectionSpacing: CGFloat = 10
-    static let browserBottomInset: CGFloat = 96
+    static let selectionBarMinimumBottomInset: CGFloat = 96
+    static let selectionBarGap: CGFloat = 14
 }
 
 struct DownloadedFeedMatch: Hashable, Identifiable {
@@ -103,6 +104,27 @@ enum FeedSelectionStore {
     }
 }
 
+@MainActor
+private final class FeedSessionSelectionStore: ObservableObject {
+    static let shared = FeedSessionSelectionStore()
+
+    @Published private(set) var selectedItems: [String: FeedItem] = [:]
+
+    private init() {}
+
+    func isSelected(_ item: FeedItem) -> Bool {
+        selectedItems[FeedSelectionStore.key(for: item)] != nil
+    }
+
+    func toggle(_ item: FeedItem) {
+        selectedItems = FeedSelectionStore.toggled(item, in: selectedItems)
+    }
+
+    func clear() {
+        selectedItems = [:]
+    }
+}
+
 private enum LibraryDisplayTitle {
     static func title(for item: LibraryItem) -> String {
         let stripped = item.title.replacingOccurrences(
@@ -116,6 +138,8 @@ private enum LibraryDisplayTitle {
 }
 
 struct FeedView: View {
+    var bottomChromeInset: CGFloat = 0
+
     @StateObject private var appState = AppStateManager.shared
     @StateObject private var model = FeedViewModel.shared
     @StateObject private var favorites = FeedFavoritesStore.shared
@@ -123,11 +147,14 @@ struct FeedView: View {
     @StateObject private var pornHubSession = PornHubSessionManager.shared
     @StateObject private var epornerSession = EpornerSessionManager.shared
     @StateObject private var feedBrowser = PornHubBrowserViewModel()
-    @State private var selectedItems: [String: FeedItem] = [:]
+    @StateObject private var selectionStore = FeedSessionSelectionStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.performanceProfile) private var performanceProfile
 
-    private var isSelecting: Bool { !selectedItems.isEmpty }
+    private var isSelecting: Bool { !selectionStore.selectedItems.isEmpty }
+    private var selectionBarBottomInset: CGFloat {
+        max(FeedLayout.selectionBarMinimumBottomInset, bottomChromeInset + FeedLayout.selectionBarGap)
+    }
     private var siteTheme: FeedSiteTheme {
         FeedSiteTheme.theme(for: model.selectedSite)
     }
@@ -223,7 +250,7 @@ struct FeedView: View {
             PornHubBrowserWebView(
                 browser: feedBrowser,
                 initialURL: feedBrowser.homeURL(feedModel: model),
-                isSelected: { item in selectedItems[FeedSelectionStore.key(for: item)] != nil },
+                isSelected: { item in selectionStore.isSelected(item) },
                 toggleSelection: { item in toggleSelection(item) },
                 onNavigationFinished: {
                     Task { @MainActor in
@@ -241,13 +268,13 @@ struct FeedView: View {
             .overlay(alignment: .bottom) {
                 if isSelecting {
                     FeedBrowserSelectionBar(
-                        count: selectedItems.count,
+                        count: selectionStore.selectedItems.count,
                         accent: siteTheme.accent,
-                        clear: { selectedItems = [:] },
+                        clear: { selectionStore.clear() },
                         extract: extractSelected
                     )
                     .padding(.horizontal, 20)
-                    .padding(.bottom, FeedLayout.browserBottomInset)
+                    .padding(.bottom, selectionBarBottomInset)
                     .transition(selectionBarTransition)
                     .zIndex(2)
                 }
@@ -331,17 +358,17 @@ struct FeedView: View {
     }
 
     private func toggleSelection(_ item: FeedItem) {
-        selectedItems = FeedSelectionStore.toggled(item, in: selectedItems)
+        selectionStore.toggle(item)
     }
 
     private func extractSelected() {
-        let selected = Array(selectedItems.values)
+        let selected = Array(selectionStore.selectedItems.values)
         guard !selected.isEmpty else { return }
 
         AppStateManager.shared.pendingExtractThumbnailURL = nil
         AppStateManager.shared.pendingExtractShouldStart = true
         AppStateManager.shared.pendingExtractURL = selected.map(\.url).joined(separator: "\n")
-        selectedItems = [:]
+        selectionStore.clear()
         AppStateManager.shared.select(.home)
     }
 }
