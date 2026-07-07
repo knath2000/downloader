@@ -1,8 +1,8 @@
-# Session 2026-07-06: Feed Browser Polish, Modal Settings, and VidDL 2.2.1 DMG
+# Session 2026-07-06: Feed Browser Polish, Modal Settings, App Shell, and VidDL 2.2.1 DMG
 
 ## Summary
 
-This session completed the current Lustre/Obsidian pass for Feed and Settings, kept packaging on the unsigned personal-use path, and prepared VidDL `2.2.1`.
+This session completed the current Lustre/Obsidian pass for Feed, Settings, and the app shell, kept packaging on the unsigned personal-use path, and prepared VidDL `2.2.1`.
 
 ## Feed Browser
 
@@ -18,6 +18,15 @@ This session completed the current Lustre/Obsidian pass for Feed and Settings, k
 - Existing behavior was preserved for Google Drive setup, dependency checks, notification toggles, subtitle Pro gating, sleep prevention, download folder browse/open/reset, Pro purchase/activation/deactivation, and About.
 - The Settings page follows the current Lustre/Obsidian direction: dark neutral surfaces, subtle borders, compact typography, restrained semantic status chips, and no nested card-heavy primary page.
 
+## App Shell
+
+- Cold tab opening now separates tab selection from first-time heavy tab construction. The selected tab updates immediately, a lightweight placeholder renders first, and the real tab mounts shortly after the first frame.
+- Inactive tabs remain unmounted by default so hidden `WKWebView` instances and other heavy surfaces do not run on older Intel hardware.
+- A delayed startup warmup touches only cheap shared stores: `VideoLibrary`, `HistoryManager`, `FeedFavoritesStore`, `FeedViewModel`, and `SettingsDependencyStore`. It does not preload WebViews, start feed network loads, or run dependency subprocess checks.
+- The bottom navigation pill is larger and more tactile. It starts expanded each launch, includes a leading hamburger button, and toggles to a session-only hamburger-only condensed state.
+- The expanded nav keeps all destinations, locked/feed indicators, and the Home queue badge. The condensed state intentionally hides navigation items and badges until expanded again.
+- Content and tab-opening placeholders now receive a bottom inset based on the expanded or collapsed pill height, preventing primary controls from sitting underneath the floating navigation.
+
 ## Packaging
 
 - `CFBundleShortVersionString` was bumped to `2.2.1`; the build number remains `5`.
@@ -27,7 +36,7 @@ This session completed the current Lustre/Obsidian pass for Feed and Settings, k
 ## Verification
 
 - `git diff --check`
-- Focused Swift parse for changed Feed/Settings files during implementation.
+- Focused Swift parse for changed Feed/Settings/App Shell files during implementation.
 - Unsigned Debug `xcodebuild` with:
 
 ```sh
@@ -38,3 +47,9 @@ DEVELOPER_DIR=/Volumes/MyPassport/Applications/Xcode.app/Contents/Developer xcod
 - `bash scripts/build-dmg.sh` succeeded for VidDL `2.2.1` build `5`.
 - `hdiutil verify VidDL-2.2.1-build5-unsigned.dmg` passed with a valid checksum.
 - The built app bundle contains `Contents/MacOS/VidDL` and reports `CFBundleShortVersionString=2.2.1`, `CFBundleVersion=5`.
+- Cold-tab and collapsible-nav validation used:
+
+```sh
+DEVELOPER_DIR=/Volumes/MyPassport/Applications/Xcode.app/Contents/Developer xcrun swiftc -parse PMVDL/PMVDL/ContentView.swift
+DEVELOPER_DIR=/Volumes/MyPassport/Applications/Xcode.app/Contents/Developer xcodebuild -project PMVDL/PMVDL.xcodeproj -scheme PMVDL -configuration Debug -derivedDataPath /tmp/viddl-collapsible-nav CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build
+```

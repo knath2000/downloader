@@ -1,4 +1,10 @@
-# Latest Session - 2026-07-04 Startup Deadlock Fix, Home Queue Detail Work, and Local Unsigned DMG
+# Latest Session - 2026-07-06 Feed Browser, Modal Settings, App Shell Responsiveness, and VidDL 2.2.1 DMG
+
+See `docs/SESSION_2026_07_06_FEED_SETTINGS_DMG.md` for the durable summary of the browser-only Feed cleanup, restored Feed multi-select action overlay, modal-first Settings redesign, instant cold tab placeholders, larger collapsible bottom navigation pill, unsigned personal-use packaging path, and VidDL `2.2.1` local DMG.
+
+---
+
+# Previous Session - 2026-07-04 Startup Deadlock Fix, Home Queue Detail Work, and Local Unsigned DMG
 
 See `docs/SESSION_2026_07_04_STARTUP_QUEUE_DMG.md` for the durable summary of the Home compact queue detail work, singleton-init launch deadlock diagnosis and fix, external-Xcode unsigned Debug build path, and local unsigned/unnotarized DMG packaging.
 
