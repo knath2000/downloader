@@ -123,6 +123,7 @@
 	T10011 /* FeedFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20011 /* FeedFilterTests.swift */; };
 	T10012 /* HQPornerFeedScraperTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20012 /* HQPornerFeedScraperTests.swift */; };
 	T10013 /* DownloadQueueResumeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20013 /* DownloadQueueResumeTests.swift */; };
+	T10033 /* ExtractionPulseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20033 /* ExtractionPulseTests.swift */; };
 	T10014 /* FeedFavoritesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20014 /* FeedFavoritesTests.swift */; };
 	T10015 /* RemotePathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20015 /* RemotePathTests.swift */; };
 	T10016 /* RcloneRemoteFileParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20016 /* RcloneRemoteFileParserTests.swift */; };
@@ -259,6 +260,7 @@
 	T20011 /* FeedFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedFilterTests.swift; sourceTree = "<group>"; };
 	T20012 /* HQPornerFeedScraperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HQPornerFeedScraperTests.swift; sourceTree = "<group>"; };
 	T20013 /* DownloadQueueResumeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadQueueResumeTests.swift; sourceTree = "<group>"; };
+	T20033 /* ExtractionPulseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtractionPulseTests.swift; sourceTree = "<group>"; };
 	T20014 /* FeedFavoritesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedFavoritesTests.swift; sourceTree = "<group>"; };
 	T20015 /* RemotePathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePathTests.swift; sourceTree = "<group>"; };
 	T20016 /* RcloneRemoteFileParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RcloneRemoteFileParserTests.swift; sourceTree = "<group>"; };
@@ -501,6 +503,7 @@
 			T20011 /* FeedFilterTests.swift */,
 			T20012 /* HQPornerFeedScraperTests.swift */,
 			T20013 /* DownloadQueueResumeTests.swift */,
+			T20033 /* ExtractionPulseTests.swift */,
 			T20014 /* FeedFavoritesTests.swift */,
 			T20015 /* RemotePathTests.swift */,
 			T20016 /* RcloneRemoteFileParserTests.swift */,
@@ -789,6 +792,7 @@
 			T10011 /* FeedFilterTests.swift in Sources */,
 			T10012 /* HQPornerFeedScraperTests.swift in Sources */,
 			T10013 /* DownloadQueueResumeTests.swift in Sources */,
+			T10033 /* ExtractionPulseTests.swift in Sources */,
 			T10014 /* FeedFavoritesTests.swift in Sources */,
 			T10015 /* RemotePathTests.swift in Sources */,
 			T10016 /* RcloneRemoteFileParserTests.swift in Sources */,

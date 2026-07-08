@@ -745,6 +745,22 @@ private struct ExtractionResultRow: View {
     }
 }
 
+/// Tunable constants for the subtle breathing pulse applied to pending extraction
+/// skeleton rows. Kept internal (not `private`) so focused tests can assert the
+/// pulse stays within a subtle range.
+enum ExtractionPulse {
+    /// Breathing period (seconds). Slow enough to read as a gentle breath.
+    static let duration: Double = 1.9
+    /// SkyBlue border opacity range while pulsing.
+    static let minBorderOpacity: Double = 0.16
+    static let maxBorderOpacity: Double = 0.40
+    /// Faint skyBlue tint-wash opacity range inside the card.
+    static let minWashOpacity: Double = 0.04
+    static let maxWashOpacity: Double = 0.12
+    /// Maximum brightness breathing applied to placeholder blocks (no scaling).
+    static let brightness: Double = 0.06
+}
+
 private struct ExtractionLoadingRow: View {
     let subtitle: String
 
@@ -753,9 +769,26 @@ private struct ExtractionLoadingRow: View {
     @State private var isPresented = false
     @State private var shimmerPhase: CGFloat = -1
     @State private var sweepPhase: CGFloat = 0
+    @State private var pulsePhase: Double = 0
 
     private var allowsAnimation: Bool {
         !reduceMotion && performanceProfile.allowsLoadingAnimation
+    }
+
+    /// Subtle breathing interpolation in [0, 1]; stays 1 when animation is off
+    /// so rows remain static (no repeating pulse) under reduced motion/effects.
+    private var pulseT: Double {
+        allowsAnimation ? pulsePhase : 1
+    }
+
+    private var borderOpacity: Double {
+        ExtractionPulse.minBorderOpacity
+            + (ExtractionPulse.maxBorderOpacity - ExtractionPulse.minBorderOpacity) * pulseT
+    }
+
+    private var washOpacity: Double {
+        ExtractionPulse.minWashOpacity
+            + (ExtractionPulse.maxWashOpacity - ExtractionPulse.minWashOpacity) * pulseT
     }
 
     private var tint: Color {
@@ -780,6 +813,11 @@ private struct ExtractionLoadingRow: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 )
                 .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Theme.skyBlue.opacity(washOpacity))
+                )
+                .brightness(allowsAnimation ? pulseT * ExtractionPulse.brightness : 0)
+                .overlay(
                     Image(systemName: "play.fill")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(.white.opacity(0.7))
@@ -793,6 +831,7 @@ private struct ExtractionLoadingRow: View {
                     .frame(width: titleWidth, height: 16)
                     .overlay(ExtractionPlaceholderShimmer(phase: shimmerPhase, isActive: allowsAnimation))
                     .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .brightness(allowsAnimation ? pulseT * ExtractionPulse.brightness : 0)
 
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
@@ -838,6 +877,10 @@ private struct ExtractionLoadingRow: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Theme.borderSubtle, lineWidth: 1)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Theme.skyBlue.opacity(borderOpacity), lineWidth: 1.5)
+        )
         .opacity(isPresented || !allowsAnimation ? 1 : 0.82)
         .offset(y: isPresented || !allowsAnimation ? 0 : 6)
         .onAppear {
@@ -853,6 +896,9 @@ private struct ExtractionLoadingRow: View {
             }
             withAnimation(.linear(duration: 1.55).repeatForever(autoreverses: false)) {
                 sweepPhase = 1
+            }
+            withAnimation(.easeInOut(duration: ExtractionPulse.duration).repeatForever(autoreverses: true)) {
+                pulsePhase = 1
             }
         }
     }
