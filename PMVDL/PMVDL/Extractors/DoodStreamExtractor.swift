@@ -49,10 +49,17 @@ struct DoodStreamExtractor: VideoSiteExtractor {
         targetUrl = newUrl
       }
     }
+    let startsAsPlaymogo = isPlaymogoHost(targetUrl.host()?.lowercased() ?? "")
 
     let fetched: PageFetchResult
     if html.isEmpty {
-      fetched = try await fetchPageResult(url: targetUrl)
+      do {
+        fetched = try await fetchPageResult(url: targetUrl)
+      } catch {
+        guard startsAsPlaymogo else { throw error }
+        Log.extractionDood.error("Playmogo static page fetch failed: \(error.localizedDescription, privacy: .public)")
+        fetched = PageFetchResult(html: "", finalURL: targetUrl)
+      }
     } else {
       fetched = PageFetchResult(html: html, finalURL: resolvedPageURL ?? targetUrl)
     }
@@ -60,7 +67,7 @@ struct DoodStreamExtractor: VideoSiteExtractor {
     targetUrl = resolvedPageURL ?? fetched.finalURL
     let host = targetUrl.host()?.lowercased() ?? ""
     let isPlaymogo = isPlaymogoHost(host)
-    let pageHtml = fetched.html
+    let pageHtml = normalizedHTML(fetched.html)
     let title = extractTitle(from: pageHtml) ?? (isPlaymogo ? "Playmogo Video" : "DoodStream Video")
     let thumbnail = extractThumbnail(from: pageHtml)
     var finalVideoUrl: String?
@@ -70,7 +77,9 @@ struct DoodStreamExtractor: VideoSiteExtractor {
       finalVideoUrl = await findPlaymogoVideoUrl(
         in: pageHtml,
         pageURL: targetUrl,
-        passResolver: playmogoPassResolver ?? fetchPlaymogoPassBase,
+        passResolver: playmogoPassResolver ?? { passURL, referer in
+          try await fetchPlaymogoPassBase(passURL: passURL, referer: referer)
+        },
         randomSuffix: randomSuffix,
         nowMilliseconds: nowMilliseconds
       )
@@ -78,7 +87,7 @@ struct DoodStreamExtractor: VideoSiteExtractor {
       if finalVideoUrl == nil {
         Log.extractionDood.debug("Static Playmogo extraction failed. Falling back to WebViewExtractor...")
         do {
-          finalVideoUrl = try await WebViewExtractor.shared.extractVideoUrl(from: targetUrl, timeout: 90)
+          finalVideoUrl = try await WebViewExtractor.shared.extractVideoUrl(from: targetUrl, timeout: 45)
           if let url = finalVideoUrl, isValidCandidate(url) {
             Log.extractionDood.debug("WebView extracted candidate URL: \(url, privacy: .public)")
           } else if let url = finalVideoUrl {
@@ -219,6 +228,16 @@ struct DoodStreamExtractor: VideoSiteExtractor {
 
   // MARK: - Video URL extraction
 
+  private static func normalizedHTML(_ html: String) -> String {
+    html
+      .replacingOccurrences(of: "\\/", with: "/")
+      .replacingOccurrences(of: "&amp;", with: "&")
+      .replacingOccurrences(of: "&#038;", with: "&")
+      .replacingOccurrences(of: "&quot;", with: "\"")
+      .replacingOccurrences(of: "&#34;", with: "\"")
+      .replacingOccurrences(of: "&#39;", with: "'")
+  }
+
   private static func isPlaymogoHost(_ host: String) -> Bool {
     host == "playmogo.com" ||
     host == "www.playmogo.com" ||
@@ -253,15 +272,17 @@ struct DoodStreamExtractor: VideoSiteExtractor {
   }
 
   private static func extractPlaymogoPassPath(from html: String) -> String? {
+    let text = normalizedHTML(html)
     let patterns = [
       #"\$\.get\(\s*['"]([^'"]+)['"]"#,
       #"\.get\(\s*['"]([^'"]*/pass_md5/[^'"]+)['"]"#,
       #"\burl\s*:\s*['"]([^'"]*/pass_md5/[^'"]+)['"]"#,
       #"\bfetch\(\s*['"]([^'"]*/pass_md5/[^'"]+)['"]"#,
+      #"\.open\(\s*['"][A-Z]+['"]\s*,\s*['"]([^'"]*/pass_md5/[^'"]+)['"]"#,
       #"['"]([^'"]*/pass_md5/[^'"]+)['"]"#
     ]
     for pattern in patterns {
-      if let path = extractJsStringValue(pattern: pattern, in: html) {
+      if let path = extractJsStringValue(pattern: pattern, in: text) {
         return path
       }
     }
@@ -269,20 +290,24 @@ struct DoodStreamExtractor: VideoSiteExtractor {
   }
 
   private static func extractPlaymogoTokenPrefix(from html: String) -> String? {
+    let text = normalizedHTML(html)
     let patterns = [
-      #"return\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\+\s*['"]([^'"]+)['"]\s*\+\s*Date\s*\.\s*now\s*\(\s*\)"#,
-      #"[A-Za-z_$][A-Za-z0-9_$]*\s*\+\s*['"]([^'"]+\?token=[^'"]+)['"]\s*\+\s*Date\s*\.\s*now\s*\(\s*\)"#,
-      #"['"]([^'"]+\?token=[^'"]+&expiry=)['"]\s*\+\s*Date\s*\.\s*now\s*\(\s*\)"#
+      #"return\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\+\s*['"]([^'"]+\?token=[^'"]+&expiry=)['"]\s*\+\s*(?:Date\s*\.\s*now\s*\(\s*\)|(?:new\s+Date\s*\(\s*\)|\(new\s+Date\s*\))\s*\.\s*getTime\s*\(\s*\))"#,
+      #"[A-Za-z_$][A-Za-z0-9_$]*\s*\+\s*['"]([^'"]+\?token=[^'"]+&expiry=)['"]\s*\+\s*(?:Date\s*\.\s*now\s*\(\s*\)|(?:new\s+Date\s*\(\s*\)|\(new\s+Date\s*\))\s*\.\s*getTime\s*\(\s*\))"#,
+      #"['"]([^'"]+\?token=[^'"]+&expiry=)['"]\s*\+\s*(?:Date\s*\.\s*now\s*\(\s*\)|(?:new\s+Date\s*\(\s*\)|\(new\s+Date\s*\))\s*\.\s*getTime\s*\(\s*\))"#
     ]
     for pattern in patterns {
-      if let token = extractJsStringValue(pattern: pattern, in: html) {
+      if let token = extractJsStringValue(pattern: pattern, in: text) {
         return token
       }
     }
     return nil
   }
 
-  private static func fetchPlaymogoPassBase(passURL: URL, referer: URL) async throws -> String {
+  private static func fetchPlaymogoPassBase(
+    passURL: URL,
+    referer: URL
+  ) async throws -> String {
     var request = URLRequest(url: passURL)
     request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
     request.setValue(referer.absoluteString, forHTTPHeaderField: "Referer")
@@ -446,12 +471,12 @@ struct DoodStreamExtractor: VideoSiteExtractor {
   }
 
   private static func extractJsStringValue(pattern: String, in text: String) -> String? {
-  let regex = try? NSRegularExpression(pattern: pattern, options: [])
-  if let match = regex?.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-     let range = Range(match.range(at: 1), in: text) {
-    return String(text[range])
-  }
-  return nil
+    let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators])
+    if let match = regex?.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+       let range = Range(match.range(at: 1), in: text) {
+      return String(text[range])
+    }
+    return nil
   }
 
   private static func extractHtmlAttrValue(attr: String, in html: String) -> String? {
@@ -628,22 +653,10 @@ struct DoodStreamExtractor: VideoSiteExtractor {
   }
 
   private static func dataWithoutFollowingRedirects(for request: URLRequest) async throws -> (Data, URLResponse) {
-    let delegate = NoRedirectDelegate()
+    let delegate = NoRedirectURLSessionDelegate()
     let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
     defer { session.invalidateAndCancel() }
     return try await session.data(for: request)
-  }
-
-  private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate {
-    func urlSession(
-      _ session: URLSession,
-      task: URLSessionTask,
-      willPerformHTTPRedirection response: HTTPURLResponse,
-      newRequest request: URLRequest,
-      completionHandler: @escaping (URLRequest?) -> Void
-    ) {
-      completionHandler(nil)
-    }
   }
 
   private static func finalUrlFromError(_ error: Error) -> String? {
@@ -683,5 +696,17 @@ struct DoodStreamExtractor: VideoSiteExtractor {
       return "Failed to fetch the DoodStream page."
     }
   }
+  }
+}
+
+private final class NoRedirectURLSessionDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+  func urlSession(
+    _ session: URLSession,
+    task: URLSessionTask,
+    willPerformHTTPRedirection response: HTTPURLResponse,
+    newRequest request: URLRequest,
+    completionHandler: @escaping (URLRequest?) -> Void
+  ) {
+    completionHandler(nil)
   }
 }

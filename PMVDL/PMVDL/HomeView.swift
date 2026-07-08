@@ -20,6 +20,35 @@ enum ExtractionRetrySupport {
     }
 }
 
+struct ExtractionSlot: Identifiable, Equatable {
+    let id: UUID
+    let url: String
+    var result: ExtractResult?
+}
+
+enum ExtractionSlotSupport {
+    static func startingSlots(for urls: [String]) -> [ExtractionSlot] {
+        urls.map { ExtractionSlot(id: UUID(), url: $0, result: nil) }
+    }
+
+    static func replacingSlot(id: UUID, in slots: [ExtractionSlot], with result: ExtractResult) -> [ExtractionSlot] {
+        slots.map { slot in
+            guard slot.id == id else { return slot }
+            return ExtractionSlot(id: slot.id, url: slot.url, result: result)
+        }
+    }
+
+    static func completedResults(in slots: [ExtractionSlot]) -> [ExtractResult] {
+        slots.compactMap(\.result)
+    }
+
+    static func slotIDForCompletedResult(at index: Int, in slots: [ExtractionSlot]) -> UUID? {
+        let completedSlots = slots.filter { $0.result != nil }
+        guard completedSlots.indices.contains(index) else { return nil }
+        return completedSlots[index].id
+    }
+}
+
 private struct HomeQueueStatusProgressBar: View {
     let progress: Double
     let tint: Color
@@ -51,6 +80,7 @@ struct HomeView: View {
     @ObservedObject private var downloadQueue = DownloadQueue.shared
     @State private var urlText: String = ""
     @State private var results: [ExtractResult] = []
+    @State private var extractionSlots: [ExtractionSlot] = []
     @State private var isLoading = false
     @State private var loadProgress = ""
     @State private var activeBatchSubmission: BatchSubmission?
@@ -63,6 +93,8 @@ struct HomeView: View {
     @State private var hadActiveDownloads = false
     @State private var completionBannerToken = UUID()
     @State private var modalAddURLText = ""
+    @AppStorage(ExtractionVPNPreferenceKeys.enabled) private var extractionVPNRetryEnabled = false
+    @AppStorage(ExtractionVPNPreferenceKeys.serviceName) private var extractionVPNServiceName = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var megaRemotePath: String
     var gdriveRemoteName: String
@@ -190,6 +222,10 @@ struct HomeView: View {
         ExtractionRetrySupport.retryableFailedIndices(in: results, retryingIndices: retryingResultIndices)
     }
 
+    private var canRetryWithVPN: Bool {
+        extractionVPNRetryEnabled
+    }
+
     private var isRetryingFailedResults: Bool {
         !retryingResultIndices.isEmpty
     }
@@ -220,7 +256,10 @@ struct HomeView: View {
             }
 
             if showResultsSheet {
-                AppModalOverlay(dismiss: { showResultsSheet = false }) {
+                AppModalOverlay(
+                    dismiss: { showResultsSheet = false },
+                    reservedTopInset: AppShellSurfaceMetrics.appModalTitlebarClearance
+                ) {
                     resultsSheet
                 }
                 .zIndex(20)
@@ -559,12 +598,14 @@ struct HomeView: View {
             batchTarget: $batchTarget,
             isLoading: isLoading,
             loadProgress: loadProgress,
+            extractionSlots: extractionSlots,
             results: results,
             retryingResultIndices: retryingResultIndices,
             batchQueuedCount: batchTargetLinks.count,
             isBatchSubmitting: isCurrentBatchSubmitting,
             batchProgressText: currentBatchProgressText,
             canRetryFailed: !retryableFailedResultIndices.isEmpty,
+            canRetryWithVPN: canRetryWithVPN,
             isYtDlpReady: ScraperEngine.isYTDLPAvailable,
             localState: { tracker.localDownloads[$0] },
             megaState: { tracker.megaUploads[$0] },
@@ -573,6 +614,7 @@ struct HomeView: View {
             onAddURL: addURLFromResultsModal,
             onRetryFailed: retryFailedResults,
             onRetry: retryExtractResult,
+            onVPNRetry: retryExtractResultWithVPN,
             onLocal: { url in Task { await startDownload(url: url, cloud: .local) } },
             onMega: { url in Task { await startDownload(url: url, cloud: .mega) } },
             onGDrive: { url in Task { await startDownload(url: url, cloud: .gdrive) } },
@@ -655,6 +697,7 @@ struct HomeView: View {
         let generation = UUID()
         extractionGeneration = generation
         retryingResultIndices.removeAll()
+        extractionSlots = ExtractionSlotSupport.startingSlots(for: urls)
         results = []
         isLoading = true
         showResultsSheet = true
@@ -666,39 +709,42 @@ struct HomeView: View {
 
         Task {
             var completed = 0
-            var localResults: [Int: ExtractResult] = [:]
+            var successCount = 0
+            let slots = extractionSlots
 
-            await withTaskGroup(of: (Int, ExtractResult).self) { group in
+            await withTaskGroup(of: (UUID, ExtractResult).self) { group in
                 for (i, url) in urls.enumerated() {
+                    let slotID = slots[i].id
                     group.addTask {
                         var src: VideoSource?; var err: String?
                         do { src = try await ScraperEngine.extract(from: url) }
                         catch { err = error.localizedDescription }
-                        return (i, ExtractResult(url: url, source: src, error: err))
+                        return (slotID, ExtractResult(url: url, source: src, error: err))
                     }
                 }
-                for await (idx, res) in group {
-                    localResults[idx] = res; completed += 1
+                for await (slotID, res) in group {
+                    completed += 1
                     await MainActor.run {
                         guard extractionGeneration == generation else { return }
+                        extractionSlots = ExtractionSlotSupport.replacingSlot(id: slotID, in: extractionSlots, with: res)
+                        results = ExtractionSlotSupport.completedResults(in: extractionSlots)
                         loadProgress = "Extracting… \(completed)/\(urls.count)"
+                        if res.source != nil {
+                            successCount += 1
+                            persistSuccessfulExtraction(res, feedThumbnailURL: feedThumbnailURL)
+                        }
                     }
                 }
             }
 
-            var ordered: [ExtractResult] = []
-            for i in 0 ..< urls.count { if let r = localResults[i] { ordered.append(r) } }
             await MainActor.run {
                 guard extractionGeneration == generation else { return }
-                results = ordered
+                results = ExtractionSlotSupport.completedResults(in: extractionSlots)
                 retryingResultIndices.removeAll()
-                for result in ordered {
-                    persistSuccessfulExtraction(result, feedThumbnailURL: feedThumbnailURL)
-                }
-                NotificationManager.shared.notifyScrapeComplete(count: ordered.filter { $0.source != nil }.count)
+                NotificationManager.shared.notifyScrapeComplete(count: successCount)
                 isLoading = false
                 loadProgress = ""
-                showResultsSheet = !ordered.isEmpty
+                showResultsSheet = !extractionSlots.isEmpty
             }
         }
     }
@@ -716,6 +762,8 @@ struct HomeView: View {
     private func extractAdditionalURL(_ url: String) {
         let generation = UUID()
         extractionGeneration = generation
+        let slot = ExtractionSlot(id: UUID(), url: url, result: nil)
+        extractionSlots.append(slot)
         isLoading = true
         loadProgress = "Extracting 1 URL..."
 
@@ -723,7 +771,8 @@ struct HomeView: View {
             let result = await extractResult(for: url)
             await MainActor.run {
                 guard extractionGeneration == generation else { return }
-                results.append(result)
+                extractionSlots = ExtractionSlotSupport.replacingSlot(id: slot.id, in: extractionSlots, with: result)
+                results = ExtractionSlotSupport.completedResults(in: extractionSlots)
                 if result.source != nil {
                     persistSuccessfulExtraction(result, feedThumbnailURL: nil)
                 }
@@ -770,20 +819,49 @@ struct HomeView: View {
 
     @MainActor
     private func retryExtractResult(at index: Int) {
+        retryExtractResult(at: index, requireVPN: false)
+    }
+
+    @MainActor
+    private func retryExtractResultWithVPN(at index: Int) {
+        guard canRetryWithVPN else { return }
+        retryExtractResult(at: index, requireVPN: true)
+    }
+
+    @MainActor
+    private func retryExtractResult(at index: Int, requireVPN: Bool) {
         guard results.indices.contains(index),
               retryingResultIndices.insert(index).inserted else { return }
 
         let url = results[index].url
         let generation = extractionGeneration
+        let slotID = ExtractionSlotSupport.slotIDForCompletedResult(at: index, in: extractionSlots)
 
         Task {
-            let retried = await extractResult(for: url)
+            let retried: ExtractResult
+            let selectedVPNServiceName = extractionVPNServiceName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let isSelectedVPNConnected = !requireVPN || selectedVPNServiceName.isEmpty
+                ? true
+                : await ExtractionVPNManager.isConnected(serviceName: selectedVPNServiceName)
+            let isSelectedVPNDisconnected = !isSelectedVPNConnected
+            if isSelectedVPNDisconnected {
+                retried = ExtractResult(
+                    url: url,
+                    source: nil,
+                    error: "VPN profile \"\(selectedVPNServiceName)\" is not connected. Connect it in macOS Settings, then retry with VPN."
+                )
+            } else {
+                retried = await extractResult(for: url)
+            }
             await MainActor.run {
                 guard extractionGeneration == generation else { return }
                 retryingResultIndices.remove(index)
                 guard results.indices.contains(index),
                       results[index].url == url else { return }
                 results = ExtractionRetrySupport.replacingResult(at: index, in: results, with: retried)
+                if let slotID {
+                    extractionSlots = ExtractionSlotSupport.replacingSlot(id: slotID, in: extractionSlots, with: retried)
+                }
                 if retried.source != nil {
                     persistSuccessfulExtraction(retried, feedThumbnailURL: nil)
                 }

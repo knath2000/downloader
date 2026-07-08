@@ -6,12 +6,14 @@ struct ExtractionModalView: View {
     @Binding var batchTarget: CloudTarget
     let isLoading: Bool
     let loadProgress: String
+    let extractionSlots: [ExtractionSlot]
     let results: [ExtractResult]
     let retryingResultIndices: Set<Int>
     let batchQueuedCount: Int
     let isBatchSubmitting: Bool
     let batchProgressText: String
     let canRetryFailed: Bool
+    let canRetryWithVPN: Bool
     let isYtDlpReady: Bool
     let localState: (String) -> UploadState?
     let megaState: (String) -> UploadState?
@@ -20,6 +22,7 @@ struct ExtractionModalView: View {
     let onAddURL: () -> Void
     let onRetryFailed: () -> Void
     let onRetry: (Int) -> Void
+    let onVPNRetry: (Int) -> Void
     let onLocal: (String) -> Void
     let onMega: (String) -> Void
     let onGDrive: (String) -> Void
@@ -38,7 +41,7 @@ struct ExtractionModalView: View {
     }
 
     private var subtitle: String {
-        if results.isEmpty {
+        if extractionSlots.isEmpty {
             if isLoading {
                 return loadProgress.isEmpty ? "Extracting sources..." : loadProgress
             }
@@ -50,9 +53,20 @@ struct ExtractionModalView: View {
         return "\(countText) • \(progressText)"
     }
 
-    private var resultRows: [ExtractionResultRowModel] {
-        results.enumerated().map { index, result in
-            ExtractionResultRowModel(index: index, result: result)
+    private var displayRows: [ExtractionDisplayRow] {
+        var completedIndex = 0
+        return extractionSlots.map { slot in
+            if let result = slot.result {
+                let row = ExtractionDisplayRow(
+                    id: slot.id,
+                    url: slot.url,
+                    resultIndex: completedIndex,
+                    result: result
+                )
+                completedIndex += 1
+                return row
+            }
+            return ExtractionDisplayRow(id: slot.id, url: slot.url, resultIndex: nil, result: nil)
         }
     }
 
@@ -69,7 +83,10 @@ struct ExtractionModalView: View {
         .padding(24)
         .frame(
             width: AppShellSurfaceMetrics.appModalSurfaceWidth(for: appState.windowSize),
-            height: AppShellSurfaceMetrics.appModalSurfaceHeight(for: appState.windowSize)
+            height: AppShellSurfaceMetrics.appModalSurfaceHeight(
+                for: appState.windowSize,
+                reservedTopInset: AppShellSurfaceMetrics.appModalTitlebarClearance
+            )
         )
         .background(
             LinearGradient(
@@ -121,30 +138,37 @@ struct ExtractionModalView: View {
     private var contentRows: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
-                if results.isEmpty, isLoading {
-                    ExtractionLoadingRow(subtitle: subtitle)
-                } else if results.isEmpty {
+                if extractionSlots.isEmpty {
                     emptyState
                 } else {
-                    ForEach(resultRows) { row in
-                        ExtractionResultRow(
-                            row: row,
-                            isRetrying: retryingResultIndices.contains(row.index),
-                            usesLightweightThumbnail: usesLightweightResultRows,
-                            localState: localState,
-                            megaState: megaState,
-                            gdriveState: gdriveState,
-                            seedboxState: seedboxState,
-                            onRetry: { onRetry(row.index) },
-                            onLocal: onLocal,
-                            onMega: onMega,
-                            onGDrive: onGDrive,
-                            onSeedbox: onSeedbox
-                        )
-                    }
-
-                    if isLoading {
-                        ExtractionLoadingRow(subtitle: loadProgress.isEmpty ? "Extracting another URL..." : loadProgress)
+                    ForEach(Array(displayRows.enumerated()), id: \.element.id) { rowIndex, row in
+                        ExtractionRevealRow(
+                            id: row.id,
+                            rowIndex: rowIndex,
+                            isResolved: row.result != nil,
+                            tint: row.result?.error == nil ? Theme.skyBlue : Theme.error
+                        ) {
+                            if let result = row.result, let resultIndex = row.resultIndex {
+                                ExtractionResultRow(
+                                    row: ExtractionResultRowModel(id: row.id, index: resultIndex, result: result),
+                                    isRetrying: retryingResultIndices.contains(resultIndex),
+                                    usesLightweightThumbnail: usesLightweightResultRows,
+                                    localState: localState,
+                                    megaState: megaState,
+                                    gdriveState: gdriveState,
+                                    seedboxState: seedboxState,
+                                    onRetry: { onRetry(resultIndex) },
+                                    canRetryWithVPN: canRetryWithVPN,
+                                    onVPNRetry: { onVPNRetry(resultIndex) },
+                                    onLocal: onLocal,
+                                    onMega: onMega,
+                                    onGDrive: onGDrive,
+                                    onSeedbox: onSeedbox
+                                )
+                            } else {
+                                ExtractionLoadingRow(subtitle: loadingSubtitle(for: row.url))
+                            }
+                        }
                     }
                 }
             }
@@ -255,31 +279,126 @@ struct ExtractionModalView: View {
         guard canAddURL else { return }
         onAddURL()
     }
+
+    private func loadingSubtitle(for url: String) -> String {
+        let text = loadProgress.isEmpty ? "Extracting sources..." : loadProgress
+        guard let host = URL(string: url)?.host else { return text }
+        return "\(text) • \(host)"
+    }
+}
+
+private struct ExtractionDisplayRow: Identifiable, Equatable {
+    let id: UUID
+    let url: String
+    let resultIndex: Int?
+    let result: ExtractResult?
+}
+
+enum ExtractionRevealAnimationSupport {
+    static let maxDelay: Double = 0.22
+    static let rowDelayStep: Double = 0.045
+
+    static func delay(forRowIndex index: Int, reduceMotion: Bool) -> Double {
+        guard !reduceMotion else { return 0 }
+        return min(maxDelay, Double(max(index, 0)) * rowDelayStep)
+    }
+}
+
+private struct ExtractionRevealRow<Content: View>: View {
+    let id: UUID
+    let rowIndex: Int
+    let isResolved: Bool
+    let tint: Color
+    @ViewBuilder let content: () -> Content
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.performanceProfile) private var performanceProfile
+    @State private var isVisible = false
+    @State private var glow = false
+
+    private var revealDelay: Double {
+        ExtractionRevealAnimationSupport.delay(forRowIndex: rowIndex, reduceMotion: reduceMotion)
+    }
+
+    private var allowsMotion: Bool {
+        !reduceMotion
+    }
+
+    private var allowsGlow: Bool {
+        allowsMotion && performanceProfile.allowsExpensiveEffects
+    }
+
+    private var contentAnimation: Animation? {
+        guard allowsMotion else { return .easeOut(duration: 0.14).delay(revealDelay) }
+        return .spring(response: 0.34, dampingFraction: 0.82).delay(revealDelay)
+    }
+
+    var body: some View {
+        content()
+            .id("\(id.uuidString)-\(isResolved ? "result" : "loading")")
+            .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .bottom)).combined(with: .scale(scale: 0.985)))
+            .opacity(isVisible ? 1 : (allowsMotion ? 0.76 : 1))
+            .offset(y: isVisible || !allowsMotion ? 0 : 7)
+            .scaleEffect(isVisible || !allowsMotion ? 1 : 0.99)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(tint.opacity(glow ? 0.5 : 0), lineWidth: 1.2)
+                    .shadow(color: tint.opacity(glow ? 0.28 : 0), radius: glow ? 9 : 0)
+            )
+            .animation(contentAnimation, value: isResolved)
+            .animation(contentAnimation, value: isVisible)
+            .animation(allowsGlow ? .easeOut(duration: 0.2).delay(revealDelay) : nil, value: glow)
+            .onAppear {
+                reveal()
+                if isResolved {
+                    pulseGlow()
+                }
+            }
+            .onChange(of: isResolved) { _, newValue in
+                guard newValue else { return }
+                reveal()
+                pulseGlow()
+            }
+    }
+
+    private func reveal() {
+        guard !isVisible else { return }
+        if allowsMotion {
+            withAnimation(contentAnimation) {
+                isVisible = true
+            }
+        } else {
+            isVisible = true
+        }
+    }
+
+    private func pulseGlow() {
+        guard allowsGlow else { return }
+        glow = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + revealDelay) {
+            withAnimation(.easeOut(duration: 0.16)) {
+                glow = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.34) {
+                withAnimation(.easeOut(duration: 0.42)) {
+                    glow = false
+                }
+            }
+        }
+    }
 }
 
 private struct ExtractionResultRowModel: Identifiable, Equatable {
+    let id: UUID
     let index: Int
     let result: ExtractResult
     let presentation: VideoResultPresentation
 
-    var id: String {
-        "\(index)-\(Self.normalizedURL(result.source?.mp4 ?? result.url).lowercased())"
-    }
-
-    init(index: Int, result: ExtractResult) {
+    init(id: UUID, index: Int, result: ExtractResult) {
+        self.id = id
         self.index = index
         self.result = result
         self.presentation = VideoResultPresentation(result: result)
-    }
-
-    private static func normalizedURL(_ raw: String) -> String {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty,
-              var components = URLComponents(string: trimmed) else { return trimmed }
-        components.scheme = components.scheme?.lowercased()
-        components.host = components.host?.lowercased()
-        components.fragment = nil
-        return components.string ?? trimmed
     }
 }
 
@@ -292,6 +411,8 @@ private struct ExtractionResultRow: View {
     let gdriveState: (String) -> UploadState?
     let seedboxState: (String) -> UploadState?
     let onRetry: () -> Void
+    let canRetryWithVPN: Bool
+    let onVPNRetry: () -> Void
     let onLocal: (String) -> Void
     let onMega: (String) -> Void
     let onGDrive: (String) -> Void
@@ -531,13 +652,25 @@ private struct ExtractionResultRow: View {
                         .foregroundStyle(Theme.textSecondary)
                 }
             } else {
-                Button {
-                    onRetry()
-                } label: {
-                    Label("Retry", systemImage: "arrow.clockwise")
+                HStack(spacing: 8) {
+                    Button {
+                        onRetry()
+                    } label: {
+                        Label("Retry", systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    if canRetryWithVPN {
+                        Button {
+                            onVPNRetry()
+                        } label: {
+                            Label("Retry with VPN", systemImage: "network")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
             }
         }
     }

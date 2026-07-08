@@ -252,6 +252,52 @@ final class DoodStreamExtractorTests: XCTestCase {
         XCTAssertEqual(DoodStreamExtractor.extractPlaymogoTokenPrefixForTesting(from: html), "?token=renamed&expiry=")
     }
 
+    func testPlaymogoParserHelpersReadEscapedXHRShape() {
+        let html = """
+        <script>
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", "\\/pass_md5\\/escaped\\/token", true);
+        function mk(){return "abc?token=escaped&expiry=" + (new Date).getTime()}
+        </script>
+        """
+
+        XCTAssertEqual(DoodStreamExtractor.extractPlaymogoPassPathForTesting(from: html), "/pass_md5/escaped/token")
+        XCTAssertEqual(DoodStreamExtractor.extractPlaymogoTokenPrefixForTesting(from: html), "abc?token=escaped&expiry=")
+    }
+
+    func testPlaymogoBuildsCloudAtaUrlWithNewDateGetTime() async throws {
+        let pageURL = URL(string: "https://playmogo.com/e/ta6jhp0sh9jd")!
+        let html = """
+        <script>
+        fetch('/pass_md5/newdate/token').then(function(data){return data.text()});
+        function makePlay(){return "xyz?token=newdate&expiry=" + new Date().getTime()}
+        </script>
+        """
+
+        let source = try await DoodStreamExtractor.extract(
+            fromHTML: html,
+            url: pageURL,
+            resolvedPageURL: pageURL,
+            playmogoPassResolver: { passURL, referer in
+                XCTAssertEqual(referer, pageURL)
+                XCTAssertEqual(passURL.path, "/pass_md5/newdate/token")
+                return "https://ll288op.cloudatacdn.com/base/video~"
+            },
+            randomSuffix: { "abcdefghij" },
+            nowMilliseconds: { "1777922000000" }
+        )
+
+        XCTAssertNil(source.mp4)
+        XCTAssertEqual(
+            source.hls.first?.url,
+            "https://ll288op.cloudatacdn.com/base/video~abcdefghijxyz?token=newdate&expiry=1777922000000"
+        )
+        XCTAssertEqual(source.hls.first?.kind, .direct)
+        XCTAssertEqual(source.hls.first?.headers?["Referer"], pageURL.absoluteString)
+        XCTAssertEqual(source.hls.first?.headers?["User-Agent"], NetworkConstants.chromeUserAgent)
+        XCTAssertEqual(source.hls.first?.sourcePageUrl, pageURL.absoluteString)
+    }
+
     private func playmogoHTML() -> String {
         """
         <html>
@@ -626,6 +672,93 @@ final class GDriveStreamingUploadTests: XCTestCase {
         )
     }
 
+    func testRcloneVerifyArgumentsStatExactDestination() {
+        XCTAssertEqual(
+            GDriveManager.rcloneVerifyArguments(destination: "gdrive:VidDL/video.mp4"),
+            ["lsjson", "gdrive:VidDL/video.mp4", "--stat", "--files-only", "--no-mimetype", "--no-modtime"]
+        )
+    }
+
+    func testGoogleDriveRemoteFileStatAcceptsExpectedSizeMatch() throws {
+        try GDriveManager.validateRemoteFileStat(
+            #"{"Name":"video.mp4","Path":"video.mp4","Size":12345,"IsDir":false}"#,
+            expectedSize: 12345,
+            allowUnknownSize: false
+        )
+    }
+
+    func testGoogleDriveRemoteFileStatAcceptsNonZeroUnknownSize() throws {
+        try GDriveManager.validateRemoteFileStat(
+            #"{"Name":"video.mp4","Path":"video.mp4","Size":456,"IsDir":false}"#,
+            expectedSize: nil,
+            allowUnknownSize: true
+        )
+    }
+
+    func testGoogleDriveRemoteFileStatRejectsInvalidResults() {
+        assertGDriveStatFails(#"{"Name":"video.mp4","Path":"video.mp4","Size":123,"IsDir":true}"#, expectedSize: 123, allowUnknownSize: false)
+        assertGDriveStatFails(#"{"Name":"video.mp4","Path":"video.mp4","Size":100,"IsDir":false}"#, expectedSize: 123, allowUnknownSize: false)
+        assertGDriveStatFails(#"{"Name":"video.mp4","Path":"video.mp4","Size":0,"IsDir":false}"#, expectedSize: nil, allowUnknownSize: true)
+        assertGDriveStatFails(#"not json"#, expectedSize: 123, allowUnknownSize: false)
+    }
+
+    func testVerifiedUploadOutcomeSucceedsAfterQuotaErrorWhenRemoteExists() async throws {
+        var didVerify = false
+        let destination = try await GDriveManager.verifiedUploadOutcome(
+            destination: "gdrive:VidDL/video.mp4",
+            expectedSize: 123,
+            allowUnknownSize: false,
+            onVerifying: {},
+            upload: {
+                throw GDriveError.uploadFailed("googleapi: Error 403: User rate limit exceeded")
+            },
+            verify: {
+                didVerify = true
+            }
+        )
+
+        XCTAssertEqual(destination, "gdrive:VidDL/video.mp4")
+        XCTAssertTrue(didVerify)
+    }
+
+    func testVerifiedUploadOutcomePreservesQuotaFailureWhenRemoteMissing() async {
+        do {
+            _ = try await GDriveManager.verifiedUploadOutcome(
+                destination: "gdrive:VidDL/video.mp4",
+                expectedSize: 123,
+                allowUnknownSize: false,
+                onVerifying: {},
+                upload: {
+                    throw GDriveError.uploadFailed("googleapi: Error 403: Quota exceeded for quota metric 'Queries'")
+                },
+                verify: {
+                    throw GDriveError.uploadFailed("missing")
+                }
+            )
+            XCTFail("Expected quota failure to remain when verification fails")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("Google Drive rate limit hit"))
+        }
+    }
+
+    func testVerifiedUploadOutcomeFailsSuccessfulUploadWhenVerificationFails() async {
+        do {
+            _ = try await GDriveManager.verifiedUploadOutcome(
+                destination: "gdrive:VidDL/video.mp4",
+                expectedSize: 123,
+                allowUnknownSize: false,
+                onVerifying: {},
+                upload: {},
+                verify: {
+                    throw GDriveError.uploadFailed("Google Drive upload check failed")
+                }
+            )
+            XCTFail("Expected verification failure")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("Google Drive upload check failed"))
+        }
+    }
+
     func testDirectDownloadsStreamToGoogleDrive() {
         XCTAssertTrue(
             GDriveDownloadJob.shouldStream(mediaKind: .direct, siteName: "Example", sourcePageUrl: nil)
@@ -677,6 +810,14 @@ final class GDriveStreamingUploadTests: XCTestCase {
         )
         XCTAssertFalse(
             GDriveDownloadJob.shouldStream(mediaKind: .audio, siteName: "Example", sourcePageUrl: nil)
+        )
+    }
+
+    private func assertGDriveStatFails(_ json: String, expectedSize: Int64?, allowUnknownSize: Bool, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertThrowsError(
+            try GDriveManager.validateRemoteFileStat(json, expectedSize: expectedSize, allowUnknownSize: allowUnknownSize),
+            file: file,
+            line: line
         )
     }
 }

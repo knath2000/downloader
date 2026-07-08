@@ -99,6 +99,7 @@
 	A10118 /* RemoteFilesDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20118 /* RemoteFilesDisplay.swift */; };
 	A10074 /* String+Parsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20074 /* String+Parsing.swift */; };
 	A10075 /* NetworkConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20075 /* NetworkConstants.swift */; };
+	A10133 /* ExtractionVPN.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20133 /* ExtractionVPN.swift */; };
 	A10076 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20076 /* Logging.swift */; };
 	A10077 /* SubprocessRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20077 /* SubprocessRunner.swift */; };
 	A10078 /* DownloadPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20078 /* DownloadPaths.swift */; };
@@ -233,6 +234,7 @@
 	A20118 /* RemoteFilesDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesDisplay.swift; sourceTree = "<group>"; };
 	A20074 /* String+Parsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Parsing.swift"; sourceTree = "<group>"; };
 	A20075 /* NetworkConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkConstants.swift; sourceTree = "<group>"; };
+	A20133 /* ExtractionVPN.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtractionVPN.swift; sourceTree = "<group>"; };
 	A20076 /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
 	A20077 /* SubprocessRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubprocessRunner.swift; sourceTree = "<group>"; };
 	A20078 /* DownloadPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadPaths.swift; sourceTree = "<group>"; };
@@ -338,8 +340,9 @@
 			A20061 /* LicenseManager.swift */,
 			A20064 /* HardwareID.swift */,
 			A20062 /* Theme.swift */,
-				A20063 /* GlassComponents.swift */,
+			A20063 /* GlassComponents.swift */,
 			A20075 /* NetworkConstants.swift */,
+				A20133 /* ExtractionVPN.swift */,
 			A20076 /* Logging.swift */,
 			A20025 /* ProFeatureGate.swift */,
 			A20026 /* UpgradeOverlay.swift */,
@@ -755,6 +758,7 @@
 			A10118 /* RemoteFilesDisplay.swift in Sources */,
 			A10074 /* String+Parsing.swift in Sources */,
 			A10075 /* NetworkConstants.swift in Sources */,
+				A10133 /* ExtractionVPN.swift in Sources */,
 			A10076 /* Logging.swift in Sources */,
 			A10077 /* SubprocessRunner.swift in Sources */,
 			A10078 /* DownloadPaths.swift in Sources */,

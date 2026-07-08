@@ -60,18 +60,18 @@ struct GDriveManager {
         return "Google Drive rate limit hit. Wait a minute and retry this upload. \(trimmed)"
     }
 
-    static func uploadLocalFile(_ localFile: URL, remoteName: String = "gdrive", remotePath: String = "VidDL/", onProgress: @escaping (ProgressEvent) -> Void) async throws {
+    @discardableResult
+    static func uploadLocalFile(_ localFile: URL, remoteName: String = "gdrive", remotePath: String = "VidDL/", onProgress: @escaping (ProgressEvent) -> Void) async throws -> String {
         guard let rclone = findRclone() else { throw GDriveError.notInstalled }
         guard isConfigured(remoteName: remoteName) else { throw GDriveError.notConfigured }
 
-        let uploadRemotePath = remotePath.hasSuffix("/") ? remotePath : remotePath + "/"
         let uniqueName = VideoFileNaming.mp4FileName(
             title: localFile.deletingPathExtension().lastPathComponent,
             fallback: localFile.lastPathComponent
         )
-        let remoteDest = "\(remoteName):\(uploadRemotePath)\(uniqueName)"
+        let remoteDest = rcloneDestination(remoteName: remoteName, remotePath: remotePath, filename: uniqueName)
 
-        onProgress(.uploading(msg: "Verifying video…", pct: 0))
+        onProgress(.verifying(msg: "Verifying video…", pct: 0))
         try await VideoProcessor.verifyForUpload(localFile)
 
         ThumbnailCache.generateAndCache(fromLocalFile: localFile.path, forRemoteUrl: localFile.absoluteString)
@@ -90,41 +90,52 @@ struct GDriveManager {
             }
         }
 
-        _ = try await retryingQuotaLimitedUpload(
-            onRetry: { attempt, delay in
-                let pct = max(0, lastUploadPct)
-                onProgress(.uploading(
-                    msg: "Google Drive rate limit hit; retry \(attempt) in \(Int(delay))s…",
-                    pct: Double(pct)
-                ))
+        return try await verifiedUploadOutcome(
+            destination: remoteDest,
+            expectedSize: fileSize,
+            allowUnknownSize: false,
+            onVerifying: {
+                onProgress(.verifying(msg: "Checking Google Drive…", pct: 99))
             },
-            operation: {
-                let result: SubprocessResult
-                do {
-                    result = try await SubprocessRunner.run(
-                        executable: rclone,
-                        arguments: ["copyto", localFile.path, remoteDest, "--progress", "--fast-list", "--transfers=1", "-v"],
-                        timeout: 7200,
-                        stdoutHandler: progressHandler,
-                        stderrHandler: progressHandler
-                    )
-                } catch SubprocessRunnerError.timedOut {
-                    throw GDriveError.uploadFailed("Upload timed out")
-                }
+            upload: {
+                _ = try await retryingQuotaLimitedUpload(
+                    onRetry: { attempt, delay in
+                        let pct = max(0, lastUploadPct)
+                        onProgress(.uploading(
+                            msg: "Google Drive rate limit hit; retry \(attempt) in \(Int(delay))s…",
+                            pct: Double(pct)
+                        ))
+                    },
+                    operation: {
+                        let result: SubprocessResult
+                        do {
+                            result = try await SubprocessRunner.run(
+                                executable: rclone,
+                                arguments: ["copyto", localFile.path, remoteDest, "--progress", "--fast-list", "--transfers=1", "-v"],
+                                timeout: 7200,
+                                stdoutHandler: progressHandler,
+                                stderrHandler: progressHandler
+                            )
+                        } catch SubprocessRunnerError.timedOut {
+                            throw GDriveError.uploadFailed("Upload timed out")
+                        }
 
-                if result.exitStatus != 0 {
-                    throw GDriveError.uploadFailed(
-                        rcloneFailureMessage(
-                            result: result,
-                            fallback: "Upload failed (exit \(result.exitStatus))"
-                        )
-                    )
-                }
-                return result
+                        if result.exitStatus != 0 {
+                            throw GDriveError.uploadFailed(
+                                rcloneFailureMessage(
+                                    result: result,
+                                    fallback: "Upload failed (exit \(result.exitStatus))"
+                                )
+                            )
+                        }
+                        return result
+                    }
+                )
+            },
+            verify: {
+                try await verifyRemoteFile(destination: remoteDest, expectedSize: fileSize, allowUnknownSize: false)
             }
         )
-
-        onProgress(.completed(msg: "Uploaded to Google Drive: \(remoteDest)"))
     }
 
     @discardableResult
@@ -135,18 +146,38 @@ struct GDriveManager {
         filename: String,
         headers: [String: String]? = nil,
         onRetry: @escaping (Int, TimeInterval) -> Void = { _, _ in },
+        onVerifying: @escaping () -> Void = {},
         onProgress: @escaping (Double) -> Void
     ) async throws -> String {
-        try await retryingQuotaLimitedUpload(onRetry: onRetry) {
-            try await uploadStreamOnce(
-                sourceURL: sourceURL,
-                remoteName: remoteName,
-                remotePath: remotePath,
-                filename: filename,
-                headers: headers,
-                onProgress: onProgress
-            )
-        }
+        let contentLength = await fetchContentLength(url: sourceURL, headers: headers)
+        let expectedSize = contentLength > 0 ? contentLength : nil
+        let destination = rcloneDestination(remoteName: remoteName, remotePath: remotePath, filename: filename)
+        return try await verifiedUploadOutcome(
+            destination: destination,
+            expectedSize: expectedSize,
+            allowUnknownSize: expectedSize == nil,
+            onVerifying: onVerifying,
+            upload: {
+                _ = try await retryingQuotaLimitedUpload(onRetry: onRetry) {
+                    try await uploadStreamOnce(
+                        sourceURL: sourceURL,
+                        remoteName: remoteName,
+                        remotePath: remotePath,
+                        filename: filename,
+                        headers: headers,
+                        expectedBytes: contentLength,
+                        onProgress: onProgress
+                    )
+                }
+            },
+            verify: {
+                try await verifyRemoteFile(
+                    destination: destination,
+                    expectedSize: expectedSize,
+                    allowUnknownSize: expectedSize == nil
+                )
+            }
+        )
     }
 
     @discardableResult
@@ -156,6 +187,7 @@ struct GDriveManager {
         remotePath: String = "VidDL/",
         filename: String,
         headers: [String: String]? = nil,
+        expectedBytes: Int64,
         onProgress: @escaping (Double) -> Void
     ) async throws -> String {
         let trimmed = remoteName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -163,7 +195,6 @@ struct GDriveManager {
         guard let rclone = findRclone() else { throw GDriveError.notInstalled }
         guard isConfigured(remoteName: trimmed) else { throw GDriveError.notConfigured }
 
-        let contentLength = await fetchContentLength(url: sourceURL, headers: headers)
         let destination = rcloneDestination(remoteName: trimmed, remotePath: remotePath, filename: filename)
         let process = Process()
         process.executableURL = rclone
@@ -201,7 +232,7 @@ struct GDriveManager {
             let request = sourceRequest(url: sourceURL, headers: headers)
             try await streamSource(
                 request: request,
-                expectedBytes: contentLength,
+                expectedBytes: expectedBytes,
                 onChunk: { data in stdinPipe.fileHandleForWriting.write(data) },
                 onProgress: onProgress
             )
@@ -249,18 +280,31 @@ struct GDriveManager {
         filename: String,
         headers: [String: String]? = nil,
         onRetry: @escaping (Int, TimeInterval) -> Void = { _, _ in },
+        onVerifying: @escaping () -> Void = {},
         onProgress: @escaping (Double) -> Void
     ) async throws -> String {
-        try await retryingQuotaLimitedUpload(onRetry: onRetry) {
-            try await uploadHLSStreamOnce(
-                m3u8URL: m3u8URL,
-                remoteName: remoteName,
-                remotePath: remotePath,
-                filename: filename,
-                headers: headers,
-                onProgress: onProgress
-            )
-        }
+        let destination = rcloneDestination(remoteName: remoteName, remotePath: remotePath, filename: filename)
+        return try await verifiedUploadOutcome(
+            destination: destination,
+            expectedSize: nil,
+            allowUnknownSize: true,
+            onVerifying: onVerifying,
+            upload: {
+                _ = try await retryingQuotaLimitedUpload(onRetry: onRetry) {
+                    try await uploadHLSStreamOnce(
+                        m3u8URL: m3u8URL,
+                        remoteName: remoteName,
+                        remotePath: remotePath,
+                        filename: filename,
+                        headers: headers,
+                        onProgress: onProgress
+                    )
+                }
+            },
+            verify: {
+                try await verifyRemoteFile(destination: destination, expectedSize: nil, allowUnknownSize: true)
+            }
+        )
     }
 
     @discardableResult
@@ -435,43 +479,63 @@ struct GDriveManager {
             }
         }
 
-        _ = try await retryingQuotaLimitedUpload(
-            onRetry: { attempt, delay in
-                onProgress("Google Drive rate limit hit; retry \(attempt) in \(Int(delay))s…")
+        return try await verifiedUploadOutcome(
+            destination: remoteDest,
+            expectedSize: fileSize,
+            allowUnknownSize: false,
+            onVerifying: {
+                onProgress("Checking Google Drive…")
             },
-            operation: {
-                let result: SubprocessResult
-                do {
-                    result = try await SubprocessRunner.run(
-                        executable: rclone,
-                        arguments: ["copyto", tempFile.path, remoteDest, "--progress", "--fast-list", "--transfers=1", "-v"],
-                        timeout: 7200,
-                        stdoutHandler: progressHandler,
-                        stderrHandler: progressHandler
-                    )
-                } catch SubprocessRunnerError.timedOut {
-                    throw GDriveError.uploadFailed("Upload timed out")
-                }
+            upload: {
+                _ = try await retryingQuotaLimitedUpload(
+                    onRetry: { attempt, delay in
+                        onProgress("Google Drive rate limit hit; retry \(attempt) in \(Int(delay))s…")
+                    },
+                    operation: {
+                        let result: SubprocessResult
+                        do {
+                            result = try await SubprocessRunner.run(
+                                executable: rclone,
+                                arguments: ["copyto", tempFile.path, remoteDest, "--progress", "--fast-list", "--transfers=1", "-v"],
+                                timeout: 7200,
+                                stdoutHandler: progressHandler,
+                                stderrHandler: progressHandler
+                            )
+                        } catch SubprocessRunnerError.timedOut {
+                            throw GDriveError.uploadFailed("Upload timed out")
+                        }
 
-                if result.exitStatus != 0 {
-                    throw GDriveError.uploadFailed(
-                        rcloneFailureMessage(
-                            result: result,
-                            fallback: "Upload failed (exit \(result.exitStatus))"
-                        )
-                    )
-                }
-                return result
+                        if result.exitStatus != 0 {
+                            throw GDriveError.uploadFailed(
+                                rcloneFailureMessage(
+                                    result: result,
+                                    fallback: "Upload failed (exit \(result.exitStatus))"
+                                )
+                            )
+                        }
+                        return result
+                    }
+                )
+            },
+            verify: {
+                try await verifyRemoteFile(destination: remoteDest, expectedSize: fileSize, allowUnknownSize: false)
             }
         )
-
-        onProgress("Uploaded to Google Drive: \(remoteDest)")
-        return remoteDest
     }
 
 }
 
-private extension GDriveManager {
+extension GDriveManager {
+    struct RcloneRemoteFileStat: Decodable {
+        let isDir: Bool
+        let size: Int64?
+
+        enum CodingKeys: String, CodingKey {
+            case isDir = "IsDir"
+            case size = "Size"
+        }
+    }
+
     static func retryingQuotaLimitedUpload<T>(
         onRetry: @escaping (Int, TimeInterval) -> Void,
         operation: () async throws -> T
@@ -491,6 +555,77 @@ private extension GDriveManager {
                 onRetry(attempt, TimeInterval(delay) / 1_000_000_000)
                 try await Task.sleep(nanoseconds: delay)
             }
+        }
+    }
+
+    static func verifiedUploadOutcome(
+        destination: String,
+        expectedSize: Int64?,
+        allowUnknownSize: Bool,
+        onVerifying: () -> Void,
+        upload: () async throws -> Void,
+        verify: () async throws -> Void
+    ) async throws -> String {
+        do {
+            try await upload()
+            onVerifying()
+            try await verify()
+            return destination
+        } catch GDriveError.uploadFailed(let message) where isGoogleDriveQuotaError(message) {
+            onVerifying()
+            do {
+                try await verify()
+                return destination
+            } catch {
+                throw GDriveError.uploadFailed(userFacingRcloneFailureMessage(message))
+            }
+        }
+    }
+
+    static func verifyRemoteFile(destination: String, expectedSize: Int64?, allowUnknownSize: Bool) async throws {
+        guard let rclone = findRclone() else { throw GDriveError.notInstalled }
+        let result = try await SubprocessRunner.run(
+            executable: rclone,
+            arguments: rcloneVerifyArguments(destination: destination),
+            timeout: 60
+        )
+        guard result.exitStatus == 0 else {
+            throw GDriveError.uploadFailed(
+                rcloneFailureMessage(
+                    result: result,
+                    fallback: "Google Drive upload check failed (exit \(result.exitStatus))."
+                )
+            )
+        }
+        try validateRemoteFileStat(result.stdout, expectedSize: expectedSize, allowUnknownSize: allowUnknownSize)
+    }
+
+    static func rcloneVerifyArguments(destination: String) -> [String] {
+        ["lsjson", destination, "--stat", "--files-only", "--no-mimetype", "--no-modtime"]
+    }
+
+    static func validateRemoteFileStat(_ json: String, expectedSize: Int64?, allowUnknownSize: Bool) throws {
+        let trimmed = json.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let data = trimmed.data(using: .utf8),
+              let stat = try? JSONDecoder().decode(RcloneRemoteFileStat.self, from: data) else {
+            throw GDriveError.uploadFailed("Google Drive upload check returned invalid file metadata.")
+        }
+        guard !stat.isDir else {
+            throw GDriveError.uploadFailed("Google Drive upload check found a folder instead of the uploaded file.")
+        }
+        guard let size = stat.size else {
+            throw GDriveError.uploadFailed("Google Drive upload check did not return a file size.")
+        }
+        if let expectedSize {
+            guard size == expectedSize else {
+                throw GDriveError.uploadFailed("Google Drive upload check found \(MegaManager.fmt(size)), expected \(MegaManager.fmt(expectedSize)).")
+            }
+        } else if allowUnknownSize {
+            guard size > 0 else {
+                throw GDriveError.uploadFailed("Google Drive upload check found an empty file.")
+            }
+        } else {
+            throw GDriveError.uploadFailed("Google Drive upload check requires an expected file size.")
         }
     }
 

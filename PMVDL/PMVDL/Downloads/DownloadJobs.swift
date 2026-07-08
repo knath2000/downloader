@@ -248,6 +248,9 @@ struct GDriveDownloadJob: DownloadJob {
                 onRetry: { attempt, delay in
                     onEvent(.progress(.uploading, 99, "Google Drive rate limit hit; retry \(attempt) in \(Int(delay))s…"))
                 },
+                onVerifying: {
+                    onEvent(.progress(.verifying, 99, "Checking Google Drive…"))
+                },
                 onProgress: { progress in
                     let pct = min(99, max(0, progress * 100))
                     onEvent(.progress(.uploading, pct, String(format: "Transferring to Google Drive… %.0f%%", pct)))
@@ -266,6 +269,9 @@ struct GDriveDownloadJob: DownloadJob {
                 onRetry: { attempt, delay in
                     onEvent(.progress(.uploading, 99, "Google Drive rate limit hit; retry \(attempt) in \(Int(delay))s…"))
                 },
+                onVerifying: {
+                    onEvent(.progress(.verifying, 99, "Checking Google Drive…"))
+                },
                 onProgress: { progress in
                     let pct = min(99, max(0, progress * 100))
                     onEvent(.progress(.downloading, pct, String(format: "Streaming HLS to Google Drive… %.1f%%", pct)))
@@ -282,7 +288,7 @@ struct GDriveDownloadJob: DownloadJob {
                     onEvent(.progress(event.phase.queueStatus, event.percent, event.message, event.metrics))
                 }
             )
-            try await GDriveManager.uploadLocalFile(
+            finalPath = try await GDriveManager.uploadLocalFile(
                 mp4File,
                 remoteName: remoteName,
                 remotePath: remotePath,
@@ -291,7 +297,6 @@ struct GDriveDownloadJob: DownloadJob {
                 }
             )
             filename = mp4File.lastPathComponent
-            finalPath = "\(remoteName):\(normalizedRemotePath)\(filename)"
             try? FileManager.default.removeItem(at: mp4File)
         } else {
             finalPath = try await runLocalFallback(
@@ -378,6 +383,9 @@ struct GDriveDownloadJob: DownloadJob {
                 onRetry: { attempt, delay in
                     onEvent(.progress(.uploading, 99, "Google Drive rate limit hit; retry \(attempt) in \(Int(delay))s…"))
                 },
+                onVerifying: {
+                    onEvent(.progress(.verifying, 99, "Checking Google Drive…"))
+                },
                 onProgress: { progress in
                     let pct = min(99, max(0, progress * 100))
                     onEvent(.progress(.uploading, pct, String(format: "Transferring to Google Drive… %.0f%%", pct)))
@@ -398,7 +406,7 @@ struct GDriveDownloadJob: DownloadJob {
 
         defer { try? FileManager.default.removeItem(at: localFile) }
         onEvent(.progress(.uploading, 0, "Uploading to Google Drive… 0%"))
-        try await GDriveManager.uploadLocalFile(
+        return try await GDriveManager.uploadLocalFile(
             localFile,
             remoteName: remoteName,
             remotePath: remotePath,
@@ -406,7 +414,6 @@ struct GDriveDownloadJob: DownloadJob {
                 onEvent(.progress(event.phase.queueStatus, event.percent, event.message, event.metrics))
             }
         )
-        return GDriveManager.rcloneDestination(remoteName: remoteName, remotePath: remotePath, filename: localFile.lastPathComponent)
     }
 
     private var normalizedRemotePath: String {

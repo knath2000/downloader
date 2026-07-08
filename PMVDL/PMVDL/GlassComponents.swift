@@ -42,6 +42,7 @@ extension EnvironmentValues {
 
 enum AppShellSurfaceMetrics {
     static let appModalBackdropInset: CGFloat = 6
+    static let appModalTitlebarClearance: CGFloat = 34
 
     static func pageMaxWidth(for windowSize: CGSize) -> CGFloat {
         clamped(windowSize.width * 0.96, min: 1180, max: 1900)
@@ -67,8 +68,8 @@ enum AppShellSurfaceMetrics {
         max(windowSize.width - appModalBackdropInset * 2, 760)
     }
 
-    static func appModalSurfaceHeight(for windowSize: CGSize) -> CGFloat {
-        max(windowSize.height - appModalBackdropInset * 2, 560)
+    static func appModalSurfaceHeight(for windowSize: CGSize, reservedTopInset: CGFloat = 0) -> CGFloat {
+        max(windowSize.height - appModalBackdropInset * 2 - reservedTopInset, 560)
     }
 
     static func workflowModalWidth(for windowSize: CGSize) -> CGFloat {
@@ -458,10 +459,11 @@ struct GradientProgressBar: View {
 struct AppModalOverlay<Content: View>: View {
     @ObservedObject private var appState = AppStateManager.shared
     let dismiss: () -> Void
+    var reservedTopInset: CGFloat = 0
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             Color.black.opacity(0.001)
                 .ignoresSafeArea()
                 .onTapGesture { dismiss() }
@@ -469,10 +471,11 @@ struct AppModalOverlay<Content: View>: View {
             content()
                 .frame(
                     width: AppShellSurfaceMetrics.appModalSurfaceWidth(for: appState.windowSize),
-                    height: AppShellSurfaceMetrics.appModalSurfaceHeight(for: appState.windowSize)
+                    height: AppShellSurfaceMetrics.appModalSurfaceHeight(for: appState.windowSize, reservedTopInset: reservedTopInset)
                 )
                 .contentShape(Rectangle())
                 .onTapGesture {}
+                .padding(.top, reservedTopInset)
         }
         .padding(AppShellSurfaceMetrics.appModalBackdropInset)
         .ignoresSafeArea()
