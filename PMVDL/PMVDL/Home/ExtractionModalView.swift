@@ -771,14 +771,38 @@ private struct ExtractionLoadingRow: View {
     @State private var sweepPhase: CGFloat = 0
     @State private var pulsePhase: Double = 0
 
-    private var allowsAnimation: Bool {
-        !reduceMotion && performanceProfile.allowsLoadingAnimation
+    /// Motion-heavy effects (shimmer sweep + progress sweep + entrance offset)
+    /// stay gated behind the existing policy: off under Accessibility Reduce
+    /// Motion or reduced performance effects.
+    private var allowsTravelingEffects: Bool {
+        Self.allowsTravelingEffects(reduceMotion: reduceMotion,
+                                    allowsLoadingAnimation: performanceProfile.allowsLoadingAnimation)
     }
 
-    /// Subtle breathing interpolation in [0, 1]; stays 1 when animation is off
-    /// so rows remain static (no repeating pulse) under reduced motion/effects.
+    /// The subtle tint/border/brightness pulse always runs for pending skeleton
+    /// rows so extraction still reads as active (e.g. under macOS Reduce Motion
+    /// or an x86_64 reduced-effects Debug build). It is gentle enough that it is
+    /// not a "motion-heavy" effect.
+    private var allowsPulse: Bool {
+        Self.pulseAnimated
+    }
+
+    /// Breathing interpolation in [0, 1], driven by the always-running pulse.
     private var pulseT: Double {
-        allowsAnimation ? pulsePhase : 1
+        pulsePhase
+    }
+
+    // MARK: Shared animation policy (exercised by ExtractionPulseTests)
+
+    /// The pulse is always animated for pending extraction rows, regardless of
+    /// Reduce Motion or performance profile.
+    static let pulseAnimated: Bool = true
+
+    /// True only when motion is allowed and the performance profile permits
+    /// loading animation. Mirrors the previous `allowsAnimation` gate used for
+    /// the shimmer/progress sweep and the entrance offset.
+    static func allowsTravelingEffects(reduceMotion: Bool, allowsLoadingAnimation: Bool) -> Bool {
+        !reduceMotion && allowsLoadingAnimation
     }
 
     private var borderOpacity: Double {
@@ -809,14 +833,14 @@ private struct ExtractionLoadingRow: View {
                 .fill(Theme.surface2.opacity(0.48))
                 .frame(width: 110, height: 76)
                 .overlay(
-                    ExtractionPlaceholderShimmer(phase: shimmerPhase, isActive: allowsAnimation)
+                    ExtractionPlaceholderShimmer(phase: shimmerPhase, isActive: allowsTravelingEffects)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Theme.skyBlue.opacity(washOpacity))
                 )
-                .brightness(allowsAnimation ? pulseT * ExtractionPulse.brightness : 0)
+                .brightness(pulseT * ExtractionPulse.brightness)
                 .overlay(
                     Image(systemName: "play.fill")
                         .font(.system(size: 14, weight: .bold))
@@ -829,15 +853,15 @@ private struct ExtractionLoadingRow: View {
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Theme.textPrimary.opacity(0.18))
                     .frame(width: titleWidth, height: 16)
-                    .overlay(ExtractionPlaceholderShimmer(phase: shimmerPhase, isActive: allowsAnimation))
+                    .overlay(ExtractionPlaceholderShimmer(phase: shimmerPhase, isActive: allowsTravelingEffects))
                     .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .brightness(allowsAnimation ? pulseT * ExtractionPulse.brightness : 0)
+                    .brightness(pulseT * ExtractionPulse.brightness)
 
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
                         Capsule()
                             .fill(Theme.surface0.opacity(0.58))
-                        if allowsAnimation {
+                        if allowsTravelingEffects {
                             Capsule()
                                 .fill(tint)
                                 .frame(width: max(44, proxy.size.width * 0.28))
@@ -881,10 +905,17 @@ private struct ExtractionLoadingRow: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Theme.skyBlue.opacity(borderOpacity), lineWidth: 1.5)
         )
-        .opacity(isPresented || !allowsAnimation ? 1 : 0.82)
-        .offset(y: isPresented || !allowsAnimation ? 0 : 6)
+        .opacity(isPresented || reduceMotion ? 1 : 0.82)
+        .offset(y: isPresented || reduceMotion ? 0 : 6)
         .onAppear {
-            guard allowsAnimation else {
+            // The gentle pulse always runs for pending rows, even under
+            // Reduce Motion or a reduced-effects (e.g. x86_64) build.
+            withAnimation(.easeInOut(duration: ExtractionPulse.duration).repeatForever(autoreverses: true)) {
+                pulsePhase = 1
+            }
+            // Entrance offset + motion-heavy effects stay disabled under
+            // Reduce Motion; travel effects also require loading animation.
+            guard allowsTravelingEffects else {
                 isPresented = true
                 return
             }
@@ -896,9 +927,6 @@ private struct ExtractionLoadingRow: View {
             }
             withAnimation(.linear(duration: 1.55).repeatForever(autoreverses: false)) {
                 sweepPhase = 1
-            }
-            withAnimation(.easeInOut(duration: ExtractionPulse.duration).repeatForever(autoreverses: true)) {
-                pulsePhase = 1
             }
         }
     }

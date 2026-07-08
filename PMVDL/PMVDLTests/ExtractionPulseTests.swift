@@ -3,38 +3,69 @@ import XCTest
 
 /// Focused tests for the subtle "breathing" pulse applied to pending extraction
 /// skeleton rows. These verify the two guarantees from the change plan:
-///  1. The pulse is enabled only when reduce-motion is off AND the performance
-///     profile allows loading animation.
-///  2. The pulse timing/opacity/brightness constants stay within a subtle range
-///     (no bouncing, no layout shift, no heavy visual churn).
+///  1. The pulse is ALWAYS animated for pending rows — even under Accessibility
+///     Reduce Motion, a reduced-effects (e.g. x86_64) Debug build, or any
+///     combination — because it is a gentle opacity/tint breath, not a
+///     motion-heavy effect.
+///  2. Motion-heavy effects (shimmer sweep + progress sweep + entrance offset)
+///     stay disabled under Reduce Motion or reduced performance effects.
+///
+/// The tests exercise `ExtractionLoadingRow`'s real shared policy helpers rather
+/// than mirroring the logic locally.
 final class ExtractionPulseTests: XCTestCase {
 
-    // MARK: - Pulse enablement (mirrors ExtractionLoadingRow.allowsAnimation)
+    // MARK: - Pulse is enabled unconditionally for pending rows
 
-    private func pulseEnabled(reduceMotion: Bool, profile: PerformanceProfile) -> Bool {
-        !reduceMotion && profile.allowsLoadingAnimation
+    func testPulseAnimatedIsAlwaysTrue() {
+        XCTAssertTrue(ExtractionLoadingRow.pulseAnimated)
     }
 
-    func testPulseEnabledWhenMotionAllowedAndProfileNormal() {
-        XCTAssertTrue(pulseEnabled(reduceMotion: false, profile: .normal))
+    func testPulseAnimatedUnderReduceMotion() {
+        XCTAssertTrue(ExtractionLoadingRow.pulseAnimated,
+                      "Pulse must run even when Accessibility Reduce Motion is on")
     }
 
-    func testPulseDisabledWhenReduceMotionIsOn() {
-        XCTAssertFalse(pulseEnabled(reduceMotion: true, profile: .normal))
+    func testPulseAnimatedUnderReducedEffects() {
+        XCTAssertTrue(ExtractionLoadingRow.pulseAnimated,
+                      "Pulse must run even with a reduced-effects performance profile")
     }
 
-    func testPulseDisabledWhenProfileDisallowsLoadingAnimation() {
-        XCTAssertFalse(pulseEnabled(reduceMotion: false, profile: .reducedEffects))
+    func testPulseAnimatedOnX86_64ReducedProfile() {
+        // Simulates the reported environment: macOS Reduce Motion enabled and a
+        // Debug build whose performance profile disallows loading animation.
+        XCTAssertTrue(ExtractionLoadingRow.pulseAnimated,
+                      "x86_64 / reduced profile must not suppress the pulse")
     }
 
-    func testPulseDisabledWhenBothConstraintsActive() {
-        XCTAssertFalse(pulseEnabled(reduceMotion: true, profile: .reducedEffects))
+    // MARK: - Traveling effects stay gated (shimmer + sweep + entrance)
+
+    func testTravelingEffectsEnabledWhenMotionOffAndProfileNormal() {
+        XCTAssertTrue(ExtractionLoadingRow.allowsTravelingEffects(
+            reduceMotion: false,
+            allowsLoadingAnimation: PerformanceProfile.normal.allowsLoadingAnimation))
+    }
+
+    func testTravelingEffectsDisabledUnderReduceMotion() {
+        XCTAssertFalse(ExtractionLoadingRow.allowsTravelingEffects(
+            reduceMotion: true,
+            allowsLoadingAnimation: PerformanceProfile.normal.allowsLoadingAnimation))
+    }
+
+    func testTravelingEffectsDisabledUnderReducedEffects() {
+        XCTAssertFalse(ExtractionLoadingRow.allowsTravelingEffects(
+            reduceMotion: false,
+            allowsLoadingAnimation: PerformanceProfile.reducedEffects.allowsLoadingAnimation))
+    }
+
+    func testTravelingEffectsDisabledWhenBothActive() {
+        XCTAssertFalse(ExtractionLoadingRow.allowsTravelingEffects(
+            reduceMotion: true,
+            allowsLoadingAnimation: PerformanceProfile.reducedEffects.allowsLoadingAnimation))
     }
 
     // MARK: - Pulse timing / strength constants stay subtle
 
     func testPulsePeriodIsGentle() {
-        // A breath should be slow enough to read as gentle, not a fast flicker.
         XCTAssertGreaterThanOrEqual(ExtractionPulse.duration, 1.2)
         XCTAssertLessThanOrEqual(ExtractionPulse.duration, 3.0)
     }
@@ -52,8 +83,6 @@ final class ExtractionPulseTests: XCTestCase {
     }
 
     func testBrightnessDeltaIsSubtle() {
-        // 6% brightness breathing is gentle; anything larger starts to feel like
-        // a glow/flicker rather than a breath.
         XCTAssertGreaterThanOrEqual(ExtractionPulse.brightness, 0.0)
         XCTAssertLessThanOrEqual(ExtractionPulse.brightness, 0.15)
     }
