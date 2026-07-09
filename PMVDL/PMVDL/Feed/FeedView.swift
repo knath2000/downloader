@@ -292,7 +292,10 @@ struct FeedView: View {
         }
         .frame(
             width: AppShellSurfaceMetrics.browserSurfaceWidth(for: appState.windowSize),
-            height: AppShellSurfaceMetrics.browserSurfaceHeight(for: appState.windowSize)
+            height: AppShellSurfaceMetrics.browserSurfaceHeight(
+                for: appState.windowSize,
+                reservedBottomInset: bottomChromeInset
+            )
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {

@@ -427,6 +427,7 @@ struct HomeCompactQueue: View {
             pause: { queue.pause(item) },
             resume: { resume(item) },
             retry: { retry(item) },
+            startNow: { startNow(item) },
             remove: { queue.remove(item) },
             moveToFront: { moveToFront(item) },
             showInFinder: { showInFinder(item) },
@@ -639,6 +640,10 @@ struct HomeCompactQueue: View {
         }
     }
 
+    private func startNow(_ item: DownloadQueueItem) {
+        guard queue.startNow(item, seedboxWebdavPassword: seedboxWebdavPassword) else { return }
+    }
+
     private func showInFinder(_ item: DownloadQueueItem) {
         if let finalPath = item.finalPath {
             let url = URL(fileURLWithPath: finalPath)
@@ -670,6 +675,7 @@ private struct HomeCompactQueueRow: View, Equatable {
     let pause: () -> Void
     let resume: () -> Void
     let retry: () -> Void
+    let startNow: () -> Void
     let remove: () -> Void
     let moveToFront: () -> Void
     let showInFinder: () -> Void
@@ -693,6 +699,10 @@ private struct HomeCompactQueueRow: View, Equatable {
 
     private var details: HomeQueueRowDetails {
         HomeQueueRowDetails(item: item)
+    }
+
+    private var canStartNow: Bool {
+        DownloadQueueManualStartPolicy.canStartNow(item, isPro: ProFeatureGate.isPro)
     }
 
     private var rowCornerRadius: CGFloat {
@@ -834,6 +844,9 @@ private struct HomeCompactQueueRow: View, Equatable {
     private var contextMenu: some View {
         if item.canRetry {
             Button("Retry") { retry() }
+        }
+        if canStartNow {
+            Button("Start Now") { startNow() }
         }
         Button("Show Source") { showSource() }
         Button("Show in Finder") { showInFinder() }

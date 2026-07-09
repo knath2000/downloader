@@ -163,6 +163,7 @@ struct DownloadQueueViewNew: View {
                                         onPause: { queue.pause(item) },
                                         onResume: { resume(item) },
                                         onRetry: { retry(item) },
+                                        onStartNow: { startNow(item) },
                                         onMoveToFront: { moveToFront(item) },
                                         onShowInFinder: { showInFinder(item) },
                                         onShowSource: { showSource(item) },
@@ -323,6 +324,10 @@ struct DownloadQueueViewNew: View {
         while let idx = queue.queue.firstIndex(where: { $0.id == item.id }), idx > 0 {
             queue.moveUp(queue.queue[idx])
         }
+    }
+
+    private func startNow(_ item: DownloadQueueItem) {
+        guard queue.startNow(item, seedboxWebdavPassword: seedboxWebdavPassword) else { return }
     }
 
     private func queueIndex(for item: DownloadQueueItem) -> Int? {
@@ -554,6 +559,7 @@ private struct DownloadQueueRow: View {
     let onPause: () -> Void
     let onResume: () -> Void
     let onRetry: () -> Void
+    let onStartNow: () -> Void
     let onMoveToFront: () -> Void
     let onShowInFinder: () -> Void
     let onShowSource: () -> Void
@@ -565,6 +571,10 @@ private struct DownloadQueueRow: View {
 
     private var tint: Color {
         DownloadStatusFormatting.statusTint(item)
+    }
+
+    private var canStartNow: Bool {
+        DownloadQueueManualStartPolicy.canStartNow(item, isPro: ProFeatureGate.isPro)
     }
 
     var body: some View {
@@ -614,7 +624,7 @@ private struct DownloadQueueRow: View {
             .font(.system(size: 13, weight: .bold))
             .foregroundStyle(item.status.isTerminal ? Theme.textSecondary.opacity(0.35) : Theme.textSecondary)
             .frame(width: 18, height: 24)
-            .help(queueIndex.map { "Queue position \($0) of \(queueCount). Use Start Now to move to the front." } ?? "Queue item")
+            .help(queueIndex.map { "Queue position \($0) of \(queueCount)." } ?? "Queue item")
     }
 
     private var statusIcon: some View {
@@ -680,7 +690,11 @@ private struct DownloadQueueRow: View {
         HStack(spacing: 8) {
             switch item.status {
             case .pending:
-                DownloadRowButton("Start Now", systemImage: "forward.fill", tint: Theme.lavender, action: onMoveToFront)
+                if canStartNow {
+                    DownloadRowButton("Start Now", systemImage: "bolt.fill", tint: Theme.gold, isProminent: true, action: onStartNow)
+                } else {
+                    DownloadRowButton("Move Front", systemImage: "forward.fill", tint: Theme.lavender, action: onMoveToFront)
+                }
                 DownloadRowButton("Cancel", systemImage: "xmark", tint: Theme.textSecondary, action: onRemove)
             case .downloading, .verifying, .uploading:
                 DownloadRowButton("Pause", systemImage: "pause.fill", tint: Theme.textSecondary, action: onPause)
@@ -720,6 +734,9 @@ private struct DownloadQueueRow: View {
     private var contextMenu: some View {
         if item.canRetry {
             Button("Retry") { onRetry() }
+        }
+        if canStartNow {
+            Button("Start Now") { onStartNow() }
         }
         Button("Show Source") { onShowSource() }
         Button("Show in Finder") { onShowInFinder() }

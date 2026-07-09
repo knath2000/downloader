@@ -150,6 +150,36 @@ final class DownloadQueueProjectionTests: XCTestCase {
         XCTAssertFalse(item.canRetry)
     }
 
+    func testManualStartRequiresProPendingStatusAndPayload() {
+        let payload = DownloadRetryPayload(
+            resolution: makeRetryTestResolution(),
+            target: .local,
+            context: DownloadJobContext(
+                megaRemotePath: "/Cloud/VidDL/",
+                gdriveRemoteName: "gdrive",
+                gdriveRemotePath: "VidDL/"
+            ).retryContext,
+            gdriveMegaRemotePath: nil
+        )
+        var item = DownloadQueueItem(
+            url: payload.resolution.requestedUrl,
+            quality: payload.resolution.queueQuality,
+            targetCloud: .local,
+            displayTitle: payload.resolution.title,
+            retryPayload: payload
+        )
+
+        XCTAssertTrue(DownloadQueueManualStartPolicy.canStartNow(item, isPro: true))
+        XCTAssertFalse(DownloadQueueManualStartPolicy.canStartNow(item, isPro: false))
+
+        item.retryPayload = nil
+        XCTAssertFalse(DownloadQueueManualStartPolicy.canStartNow(item, isPro: true))
+
+        item.retryPayload = payload
+        item.status = .paused
+        XCTAssertFalse(DownloadQueueManualStartPolicy.canStartNow(item, isPro: true))
+    }
+
     func testSeedboxMaterializationCompletionProjectsToPreparationState() {
         let projection = ProgressEvent.completed(msg: "Download complete").seedboxMaterializationProjection
 

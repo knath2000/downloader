@@ -97,8 +97,11 @@ enum AppShellSurfaceMetrics {
         appModalSurfaceWidth(for: windowSize)
     }
 
-    static func browserSurfaceHeight(for windowSize: CGSize) -> CGFloat {
-        appModalSurfaceHeight(for: windowSize)
+    static func browserSurfaceHeight(for windowSize: CGSize, reservedBottomInset: CGFloat = 0) -> CGFloat {
+        let available = windowSize.height
+            - appModalBackdropInset * 2
+            - reservedBottomInset
+        return max(available, 1)
     }
 
     static func appModalSurfaceWidth(for windowSize: CGSize) -> CGFloat {

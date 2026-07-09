@@ -46,21 +46,28 @@ struct ContentView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            MeshGradientBackground(isActive: scenePhase == .active)
-                .ignoresSafeArea()
-                .zIndex(-1)
+        GeometryReader { proxy in
+            ZStack {
+                MeshGradientBackground(isActive: scenePhase == .active)
+                    .ignoresSafeArea()
+                    .zIndex(-1)
 
-            navigationBody
-                .zIndex(0)
+                navigationBody
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+                    .zIndex(0)
 
-            bottomNavigation
-                .zIndex(100)
-
-            if showUpgradeOverlay {
-                UpgradeOverlay { dismissUpgradeOverlay() }
-                    .transition(.opacity)
-                    .zIndex(200)
+                if showUpgradeOverlay {
+                    UpgradeOverlay { dismissUpgradeOverlay() }
+                        .transition(.opacity)
+                        .zIndex(200)
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+            .overlay(alignment: .bottom) {
+                bottomNavigation
+                    .zIndex(100)
             }
         }
         .background(WindowConfigurator())
@@ -119,9 +126,9 @@ struct ContentView: View {
     @ViewBuilder
     private func contentLayer(for dest: NavDestination) -> some View {
         if shouldShowOpeningPlaceholder(for: dest) {
-            TabOpeningPlaceholder(destination: dest)
+            TabOpeningPlaceholder(destination: dest, bottomChromeInset: floatingTabContentInset)
                 .padding(dest == .settings || dest == .home ? 16 : 0)
-                .padding(.bottom, floatingTabContentInset)
+                .padding(.bottom, dest == .feed ? 0 : floatingTabContentInset)
                 .transition(.opacity)
         } else {
             contentForDestination(dest)
@@ -150,7 +157,6 @@ struct ContentView: View {
                 .padding(.bottom, floatingTabContentInset)
         case .feed:
             FeedView(bottomChromeInset: floatingTabContentInset)
-                .padding(.bottom, floatingTabContentInset)
         case .settings:
             SettingsView(gdriveRemoteName: $gdriveRemoteName,
                          gdriveRemotePath: $gdriveRemotePath,
@@ -451,6 +457,7 @@ private struct FloatingTabSwitcher: View {
 
 private struct TabOpeningPlaceholder: View {
     let destination: NavDestination
+    var bottomChromeInset: CGFloat = 0
 
     @Environment(\.performanceProfile) private var performanceProfile
     @State private var shimmerPhase: CGFloat = -1
@@ -552,7 +559,10 @@ private struct TabOpeningPlaceholder: View {
             .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .frame(height: AppShellSurfaceMetrics.browserSurfaceHeight(for: AppStateManager.shared.windowSize))
+        .frame(height: AppShellSurfaceMetrics.browserSurfaceHeight(
+            for: AppStateManager.shared.windowSize,
+            reservedBottomInset: bottomChromeInset
+        ))
         .background(Theme.obsidian.opacity(0.62), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)

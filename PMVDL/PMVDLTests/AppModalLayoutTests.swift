@@ -53,6 +53,44 @@ final class AppModalLayoutTests: XCTestCase {
         XCTAssertGreaterThan(expanded, collapsed)
     }
 
+    func testBrowserSurfaceHeightReservesFloatingNavClearance() {
+        let window = CGSize(width: 1600, height: 900)
+        let navClearance = AppShellSurfaceMetrics.floatingNavClearance(isExpanded: true)
+        let height = AppShellSurfaceMetrics.browserSurfaceHeight(
+            for: window,
+            reservedBottomInset: navClearance
+        )
+        XCTAssertLessThanOrEqual(
+            height + AppShellSurfaceMetrics.appModalBackdropInset * 2 + navClearance,
+            window.height
+        )
+    }
+
+    func testBrowserSurfaceHeightMatchesColdFeedPlaceholderContract() {
+        let window = CGSize(width: 1440, height: 875)
+        let navClearance = AppShellSurfaceMetrics.floatingNavClearance(isExpanded: true)
+        let placeholderHeight = AppShellSurfaceMetrics.browserSurfaceHeight(
+            for: window,
+            reservedBottomInset: navClearance
+        )
+        let feedHeight = AppShellSurfaceMetrics.browserSurfaceHeight(
+            for: window,
+            reservedBottomInset: navClearance
+        )
+        XCTAssertEqual(placeholderHeight, feedHeight, accuracy: 0.001)
+    }
+
+    func testBrowserSurfaceHeightDoesNotUseModalMinimumFloor() {
+        let tiny = CGSize(width: 500, height: 360)
+        let navClearance = AppShellSurfaceMetrics.floatingNavClearance(isExpanded: true)
+        let height = AppShellSurfaceMetrics.browserSurfaceHeight(
+            for: tiny,
+            reservedBottomInset: navClearance
+        )
+        XCTAssertLessThan(height, 560)
+        XCTAssertGreaterThan(height, 0)
+    }
+
     func testAvailableHeightReservesBottomNavClearance() {
         let window = CGSize(width: 1600, height: 900)
         let navClearance = AppShellSurfaceMetrics.appModalBottomNavClearance
@@ -233,8 +271,8 @@ final class AppModalLayoutTests: XCTestCase {
     }
 
     func testReducedMotionUsesOpacityOnlyTransitions() {
-        let transition = MobileTransitionPolicy.card(reduceMotion: true, performanceProfile: .standard)
+        let transition = MobileTransitionPolicy.card(reduceMotion: true, performanceProfile: .normal)
         XCTAssertNotNil(transition)
-        XCTAssertNil(MobileTransitionPolicy.spring(reduceMotion: true, performanceProfile: .standard))
+        XCTAssertNil(MobileTransitionPolicy.spring(reduceMotion: true, performanceProfile: .normal))
     }
 }

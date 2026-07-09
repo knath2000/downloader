@@ -630,6 +630,15 @@ final class DownloadJobRunner {
         enqueueExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
     }
 
+    func startQueuedNow(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) {
+        guard let item = DownloadQueue.shared.item(id: queueId),
+              DownloadQueueManualStartPolicy.canStartNow(item, isPro: ProFeatureGate.isPro) else { return }
+        pausedQueueIDs.remove(queueId)
+        cancelledQueueIDs.remove(queueId)
+        queuedRuns[queueId] = QueuedRun(payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
+        startQueued(queueId: queueId)
+    }
+
     func pause(queueId: UUID) {
         pausedQueueIDs.insert(queueId)
         cancelledQueueIDs.remove(queueId)

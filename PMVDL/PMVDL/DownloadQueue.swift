@@ -83,6 +83,12 @@ final class SleepPreventionManager {
     }
 }
 
+enum DownloadQueueManualStartPolicy {
+    static func canStartNow(_ item: DownloadQueueItem, isPro: Bool) -> Bool {
+        isPro && item.status == .pending && item.retryPayload != nil
+    }
+}
+
 @MainActor
 class DownloadQueue: ObservableObject {
     static let shared = DownloadQueue()
@@ -289,6 +295,19 @@ class DownloadQueue: ObservableObject {
         queue[idx].progress = 0
         save()
         processNextIfNeeded()
+    }
+
+    @discardableResult
+    func startNow(_ item: DownloadQueueItem, seedboxWebdavPassword: String) -> Bool {
+        guard let current = self.item(id: item.id),
+              DownloadQueueManualStartPolicy.canStartNow(current, isPro: ProFeatureGate.isPro),
+              let payload = current.retryPayload else { return false }
+        DownloadJobRunner.shared.startQueuedNow(
+            queueId: current.id,
+            payload: payload,
+            seedboxWebdavPassword: seedboxWebdavPassword
+        )
+        return true
     }
 
     func moveUp(_ item: DownloadQueueItem) {
