@@ -46,7 +46,7 @@ struct ContentView: View {
     }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .bottom) {
             MeshGradientBackground(isActive: scenePhase == .active)
                 .ignoresSafeArea()
                 .zIndex(-1)
@@ -54,14 +54,18 @@ struct ContentView: View {
             navigationBody
                 .zIndex(0)
 
+            bottomNavigation
+                .zIndex(100)
+
             if showUpgradeOverlay {
                 UpgradeOverlay { dismissUpgradeOverlay() }
                     .transition(.opacity)
-                    .zIndex(1)
+                    .zIndex(200)
             }
         }
         .background(WindowConfigurator())
         .environment(\.performanceProfile, performanceProfile)
+        .environment(\.appModalBottomNavClearance, floatingTabContentInset)
         .onAppear {
             isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
             enforceAccess(to: appState.selectedDestination)
@@ -91,25 +95,25 @@ struct ContentView: View {
     }
 
     private var mainLayout: some View {
-        ZStack(alignment: .bottom) {
-            contentLayer(for: displayedDestination)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            FloatingTabSwitcher(
-                destinations: sidebarDestinations,
-                selected: displayedDestination,
-                badge: { navBadge(for: $0) },
-                isExpanded: isTabSwitcherExpanded,
-                namespace: tabSwitcherGlass,
-                select: selectDestination,
-                toggleExpanded: toggleTabSwitcherExpansion
-            )
-            .padding(.bottom, FloatingTabSwitcherMetrics.bottomOffset)
-            .zIndex(10)
-        }
+        contentLayer(for: displayedDestination)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             NotificationManager.shared.requestAuthorization()
         }
+    }
+
+    private var bottomNavigation: some View {
+        FloatingTabSwitcher(
+            destinations: sidebarDestinations,
+            selected: displayedDestination,
+            badge: { navBadge(for: $0) },
+            isExpanded: isTabSwitcherExpanded,
+            namespace: tabSwitcherGlass,
+            select: selectDestination,
+            toggleExpanded: toggleTabSwitcherExpansion
+        )
+        .padding(.bottom, AppShellSurfaceMetrics.floatingNavBottomOffset)
+        .allowsHitTesting(true)
     }
 
     @ViewBuilder
@@ -179,7 +183,7 @@ struct ContentView: View {
             coldOpeningDestination = destination
         }
 
-        withAnimation(performanceProfile == .reducedEffects ? nil : .easeOut(duration: 0.12)) {
+        withAnimation(MobileTransitionPolicy.spring(reduceMotion: reduceMotion, performanceProfile: performanceProfile)) {
             appState.select(destination)
         }
 
@@ -222,7 +226,7 @@ struct ContentView: View {
             try? await Task.sleep(nanoseconds: 80_000_000)
             warmedDestinations.insert(destination)
             if coldOpeningDestination == destination {
-                withAnimation(performanceProfile == .reducedEffects ? nil : .easeOut(duration: 0.16)) {
+                withAnimation(MobileTransitionPolicy.spring(reduceMotion: reduceMotion, performanceProfile: performanceProfile)) {
                     coldOpeningDestination = nil
                 }
             }
@@ -259,16 +263,15 @@ struct ContentView: View {
 // MARK: - FloatingTabSwitcher
 
 private enum FloatingTabSwitcherMetrics {
-    static let bottomOffset: CGFloat = 20
-    static let expandedHeight: CGFloat = 76
-    static let collapsedHeight: CGFloat = 60
-    static let tabWidth: CGFloat = 74
-    static let tabHeight: CGFloat = 58
-    static let menuWidth: CGFloat = 54
-    static let menuHeight: CGFloat = 58
+    // Geometry tied to the pill's tab buttons. The vertical/screen-space
+    // reservation lives in AppShellSurfaceMetrics so modals can share it.
+    static let tabWidth: CGFloat = 76
+    static let tabHeight: CGFloat = 60
+    static let menuWidth: CGFloat = 56
+    static let menuHeight: CGFloat = 60
 
     static func contentInset(isExpanded: Bool) -> CGFloat {
-        bottomOffset + (isExpanded ? expandedHeight : collapsedHeight) + 18
+        AppShellSurfaceMetrics.floatingNavClearance(isExpanded: isExpanded)
     }
 }
 
@@ -297,7 +300,7 @@ private struct FloatingTabSwitcher: View {
     }
 
     private var toggleAnimation: Animation? {
-        performanceProfile == .reducedEffects ? nil : .easeOut(duration: 0.16)
+        MobileTransitionPolicy.spring(reduceMotion: reduceMotion, performanceProfile: performanceProfile)
     }
 
     var body: some View {
@@ -315,7 +318,7 @@ private struct FloatingTabSwitcher: View {
                 }
             }
         }
-        .frame(height: isExpanded ? FloatingTabSwitcherMetrics.expandedHeight : FloatingTabSwitcherMetrics.collapsedHeight)
+        .frame(height: isExpanded ? AppShellSurfaceMetrics.floatingNavExpandedHeight : AppShellSurfaceMetrics.floatingNavCollapsedHeight)
         .padding(.horizontal, isExpanded ? 10 : 3)
         .background { pillBackground }
         .clipShape(Capsule())
@@ -397,7 +400,7 @@ private struct FloatingTabSwitcher: View {
                     Image(systemName: dest.icon)
                         .font(.system(size: 19, weight: isSelected ? .bold : .semibold))
                         .foregroundStyle(isSelected ? color : .white.opacity(0.48))
-                        .scaleEffect(isSelected && !reduceMotion ? 1.10 : 1)
+                        .scaleEffect(isSelected && !reduceMotion ? 1.14 : 1)
 
                     Text(dest.rawValue)
                         .font(.system(size: 10, weight: isSelected ? .bold : .semibold))
@@ -414,11 +417,12 @@ private struct FloatingTabSwitcher: View {
                                 .glassEffectID(dest.rawValue, in: namespace)
                         } else {
                             Capsule()
-                                .fill(color.opacity(0.24))
+                                .fill(color.opacity(0.28))
                         }
                     }
                 }
-                .animation(performanceProfile == .reducedEffects ? nil : .easeOut(duration: 0.12), value: isSelected)
+                .shadow(color: isSelected ? color.opacity(0.26) : .clear, radius: 12, x: 0, y: 5)
+                .animation(MobileTransitionPolicy.spring(reduceMotion: reduceMotion, performanceProfile: performanceProfile), value: isSelected)
 
                 if isLocked {
                     Image(systemName: "lock.fill")
@@ -436,12 +440,12 @@ private struct FloatingTabSwitcher: View {
                         .background(color, in: Capsule())
                         .offset(x: -4, y: 4)
                         .contentTransition(.numericText())
-                        .animation(performanceProfile == .reducedEffects ? nil : .easeOut(duration: 0.12), value: count)
+                        .animation(MobileTransitionPolicy.spring(reduceMotion: reduceMotion, performanceProfile: performanceProfile), value: count)
                 }
             }
         }
         .buttonStyle(.plain)
-        .pressEffect(scale: 0.95)
+        .pressEffect(scale: 0.93)
     }
 }
 

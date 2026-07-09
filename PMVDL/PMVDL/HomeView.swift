@@ -257,8 +257,7 @@ struct HomeView: View {
 
             if showResultsSheet {
                 AppModalOverlay(
-                    dismiss: { showResultsSheet = false },
-                    reservedTopInset: AppShellSurfaceMetrics.appModalTitlebarClearance
+                    dismiss: { showResultsSheet = false }
                 ) {
                     resultsSheet
                 }

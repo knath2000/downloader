@@ -81,23 +81,7 @@ struct ExtractionModalView: View {
             footer
         }
         .padding(24)
-        .frame(
-            width: AppShellSurfaceMetrics.appModalSurfaceWidth(for: appState.windowSize),
-            height: AppShellSurfaceMetrics.appModalSurfaceHeight(
-                for: appState.windowSize,
-                reservedTopInset: AppShellSurfaceMetrics.appModalTitlebarClearance
-            )
-        )
-        .background(
-            LinearGradient(
-                colors: [
-                    Theme.surfaceGlass.opacity(0.88),
-                    Theme.surface0.opacity(0.96)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var addURLBar: some View {
@@ -450,35 +434,39 @@ private struct ExtractionResultRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            thumbnail
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 14) {
+                thumbnail
 
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(presentation.title)
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(Theme.textPrimary)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(presentation.title)
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        Spacer(minLength: 8)
+
+                        statusBadge
+                    }
+
+                    Text(presentation.siteName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1)
-
-                    Spacer(minLength: 12)
-
-                    statusBadge
-                }
-
-                if result.source != nil {
-                    progressLine
-                    controls
-                } else {
-                    failedContent
                 }
             }
+
+            if result.source != nil {
+                progressLine
+                controls
+            } else {
+                failedContent
+            }
         }
-        .padding(12)
-        .background(Theme.surfaceGlass.opacity(0.38), in: RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Theme.borderSubtle, lineWidth: 1)
-        )
+        .padding(14)
+        .mobileCard(tint: tint.opacity(0.22), cornerRadius: 22, isElevated: true)
         .onAppear {
             if selectedQualityID == nil {
                 selectedQualityID = presentation.recommendedQualityID
@@ -488,9 +476,9 @@ private struct ExtractionResultRow: View {
 
     private var thumbnail: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(tint.opacity(0.15))
-                .frame(width: 110, height: 76)
+                .frame(width: 128, height: 86)
 
             if !usesLightweightThumbnail,
                let value = presentation.thumbnailURL,
@@ -512,18 +500,18 @@ private struct ExtractionResultRow: View {
                         fallbackThumbnail
                     }
                 }
-                .frame(width: 110, height: 76)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .frame(width: 128, height: 86)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             } else {
                 fallbackThumbnail
             }
 
             if result.error == nil {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 30, height: 30)
-                    .background(.black.opacity(0.52), in: Circle())
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(.black.opacity(0.52), in: Circle())
             }
         }
     }
@@ -562,23 +550,30 @@ private struct ExtractionResultRow: View {
 
     private var controls: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 qualityPicker
                 targetPicker
+                Spacer(minLength: 8)
                 primaryAction
                 copyButton
             }
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
                     qualityPicker
                     targetPicker
                 }
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
                     primaryAction
                     copyButton
                 }
             }
         }
+        .padding(10)
+        .background(Theme.surface0.opacity(0.28), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Theme.borderSubtle, lineWidth: 1)
+        )
     }
 
     private var qualityPicker: some View {
@@ -591,7 +586,8 @@ private struct ExtractionResultRow: View {
             }
         }
         .labelsHidden()
-        .frame(width: 126)
+        .frame(width: 136)
+        .controlSize(.large)
     }
 
     private var targetPicker: some View {
@@ -601,7 +597,8 @@ private struct ExtractionResultRow: View {
             }
         }
         .labelsHidden()
-        .frame(width: 132)
+        .frame(width: 142)
+        .controlSize(.large)
     }
 
     private var primaryAction: some View {
@@ -616,9 +613,7 @@ private struct ExtractionResultRow: View {
         } label: {
             Label(selectedTarget.homeActionTitle, systemImage: selectedTarget.icon)
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.small)
-        .tint(tint)
+        .buttonStyle(MobilePrimaryButtonStyle(tint: tint))
         .disabled(selectedQuality == nil)
     }
 
@@ -631,7 +626,7 @@ private struct ExtractionResultRow: View {
             Image(systemName: "doc.on.doc")
         }
         .buttonStyle(.bordered)
-        .controlSize(.small)
+        .controlSize(.large)
         .disabled(selectedQuality == nil)
         .help("Copy selected source URL")
     }
@@ -659,7 +654,7 @@ private struct ExtractionResultRow: View {
                         Label("Retry", systemImage: "arrow.clockwise")
                     }
                     .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .controlSize(.large)
 
                     if canRetryWithVPN {
                         Button {
@@ -668,7 +663,7 @@ private struct ExtractionResultRow: View {
                             Label("Retry with VPN", systemImage: "network")
                         }
                         .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .controlSize(.large)
                     }
                 }
             }
@@ -761,7 +756,7 @@ enum ExtractionPulse {
     static let brightness: Double = 0.06
 }
 
-private struct ExtractionLoadingRow: View {
+struct ExtractionLoadingRow: View {
     let subtitle: String
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -895,14 +890,10 @@ private struct ExtractionLoadingRow: View {
                         .stroke(tint.opacity(0.32), lineWidth: 1)
                 )
         }
-        .padding(12)
-        .background(Theme.surfaceGlass.opacity(0.38), in: RoundedRectangle(cornerRadius: 14))
+        .padding(14)
+        .mobileCard(tint: Theme.skyBlue.opacity(0.18), cornerRadius: 22, isElevated: false)
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Theme.borderSubtle, lineWidth: 1)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(Theme.skyBlue.opacity(borderOpacity), lineWidth: 1.5)
         )
         .opacity(isPresented || reduceMotion ? 1 : 0.82)

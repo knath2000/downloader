@@ -176,7 +176,11 @@ struct LibraryView: View {
                     alignment: .topLeading
                 )
                 .frame(
-                    minHeight: AppShellSurfaceMetrics.appModalSurfaceHeight(for: appState.windowSize),
+                    minHeight: AppShellSurfaceMetrics.appModalAvailableHeight(
+                        for: appState.windowSize,
+                        reservedTopInset: AppShellSurfaceMetrics.appModalTitlebarClearance,
+                        reservedBottomInset: AppShellSurfaceMetrics.appModalBottomNavClearance
+                    ),
                     alignment: .topLeading
                 )
                 .padding(AppShellSurfaceMetrics.appModalBackdropInset)
@@ -206,7 +210,7 @@ struct LibraryView: View {
     @ViewBuilder
     private var selectedEntryModal: some View {
         if viewMode == .list, let selectedEntry {
-            AppModalOverlay(dismiss: { selectedEntryID = nil }) {
+            AppModalOverlay(dismiss: { selectedEntryID = nil }, size: .detail) {
                 LibraryDetailModalShell {
                     detailPanel(for: selectedEntry)
                 }
@@ -1444,7 +1448,6 @@ private struct LibraryInlineDetailEmptyState: View {
 }
 
 private struct LibraryDetailModalShell<Content: View>: View {
-    @ObservedObject private var appState = AppStateManager.shared
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -1452,20 +1455,7 @@ private struct LibraryDetailModalShell<Content: View>: View {
             content()
                 .padding(22)
         }
-        .frame(
-            width: AppShellSurfaceMetrics.appModalSurfaceWidth(for: appState.windowSize),
-            height: AppShellSurfaceMetrics.appModalSurfaceHeight(for: appState.windowSize)
-        )
-        .background(
-            LinearGradient(
-                colors: [
-                    Theme.surfaceGlass.opacity(0.94),
-                    Theme.surface1.opacity(0.84)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

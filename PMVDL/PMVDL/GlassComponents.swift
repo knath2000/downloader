@@ -41,8 +41,45 @@ extension EnvironmentValues {
 }
 
 enum AppShellSurfaceMetrics {
+    /// Inset reserved for the titlebar / traffic lights behind a full-window modal.
     static let appModalBackdropInset: CGFloat = 6
     static let appModalTitlebarClearance: CGFloat = 34
+
+    // MARK: Shared app-modal visual shell
+
+    /// Hit-test scrim behind the modal. Keep it visually transparent so the
+    /// reserved titlebar/nav chrome does not become black bands.
+    static let appModalScrimOpacity: CGFloat = 0.001
+    /// Corner radius of the modal surface.
+    static let appModalCornerRadius: CGFloat = 18
+    /// Outer tinted fill so the modal body reads as a solid surface, not glass.
+    static let appModalFillOpacity: CGFloat = 0.98
+    /// Outer stroke + inner highlight that give the surface a crisp boundary.
+    static let appModalOuterStrokeOpacity: CGFloat = 0.16
+    static let appModalInnerHighlightOpacity: CGFloat = 0.10
+    /// Layered drop shadow for depth separation from the dimmed background.
+    static let appModalShadowOpacity: CGFloat = 0.65
+    static let appModalShadowRadius: CGFloat = 32
+    static let appModalShadowY: CGFloat = 18
+
+    // MARK: Floating tab switcher (bottom nav) chrome
+
+    /// Distance the floating nav pill sits above the window bottom.
+    static let floatingNavBottomOffset: CGFloat = 20
+    static let floatingNavExpandedHeight: CGFloat = 76
+    static let floatingNavCollapsedHeight: CGFloat = 60
+    /// Trailing gap below the nav pill before usable content ends.
+    static let floatingNavTrailingGap: CGFloat = 18
+
+    /// Total vertical space the floating nav occupies at the window bottom for a given state.
+    static func floatingNavClearance(isExpanded: Bool) -> CGFloat {
+        floatingNavBottomOffset + (isExpanded ? floatingNavExpandedHeight : floatingNavCollapsedHeight) + floatingNavTrailingGap
+    }
+
+    /// Safe default reserve: assume the expanded nav so modals never collide in either state.
+    static var appModalBottomNavClearance: CGFloat {
+        floatingNavClearance(isExpanded: true)
+    }
 
     static func pageMaxWidth(for windowSize: CGSize) -> CGFloat {
         clamped(windowSize.width * 0.96, min: 1180, max: 1900)
@@ -68,8 +105,38 @@ enum AppShellSurfaceMetrics {
         max(windowSize.width - appModalBackdropInset * 2, 760)
     }
 
+    static func appModalWidth(for windowSize: CGSize, size: AppModalSize) -> CGFloat {
+        switch size {
+        case .full:
+            return appModalSurfaceWidth(for: windowSize)
+        case .detail:
+            return min(appModalSurfaceWidth(for: windowSize) - 48, detailModalWidth(for: windowSize))
+        }
+    }
+
     static func appModalSurfaceHeight(for windowSize: CGSize, reservedTopInset: CGFloat = 0) -> CGFloat {
-        max(windowSize.height - appModalBackdropInset * 2 - reservedTopInset, 560)
+        appModalAvailableHeight(
+            for: windowSize,
+            reservedTopInset: reservedTopInset,
+            reservedBottomInset: 0
+        )
+    }
+
+    /// Maximum modal content height after reserving space for the backdrop, the
+    /// titlebar/traffic lights (top) and the floating nav pill (bottom). Never
+    /// exceeds the truly available safe area, so large modals scroll internally
+    /// instead of colliding with app chrome. The `560` floor keeps extremely
+    /// small windows usable.
+    static func appModalAvailableHeight(
+        for windowSize: CGSize,
+        reservedTopInset: CGFloat,
+        reservedBottomInset: CGFloat
+    ) -> CGFloat {
+        let available = windowSize.height
+            - appModalBackdropInset * 2
+            - reservedTopInset
+            - reservedBottomInset
+        return max(available, 560)
     }
 
     static func workflowModalWidth(for windowSize: CGSize) -> CGFloat {
@@ -91,6 +158,11 @@ enum AppShellSurfaceMetrics {
     private static func clamped(_ value: CGFloat, min minimum: CGFloat, max maximum: CGFloat) -> CGFloat {
         Swift.min(Swift.max(value, minimum), maximum)
     }
+}
+
+enum AppModalSize {
+    case full
+    case detail
 }
 
 struct RefererAwareAsyncImage<Content: View>: View {
@@ -458,20 +530,58 @@ struct GradientProgressBar: View {
 
 struct AppModalOverlay<Content: View>: View {
     @ObservedObject private var appState = AppStateManager.shared
+    @Environment(\.appModalBottomNavClearance) private var bottomNavClearance
     let dismiss: () -> Void
-    var reservedTopInset: CGFloat = 0
+    var size: AppModalSize = .full
+    /// Top reserve defaults to the titlebar/traffic-light clearance so callers
+    /// no longer need to pass it. Content is always top-aligned.
+    var reservedTopInset: CGFloat = AppShellSurfaceMetrics.appModalTitlebarClearance
+
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         ZStack(alignment: .top) {
-            Color.black.opacity(0.001)
+            // Outside-tap layer. Visual separation belongs to the modal surface,
+            // not to a full-window black wash over reserved app chrome.
+            Color.black.opacity(AppShellSurfaceMetrics.appModalScrimOpacity)
                 .ignoresSafeArea()
                 .onTapGesture { dismiss() }
 
+            // Opaque-ish modal surface that owns the outer shell so modal
+            // bodies no longer paint their own translucent gradient.
             content()
                 .frame(
-                    width: AppShellSurfaceMetrics.appModalSurfaceWidth(for: appState.windowSize),
-                    height: AppShellSurfaceMetrics.appModalSurfaceHeight(for: appState.windowSize, reservedTopInset: reservedTopInset)
+                    width: AppShellSurfaceMetrics.appModalWidth(for: appState.windowSize, size: size),
+                    height: AppShellSurfaceMetrics.appModalAvailableHeight(
+                        for: appState.windowSize,
+                        reservedTopInset: reservedTopInset,
+                        reservedBottomInset: bottomNavClearance
+                    )
+                )
+                .background(
+                    LinearGradient(
+                        colors: [
+                            Theme.surface0.opacity(AppShellSurfaceMetrics.appModalFillOpacity),
+                            Theme.surface1.opacity(AppShellSurfaceMetrics.appModalFillOpacity)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: AppShellSurfaceMetrics.appModalCornerRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppShellSurfaceMetrics.appModalCornerRadius, style: .continuous)
+                        .stroke(Color.white.opacity(AppShellSurfaceMetrics.appModalOuterStrokeOpacity), lineWidth: 1)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppShellSurfaceMetrics.appModalCornerRadius, style: .continuous)
+                        .stroke(Color.white.opacity(AppShellSurfaceMetrics.appModalInnerHighlightOpacity), lineWidth: 1)
+                        .padding(1)
+                )
+                .shadow(
+                    color: Color.black.opacity(AppShellSurfaceMetrics.appModalShadowOpacity),
+                    radius: AppShellSurfaceMetrics.appModalShadowRadius,
+                    y: AppShellSurfaceMetrics.appModalShadowY
                 )
                 .contentShape(Rectangle())
                 .onTapGesture {}
@@ -480,6 +590,21 @@ struct AppModalOverlay<Content: View>: View {
         .padding(AppShellSurfaceMetrics.appModalBackdropInset)
         .ignoresSafeArea()
         .onExitCommand(perform: dismiss)
+    }
+}
+
+// MARK: - App-shell chrome environment
+
+private struct AppModalBottomNavClearanceKey: EnvironmentKey {
+    static let defaultValue: CGFloat = AppShellSurfaceMetrics.appModalBottomNavClearance
+}
+
+extension EnvironmentValues {
+    /// Bottom reserve (window-space) the floating nav pill occupies, so a full-window
+    /// modal can keep its content above the nav. Defaults to the expanded-nav clearance.
+    var appModalBottomNavClearance: CGFloat {
+        get { self[AppModalBottomNavClearanceKey.self] }
+        set { self[AppModalBottomNavClearanceKey.self] = newValue }
     }
 }
 

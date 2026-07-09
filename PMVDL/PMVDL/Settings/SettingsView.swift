@@ -82,7 +82,7 @@ struct SettingsView: View {
 
     private var settingsLandingPage: some View {
         ScrollView {
-            LazyVGrid(columns: SettingsLayoutMetrics.tileColumns, alignment: .leading, spacing: 12) {
+            LazyVStack(alignment: .center, spacing: 12) {
                 ForEach(SettingsPanel.allCases) { panel in
                     Button {
                         activePanel = panel
@@ -95,14 +95,14 @@ struct SettingsView: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .pressEffect(scale: 0.985)
+                    .mobilePressFeedback()
                 }
             }
-            .frame(maxWidth: SettingsLayoutMetrics.contentMaxWidth, alignment: .leading)
+            .frame(maxWidth: 760, alignment: .center)
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, 16)
             .padding(.top, 18)
-            .padding(.bottom, 28)
+            .padding(.bottom, 32)
         }
     }
 
@@ -1029,14 +1029,10 @@ private struct SettingsTile: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
-        .background(Theme.obsidian.opacity(0.58), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(isEmphasized ? panel.color.opacity(0.28) : Theme.borderSubtle, lineWidth: 0.8)
-        )
-        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+        .mobileCard(tint: panel.color.opacity(isEmphasized ? 0.26 : 0.16), cornerRadius: MobileMetrics.cardRadius, isElevated: isEmphasized)
+        .contentShape(RoundedRectangle(cornerRadius: MobileMetrics.cardRadius, style: .continuous))
     }
 }
 

@@ -237,148 +237,161 @@ struct HomeStitchCommandPanel<CompletedContent: View, ResultsContent: View>: Vie
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
             header
-            Divider()
-                .overlay(Theme.borderSubtle)
             editorBlock
             actionRow
             completedContent()
             resultsContent()
             supportedPlatforms
         }
-        .padding(28)
+        .padding(22)
         .frame(minHeight: AppShellSurfaceMetrics.mainPanelHeight(for: appState.windowSize), alignment: .topLeading)
-        .background(
-            LinearGradient(
-                colors: [
-                    Theme.surfaceGlass.opacity(0.72),
-                    Theme.surface1.opacity(0.50)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 18)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Theme.border.opacity(0.64), lineWidth: 1)
-        )
-        .shadow(color: Theme.skyBlue.opacity(0.12), radius: 20, x: 0, y: 12)
+        .mobileCard(tint: Theme.skyBlue.opacity(0.22), cornerRadius: MobileMetrics.sheetRadius, isElevated: true)
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 18) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("VidDL")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(Theme.textPrimary)
-                Text("Paste URLs, extract video sources, then download locally or send to cloud storage.")
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.textSecondary)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Theme.skyBlue.opacity(0.16))
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 22, weight: .heavy))
+                        .foregroundStyle(Theme.skyBlue)
+                }
+                .frame(width: 54, height: 54)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Quick Extract")
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("Paste one link or a batch, then choose where each video goes.")
+                        .font(.subheadline)
+                        .foregroundStyle(Theme.textSecondary)
+                }
+
+                Spacer(minLength: 12)
             }
 
-            Spacer(minLength: 24)
-
             HStack(spacing: 8) {
-                HomeStatusPill(
+                MobilePill(
                     label: isYtDlpReady ? "yt-dlp ready" : "Install yt-dlp",
                     systemImage: isYtDlpReady ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
-                    color: isYtDlpReady ? Theme.success : Theme.warning
+                    tint: isYtDlpReady ? Theme.success : Theme.warning
                 )
-                HomeStatusPill(label: "ffmpeg engine", systemImage: "checkmark.circle.fill", color: Theme.success)
+                MobilePill(label: "ffmpeg", systemImage: "checkmark.circle.fill", tint: Theme.success)
                 if isPro {
-                    HomeStatusPill(label: "Pro", systemImage: "crown.fill", color: Theme.gold)
+                    MobilePill(label: "Pro", systemImage: "crown.fill", tint: Theme.gold)
                 }
+                Spacer(minLength: 0)
             }
         }
     }
 
     private var editorBlock: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Text("Paste URLs")
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(Theme.textPrimary)
-
-            HStack(spacing: 0) {
-                VStack(alignment: .trailing, spacing: 36) {
-                    Text("0")
-                    Text("2")
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(model.readyCount == 0 ? "Add URLs" : "\(model.readyCount) Ready")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text(model.invalidLines.isEmpty ? "Paste supported video URLs." : model.helperText)
+                        .font(.caption)
+                        .foregroundStyle(model.invalidLines.isEmpty ? Theme.textSecondary : Theme.warning)
                 }
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(Theme.textSecondary.opacity(0.68))
-                .frame(width: 30)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .padding(.top, 13)
 
-                Rectangle()
-                    .fill(Theme.borderSubtle)
-                    .frame(width: 1)
+                Spacer()
 
-                HomeURLTextEditor(
-                    text: $text,
-                    isFocused: $isFocused,
-                    placeholder: "https://example.com/video/...\nPaste one URL per line"
-                )
-                .frame(minHeight: 126, maxHeight: 170)
+                if model.readyCount > 0 {
+                    MobilePill(label: "\(model.readyCount)", systemImage: "link", tint: Theme.success, isFilled: true)
+                }
             }
-            .background(Theme.surfaceGlass.opacity(0.50), in: RoundedRectangle(cornerRadius: 13))
-            .overlay(
-                RoundedRectangle(cornerRadius: 13)
-                    .stroke(isFocused ? Theme.skyBlue.opacity(0.78) : Theme.border.opacity(0.56), lineWidth: 1)
+
+            HomeURLTextEditor(
+                text: $text,
+                isFocused: $isFocused,
+                placeholder: "https://example.com/video/...\nPaste one URL per line"
             )
-            .shadow(color: isFocused ? Theme.skyBlue.opacity(0.20) : .clear, radius: 10)
+            .frame(minHeight: text.contains("\n") ? 132 : 78, maxHeight: 168)
+            .background(Theme.surface0.opacity(0.38), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(isFocused ? Theme.skyBlue.opacity(0.86) : Theme.border.opacity(0.52), lineWidth: 1.2)
+            )
+            .shadow(color: isFocused ? Theme.skyBlue.opacity(0.20) : .clear, radius: 12)
             .accessibilityLabel("Video URLs")
         }
+        .padding(14)
+        .mobileCard(tint: Theme.skyBlue.opacity(isFocused ? 0.32 : 0.16), cornerRadius: 22, isElevated: false)
     }
 
     private var actionRow: some View {
-        HStack(alignment: .center, spacing: 8) {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 10) {
+                secondaryActions
+                Spacer()
+                extractButton
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                extractButton
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                secondaryActions
+            }
+        }
+    }
+
+    private var secondaryActions: some View {
+        HStack(spacing: 8) {
             Button(action: onPaste) {
                 Label("Paste", systemImage: "clipboard")
             }
             .buttonStyle(.bordered)
+            .controlSize(.large)
+            .mobilePressFeedback()
             .help("Paste a URL from the clipboard")
 
             Button(role: .destructive, action: onClear) {
                 Label("Clear", systemImage: "xmark")
             }
             .buttonStyle(.bordered)
-            .disabled(text.isEmpty)
-
-            Spacer()
-
-            Button(action: onExtract) {
-                if isLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .scaleEffect(0.75)
-                    Text("Extracting")
-                } else {
-                    Label("Extract", systemImage: "bolt.fill")
-                }
-            }
-            .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .keyboardShortcut(.return, modifiers: .command)
-            .disabled(!canExtract)
-            .tint(Theme.skyBlue)
-            .shadow(color: canExtract ? Theme.skyBlue.opacity(0.42) : .clear, radius: 10)
-            .help("Extract video sources from the URLs")
+            .mobilePressFeedback(enabled: !text.isEmpty)
+            .disabled(text.isEmpty)
         }
+    }
+
+    private var extractButton: some View {
+        Button(action: onExtract) {
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.75)
+                Text("Extracting")
+            } else {
+                Label("Extract", systemImage: "bolt.fill")
+            }
+        }
+        .buttonStyle(MobilePrimaryButtonStyle(tint: Theme.skyBlue))
+        .keyboardShortcut(.return, modifiers: .command)
+        .disabled(!canExtract)
+        .help("Extract video sources from the URLs")
     }
 
     private var supportedPlatforms: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Supported Platforms")
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(Theme.textPrimary)
+            HStack {
+                Text("Supported")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                Spacer()
+            }
 
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 4), spacing: 14) {
-                StitchPlatformCard(title: "Video Hosts", systemImage: "play.rectangle.fill")
-                StitchPlatformCard(title: "Audio Streams", systemImage: "music.note")
-                StitchPlatformCard(title: "Social Media", systemImage: "bubble.left.and.bubble.right.fill")
-                StitchPlatformCard(title: "Generic Web", systemImage: "globe")
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
+                StitchPlatformCard(title: "Video", systemImage: "play.rectangle.fill", tint: Theme.skyBlue)
+                StitchPlatformCard(title: "Audio", systemImage: "music.note", tint: Color.purple)
+                StitchPlatformCard(title: "Social", systemImage: "bubble.left.and.bubble.right.fill", tint: Theme.success)
+                StitchPlatformCard(title: "Web", systemImage: "globe", tint: Theme.gold)
             }
         }
     }
@@ -387,27 +400,24 @@ struct HomeStitchCommandPanel<CompletedContent: View, ResultsContent: View>: Vie
 private struct StitchPlatformCard: View {
     let title: String
     let systemImage: String
+    let tint: Color
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 10) {
             Image(systemName: systemImage)
-                .font(.system(size: 36, weight: .semibold))
+                .font(.system(size: 26, weight: .semibold))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(Theme.textPrimary.opacity(0.88))
-                .frame(height: 42)
+                .foregroundStyle(tint)
+                .frame(height: 34)
 
             Text(title)
-                .font(.subheadline.weight(.semibold))
+                .font(.caption.weight(.bold))
                 .foregroundStyle(Theme.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }
-        .frame(maxWidth: .infinity, minHeight: 116)
-        .background(Theme.surfaceGlass.opacity(0.42), in: RoundedRectangle(cornerRadius: 13))
-        .overlay(
-            RoundedRectangle(cornerRadius: 13)
-                .stroke(Theme.border.opacity(0.55), lineWidth: 1)
-        )
+        .frame(maxWidth: .infinity, minHeight: 88)
+        .mobileCard(tint: tint.opacity(0.20), cornerRadius: 18, isElevated: false)
     }
 }
 

@@ -160,20 +160,7 @@ struct HomeCompactQueue: View {
             modalFooter
         }
         .padding(24)
-        .frame(
-            width: AppShellSurfaceMetrics.appModalSurfaceWidth(for: appState.windowSize),
-            height: AppShellSurfaceMetrics.appModalSurfaceHeight(for: appState.windowSize)
-        )
-        .background(
-            LinearGradient(
-                colors: [
-                    Theme.surfaceGlass.opacity(0.88),
-                    Theme.surface0.opacity(0.96)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var modalTitle: String {
@@ -239,7 +226,7 @@ struct HomeCompactQueue: View {
 
     private var modalRows: some View {
         ScrollView {
-            LazyVStack(spacing: 12) {
+            LazyVStack(spacing: 16) {
                 if displayMode == .completedModal {
                     if completedItems.isEmpty {
                         modalEmptyState(title: "No completed downloads", icon: "checkmark.circle")
@@ -256,9 +243,16 @@ struct HomeCompactQueue: View {
                     }
                 }
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, 6)
+            .padding(.trailing, 8)
         }
         .frame(maxHeight: .infinity)
+        .background(Theme.surface0.opacity(0.18), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Theme.borderSubtle.opacity(0.75), lineWidth: 0.8)
+        )
+        .scrollIndicators(.visible)
     }
 
     private func modalEmptyState(title: String, icon: String) -> some View {
@@ -429,6 +423,7 @@ struct HomeCompactQueue: View {
         HomeCompactQueueRow(
             item: item,
             isHistory: isHistory,
+            isModalPresentation: isModal,
             pause: { queue.pause(item) },
             resume: { resume(item) },
             retry: { retry(item) },
@@ -671,6 +666,7 @@ struct HomeCompactQueue: View {
 private struct HomeCompactQueueRow: View, Equatable {
     let item: DownloadQueueItem
     let isHistory: Bool
+    let isModalPresentation: Bool
     let pause: () -> Void
     let resume: () -> Void
     let retry: () -> Void
@@ -682,7 +678,7 @@ private struct HomeCompactQueueRow: View, Equatable {
     let onUpgradeRequired: () -> Void
 
     static func == (lhs: HomeCompactQueueRow, rhs: HomeCompactQueueRow) -> Bool {
-        lhs.item == rhs.item && lhs.isHistory == rhs.isHistory
+        lhs.item == rhs.item && lhs.isHistory == rhs.isHistory && lhs.isModalPresentation == rhs.isModalPresentation
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -699,14 +695,35 @@ private struct HomeCompactQueueRow: View, Equatable {
         HomeQueueRowDetails(item: item)
     }
 
-    var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 10) {
-                HomeCompactQueueThumbnail(item: item, tint: tint)
+    private var rowCornerRadius: CGFloat {
+        isModalPresentation ? 14 : 8
+    }
 
-                VStack(alignment: .leading, spacing: 5) {
+    private var thumbnailSize: CGSize {
+        isModalPresentation ? CGSize(width: 82, height: 58) : CGSize(width: 56, height: 38)
+    }
+
+    private var titleFontSize: CGFloat {
+        isModalPresentation ? 14 : 13
+    }
+
+    private var bodySpacing: CGFloat {
+        isModalPresentation ? 8 : 5
+    }
+
+    private var progressHeight: CGFloat {
+        if isModalPresentation { return isHistory ? 5 : 6 }
+        return isHistory ? 3 : 4
+    }
+
+    var body: some View {
+        VStack(spacing: isModalPresentation ? 12 : 8) {
+            HStack(spacing: isModalPresentation ? 14 : 10) {
+                HomeCompactQueueThumbnail(item: item, tint: tint, size: thumbnailSize)
+
+                VStack(alignment: .leading, spacing: bodySpacing) {
                     Text(item.displayTitle ?? item.filename)
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: titleFontSize, weight: .bold))
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -715,7 +732,7 @@ private struct HomeCompactQueueRow: View, Equatable {
                         HomeCompactQueueStageChip(title: details.stage, tint: tint)
 
                         Text(details.location)
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .font(.system(size: isModalPresentation ? 11 : 10, weight: .medium, design: .monospaced))
                             .foregroundStyle(Theme.textSecondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -723,13 +740,13 @@ private struct HomeCompactQueueRow: View, Equatable {
 
                     if let failure = details.failureMessage {
                         Text(failure)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: isModalPresentation ? 11 : 10, weight: .semibold))
                             .foregroundStyle(Theme.error)
                             .lineLimit(2)
                             .truncationMode(.tail)
                     } else if !details.detailLine.isEmpty {
                         Text(details.detailLine)
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .font(.system(size: isModalPresentation ? 11 : 10, weight: .medium, design: .monospaced))
                             .foregroundStyle(Theme.textSecondary.opacity(0.92))
                             .lineLimit(1)
                             .truncationMode(.tail)
@@ -739,30 +756,32 @@ private struct HomeCompactQueueRow: View, Equatable {
                 Spacer(minLength: 8)
 
                 Text(String(format: "%.1f%%", item.progress))
-                    .font(.system(size: 12, weight: .black, design: .monospaced))
+                    .font(.system(size: isModalPresentation ? 13 : 12, weight: .black, design: .monospaced))
                     .foregroundStyle(tint)
                     .lineLimit(1)
-                    .frame(width: 58, alignment: .trailing)
+                    .frame(width: isModalPresentation ? 68 : 58, alignment: .trailing)
 
-                HStack(spacing: 6) {
+                HStack(spacing: isModalPresentation ? 8 : 6) {
                     primaryActionButton
 
                     HomeCompactQueueIconButton(
                         systemName: "xmark",
                         tint: Theme.textSecondary,
                         help: "Remove",
+                        size: isModalPresentation ? 30 : 24,
                         action: remove
                     )
                 }
                 .opacity(rowControlOpacity)
             }
 
-            HomeQueueProgressBar(progress: min(max(item.progress / 100, 0), 1), tint: progressTint, height: isHistory ? 3 : 4)
+            HomeQueueProgressBar(progress: min(max(item.progress / 100, 0), 1), tint: progressTint, height: progressHeight)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
+        .padding(.horizontal, isModalPresentation ? 16 : 10)
+        .padding(.vertical, isModalPresentation ? 14 : 9)
         .background(rowBackground)
         .overlay(rowBorder)
+        .shadow(color: .black.opacity(isModalPresentation ? 0.26 : 0), radius: isModalPresentation ? 10 : 0, x: 0, y: isModalPresentation ? 5 : 0)
         .help(details.helpText)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(accessibilityLabel))
@@ -785,6 +804,7 @@ private struct HomeCompactQueueRow: View, Equatable {
                 tint: Theme.error,
                 help: "Retry",
                 isDisabled: item.retryPayload == nil,
+                size: isModalPresentation ? 30 : 24,
                 action: retry
             )
         case .paused:
@@ -793,6 +813,7 @@ private struct HomeCompactQueueRow: View, Equatable {
                 tint: Theme.electricLime,
                 help: "Resume",
                 isDisabled: item.retryPayload == nil,
+                size: isModalPresentation ? 30 : 24,
                 action: resume
             )
         case .pending, .downloading, .verifying, .uploading:
@@ -800,11 +821,12 @@ private struct HomeCompactQueueRow: View, Equatable {
                 systemName: "pause.fill",
                 tint: Theme.textSecondary,
                 help: "Pause",
+                size: isModalPresentation ? 30 : 24,
                 action: pause
             )
         case .processing, .completed:
             Color.clear
-                .frame(width: 24, height: 24)
+                .frame(width: isModalPresentation ? 30 : 24, height: isModalPresentation ? 30 : 24)
         }
     }
 
@@ -826,20 +848,20 @@ private struct HomeCompactQueueRow: View, Equatable {
     }
 
     private var rowBackground: some View {
-        RoundedRectangle(cornerRadius: 8)
-            .fill(isHistory ? Theme.surface1.opacity(0.20) : Theme.surface1.opacity(0.30))
+        RoundedRectangle(cornerRadius: rowCornerRadius)
+            .fill(isHistory ? Theme.surface1.opacity(isModalPresentation ? 0.40 : 0.20) : Theme.surface1.opacity(isModalPresentation ? 0.46 : 0.30))
     }
 
     private var rowBorder: some View {
-        RoundedRectangle(cornerRadius: 8)
-            .stroke(borderTint, lineWidth: isFailed ? 1 : 0.5)
+        RoundedRectangle(cornerRadius: rowCornerRadius)
+            .stroke(borderTint, lineWidth: isModalPresentation ? 1 : (isFailed ? 1 : 0.5))
     }
 
     private var borderTint: Color {
         if isFailed {
             return Theme.error.opacity(0.55)
         }
-        return tint.opacity(isHistory ? 0.11 : 0.16)
+        return tint.opacity(isModalPresentation ? (isHistory ? 0.24 : 0.28) : (isHistory ? 0.11 : 0.16))
     }
 
     private var progressTint: Color {
@@ -917,6 +939,7 @@ private struct HomeCompactQueueStageChip: View {
 private struct HomeCompactQueueThumbnail: View {
     let item: DownloadQueueItem
     let tint: Color
+    let size: CGSize
 
     @State private var image: NSImage?
     @State private var isLoading = false
@@ -985,13 +1008,13 @@ private struct HomeCompactQueueThumbnail: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             thumbnailSurface
-                .frame(width: 56, height: 38)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .frame(width: size.width, height: size.height)
+                .clipShape(RoundedRectangle(cornerRadius: size.height > 40 ? 8 : 6))
 
             Image(systemName: DownloadStatusFormatting.statusIcon(item))
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: size.height > 40 ? 10 : 9, weight: .bold))
                 .foregroundStyle(.white)
-                .padding(2)
+                .padding(size.height > 40 ? 3 : 2)
                 .background(tint.opacity(0.85), in: Circle())
                 .offset(x: 4, y: 4)
         }
@@ -1137,14 +1160,15 @@ private struct HomeCompactQueueIconButton: View {
     let tint: Color
     let help: String
     var isDisabled = false
+    var size: CGFloat = 24
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: size > 24 ? 11 : 10, weight: .bold))
                 .foregroundStyle(isDisabled ? Theme.textSecondary.opacity(0.45) : tint)
-                .frame(width: 24, height: 24)
+                .frame(width: size, height: size)
                 .background(tint.opacity(isDisabled ? 0.04 : 0.12), in: Circle())
         }
         .buttonStyle(.plain)

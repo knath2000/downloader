@@ -701,8 +701,8 @@ struct PornHubBrowserChrome: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
                 iconButton("chevron.left", enabled: browser.canGoBack, help: "Back") {
                     browser.goBack()
                 }
@@ -722,15 +722,13 @@ struct PornHubBrowserChrome: View {
                 Spacer(minLength: 0)
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 Button {
                     extractCurrentPage()
                 } label: {
                     Label("Extract Current Page", systemImage: "bolt.fill")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(accent)
-                .controlSize(.small)
+                .buttonStyle(MobilePrimaryButtonStyle(tint: accent))
                 .disabled(browser.currentFeedItem == nil)
                 .pressEffect(scale: allowsMotion ? 0.98 : 1)
 
@@ -741,7 +739,7 @@ struct PornHubBrowserChrome: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(accent)
-                .controlSize(.small)
+                .controlSize(.large)
                 .disabled(browser.currentFeedItem == nil)
                 .pressEffect(scale: allowsMotion ? 0.98 : 1)
 
@@ -754,7 +752,7 @@ struct PornHubBrowserChrome: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(Theme.success)
-                    .controlSize(.small)
+                    .controlSize(.large)
                     .help(currentPageDownloadedMatch.tooltip)
                     .pressEffect(scale: allowsMotion ? 0.98 : 1)
                 }
@@ -762,21 +760,9 @@ struct PornHubBrowserChrome: View {
                 Spacer(minLength: 0)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color.black.opacity(0.72))
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(.ultraThinMaterial.opacity(0.62))
-            }
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(accent.opacity(0.34), lineWidth: 1.1)
-        )
-        .shadow(color: .black.opacity(0.34), radius: 18, x: 0, y: 10)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .mobileCard(tint: accent.opacity(0.18), cornerRadius: 22, isElevated: true)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .bottomLeading) {
             if browser.isLoading {

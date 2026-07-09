@@ -55,6 +55,7 @@
 	A10064 /* HardwareID.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20064 /* HardwareID.swift */; };
 	A10062 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20062; };
 		A10063 /* GlassComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20063; };
+	A10134 /* MobileComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20134 /* MobileComponents.swift */; };
 	A10067 /* HistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20067 /* HistoryManager.swift */; };
 	A10068 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20068 /* HistoryView.swift */; };
 	A10071 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20071 /* SettingsView.swift */; };
@@ -136,6 +137,7 @@
 	T10023 /* PornHubBrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20023 /* PornHubBrowserTests.swift */; };
 	T10024 /* DownloadPathsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20024 /* DownloadPathsTests.swift */; };
 	T10025 /* RcloneRemoteSetupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20025 /* RcloneRemoteSetupTests.swift */; };
+	T10034 /* AppModalLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20034 /* AppModalLayoutTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -191,6 +193,7 @@
 	A20064 /* HardwareID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareID.swift; sourceTree = "<group>"; };
 	A20062 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		A20063 /* GlassComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassComponents.swift; sourceTree = "<group>"; };
+	A20134 /* MobileComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileComponents.swift; sourceTree = "<group>"; };
 	A20067 /* HistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryManager.swift; sourceTree = "<group>"; };
 	A20068 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 	A20071 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -273,6 +276,7 @@
 	T20023 /* PornHubBrowserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PornHubBrowserTests.swift; sourceTree = "<group>"; };
 	T20024 /* DownloadPathsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadPathsTests.swift; sourceTree = "<group>"; };
 	T20025 /* RcloneRemoteSetupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RcloneRemoteSetupTests.swift; sourceTree = "<group>"; };
+	T20034 /* AppModalLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModalLayoutTests.swift; sourceTree = "<group>"; };
 	T30001 /* VidDLTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VidDLTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -343,6 +347,7 @@
 			A20064 /* HardwareID.swift */,
 			A20062 /* Theme.swift */,
 			A20063 /* GlassComponents.swift */,
+			A20134 /* MobileComponents.swift */,
 			A20075 /* NetworkConstants.swift */,
 				A20133 /* ExtractionVPN.swift */,
 			A20076 /* Logging.swift */,
@@ -516,6 +521,7 @@
 			T20023 /* PornHubBrowserTests.swift */,
 			T20024 /* DownloadPathsTests.swift */,
 			T20025 /* RcloneRemoteSetupTests.swift */,
+			T20034 /* AppModalLayoutTests.swift */,
 		);
 		path = PMVDLTests;
 		sourceTree = "<group>";
@@ -717,6 +723,7 @@
 			A10064 /* HardwareID.swift in Sources */,
 			A10062 /* Theme.swift in Sources */,
 				A10063 /* GlassComponents.swift in Sources */,
+			A10134 /* MobileComponents.swift in Sources */,
 			A10067 /* HistoryManager.swift in Sources */,
 			A10068 /* HistoryView.swift in Sources */,
 			A10071 /* SettingsView.swift in Sources */,
@@ -805,6 +812,7 @@
 			T10023 /* PornHubBrowserTests.swift in Sources */,
 			T10024 /* DownloadPathsTests.swift in Sources */,
 			T10025 /* RcloneRemoteSetupTests.swift in Sources */,
+			T10034 /* AppModalLayoutTests.swift in Sources */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
 	};
