@@ -4,7 +4,7 @@ import SwiftUI
 private enum FeedLayout {
     static let contentMaxWidth: CGFloat = 2400
     static let outerSpacing: CGFloat = 12
-    static let sectionSpacing: CGFloat = 10
+    static let sectionSpacing: CGFloat = 8
     static let selectionBarMinimumBottomInset: CGFloat = 96
     static let selectionBarGap: CGFloat = 14
 }
@@ -167,7 +167,7 @@ struct FeedView: View {
             .frame(maxWidth: FeedLayout.contentMaxWidth, maxHeight: .infinity, alignment: .topLeading)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(.horizontal, FeedLayout.outerSpacing)
-            .padding(.top, 10)
+            .padding(.top, 6)
             .background(siteTheme.backgroundTint.opacity(0.18).ignoresSafeArea())
             .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.82), value: isSelecting)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: model.selectedSite)
@@ -184,7 +184,13 @@ struct FeedView: View {
             }
             if let browserSite = FeedBrowserSite(host: newSite) {
                 feedBrowser.configure(site: browserSite)
-                feedBrowser.loadHome(feedModel: model)
+                if let request = appState.pendingFeedNavigation,
+                   request.site == browserSite {
+                    feedBrowser.load(request.url)
+                    appState.pendingFeedNavigation = nil
+                } else {
+                    feedBrowser.loadHome(feedModel: model)
+                }
             }
             if newSite != EpornerFeedScraper.supportedHost {
                 model.clearEpornerContext()
@@ -302,10 +308,25 @@ struct FeedView: View {
             if let browserSite = FeedBrowserSite(host: model.selectedSite) {
                 feedBrowser.configure(site: browserSite)
             }
-            if feedBrowser.currentURL == nil {
+            openPendingFeedNavigationIfNeeded()
+            if appState.pendingFeedNavigation == nil && feedBrowser.currentURL == nil {
                 feedBrowser.loadHome(feedModel: model)
             }
         }
+        .onChange(of: appState.pendingFeedNavigation) { _, _ in
+            openPendingFeedNavigationIfNeeded()
+        }
+    }
+
+    private func openPendingFeedNavigationIfNeeded() {
+        guard let request = appState.pendingFeedNavigation else { return }
+        guard model.selectedSite == request.site.host else {
+            model.selectedSite = request.site.host
+            return
+        }
+        feedBrowser.configure(site: request.site)
+        feedBrowser.load(request.url)
+        appState.pendingFeedNavigation = nil
     }
 
     @ViewBuilder

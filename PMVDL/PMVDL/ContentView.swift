@@ -69,6 +69,21 @@ struct ContentView: View {
                 bottomNavigation
                     .zIndex(100)
             }
+            .overlay(alignment: .top) {
+                if let message = appState.transientMessage {
+                    Text(message.text)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Theme.surface1.opacity(0.98), in: Capsule())
+                        .overlay(Capsule().strokeBorder(Theme.border.opacity(0.8), lineWidth: 1))
+                        .shadow(color: .black.opacity(0.2), radius: 12, y: 5)
+                        .padding(.top, 12)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .zIndex(250)
+                }
+            }
         }
         .background(WindowConfigurator())
         .environment(\.performanceProfile, performanceProfile)
@@ -87,6 +102,15 @@ struct ContentView: View {
         .onChange(of: license.isPro) { _, isPro in
             if !isPro {
                 enforceAccess(to: appState.selectedDestination)
+            }
+        }
+        .onChange(of: appState.transientMessage?.id) { _, messageID in
+            guard let messageID else { return }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 2_800_000_000)
+                if appState.transientMessage?.id == messageID {
+                    appState.transientMessage = nil
+                }
             }
         }
     }
@@ -704,8 +728,13 @@ private struct WindowConfigurator: NSViewRepresentable {
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.styleMask.insert(.fullSizeContentView)
-            window.backgroundColor = .clear
-            window.isOpaque = false
+            window.backgroundColor = NSColor(
+                calibratedRed: 10.0 / 255.0,
+                green: 10.0 / 255.0,
+                blue: 26.0 / 255.0,
+                alpha: 1
+            )
+            window.isOpaque = true
             window.toolbar = nil
             context.coordinator.track(window)
         }

@@ -656,8 +656,7 @@ struct HomeCompactQueue: View {
     }
 
     private func showSource(_ item: DownloadQueueItem) {
-        guard let url = URL(string: item.url) else { return }
-        NSWorkspace.shared.open(url)
+        appState.openFeedSource(for: item)
     }
 
     private func copyError(_ item: DownloadQueueItem) {

@@ -7,6 +7,78 @@ final class PornHubBrowserTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(FeedBrowserSite(host: EpornerFeedScraper.supportedHost)).host, EpornerFeedScraper.supportedHost)
     }
 
+    func testFeedSourceNavigationUsesOriginalExtractionPage() throws {
+        let quality = VideoSource.Quality(
+            label: "1080p",
+            url: "https://cdn.example.test/video.m3u8",
+            kind: .hlsManifest,
+            sourcePageUrl: "https://allpornstream.com/post/extracted"
+        )
+        let source = VideoSource(mp4: nil, hls: [quality], title: "Fixture", siteName: "allpornstream.com")
+        let resolution = DownloadResolution(
+            requestedUrl: quality.url,
+            finalUrl: quality.url,
+            result: ExtractResult(url: "https://allpornstream.com/post/original", source: source, error: nil),
+            source: source,
+            title: "Fixture",
+            mediaKind: .hls,
+            headers: nil,
+            sourcePageUrl: quality.sourcePageUrl
+        )
+        let payload = DownloadRetryPayload(
+            resolution: resolution,
+            target: .local,
+            context: DownloadJobContext(
+                megaRemotePath: "/",
+                gdriveRemoteName: "gdrive",
+                gdriveRemotePath: "VidDL/"
+            ).retryContext,
+            gdriveMegaRemotePath: nil
+        )
+        let item = DownloadQueueItem(url: quality.url, quality: "HLS", retryPayload: payload)
+
+        let request = try FeedSourceNavigation.request(for: item)
+        XCTAssertEqual(request.url.absoluteString, "https://allpornstream.com/post/original")
+        XCTAssertEqual(request.site, .allPornStream)
+    }
+
+    func testFeedSourceNavigationRejectsUnsupportedOriginalPage() {
+        let quality = VideoSource.Quality(
+            label: "Video",
+            url: "https://cdn.example.test/video.mp4",
+            kind: .direct
+        )
+        let source = VideoSource(mp4: quality.url, hls: [], title: "Fixture", siteName: "Example")
+        let resolution = DownloadResolution(
+            requestedUrl: quality.url,
+            finalUrl: quality.url,
+            result: ExtractResult(url: "https://example.test/video", source: source, error: nil),
+            source: source,
+            title: "Fixture",
+            mediaKind: .direct,
+            headers: nil,
+            sourcePageUrl: nil
+        )
+        let payload = DownloadRetryPayload(
+            resolution: resolution,
+            target: .local,
+            context: DownloadJobContext(
+                megaRemotePath: "/",
+                gdriveRemoteName: "gdrive",
+                gdriveRemotePath: "VidDL/"
+            ).retryContext,
+            gdriveMegaRemotePath: nil
+        )
+        let item = DownloadQueueItem(url: quality.url, quality: "Video", retryPayload: payload)
+
+        XCTAssertThrowsError(try FeedSourceNavigation.request(for: item)) { error in
+            XCTAssertEqual(
+                error.localizedDescription,
+                FeedSourceNavigationError.unsupportedSource.localizedDescription
+            )
+        }
+    }
+
     @MainActor
     func testEpornerBrowserHomeFollowsSectionAndUploader() throws {
         let model = FeedViewModel()

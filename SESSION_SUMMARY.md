@@ -1,4 +1,10 @@
-# Latest Session - 2026-07-06 Feed Browser, Modal Settings, App Shell Responsiveness, and VidDL 2.2.1 DMG
+# Latest Session - 2026-07-09 Internal Feed Source Navigation and Shell Alignment
+
+See `docs/SESSION_2026_07_09_FEED_SOURCE_NAVIGATION.md` for the durable summary of in-app queue source navigation, deferred WebView loading, unsupported-source feedback, opaque titlebar fallback, Feed chrome spacing, and validation.
+
+---
+
+# Previous Session - 2026-07-06 Feed Browser, Modal Settings, App Shell Responsiveness, and VidDL 2.2.1 DMG
 
 See `docs/SESSION_2026_07_06_FEED_SETTINGS_DMG.md` for the durable summary of the browser-only Feed cleanup, restored Feed multi-select action overlay, session-persistent Feed selection above the collapsible navigation pill, single-pane extraction loading, extraction result scroll-performance polish, modal-first Settings redesign, instant cold tab placeholders, larger collapsible bottom navigation pill, unsigned personal-use packaging path, and VidDL `2.2.1` local DMG.
 

@@ -553,6 +553,7 @@ final class PornHubBrowserViewModel: ObservableObject {
     @Published var site: FeedBrowserSite = .pornHub
 
     weak var webView: WKWebView?
+    private var pendingURL: URL?
 
     var currentFeedItem: FeedItem? {
         PornHubBrowserFeedMapper.currentPageItem(title: pageTitle, url: currentURL, site: site)
@@ -563,15 +564,25 @@ final class PornHubBrowserViewModel: ObservableObject {
     func attach(_ webView: WKWebView) {
         guard self.webView !== webView else { return }
         self.webView = webView
-        updateState(from: webView)
+        if let pendingURL {
+            self.pendingURL = nil
+            webView.load(URLRequest(url: pendingURL))
+        } else {
+            updateState(from: webView)
+        }
     }
 
     func load(_ url: URL) {
-        if let webView, webView.url == url {
+        guard let webView else {
+            pendingURL = url
+            return
+        }
+        if webView.url == url {
             updateState(from: webView)
             return
         }
-        webView?.load(URLRequest(url: url))
+        pendingURL = nil
+        webView.load(URLRequest(url: url))
     }
 
     func configure(site: FeedBrowserSite) {

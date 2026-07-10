@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 struct DownloadQueueViewNew: View {
     @StateObject private var queue = DownloadQueue.shared
+    @ObservedObject private var appState = AppStateManager.shared
     @AppStorage("seedboxWebdavPassword") private var seedboxWebdavPassword = ""
 
     @State private var searchText = ""
@@ -346,8 +347,7 @@ struct DownloadQueueViewNew: View {
     }
 
     private func showSource(_ item: DownloadQueueItem) {
-        guard let url = URL(string: item.url) else { return }
-        NSWorkspace.shared.open(url)
+        appState.openFeedSource(for: item)
     }
 
     private func copyError(_ item: DownloadQueueItem) {
