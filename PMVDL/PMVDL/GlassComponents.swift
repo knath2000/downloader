@@ -44,6 +44,7 @@ enum AppShellSurfaceMetrics {
     /// Inset reserved for the titlebar / traffic lights behind a full-window modal.
     static let appModalBackdropInset: CGFloat = 6
     static let appModalTitlebarClearance: CGFloat = 34
+    static let appModalCloseButtonReserve: CGFloat = 52
 
     // MARK: Shared app-modal visual shell
 
@@ -553,6 +554,7 @@ struct AppModalOverlay<Content: View>: View {
             // Opaque-ish modal surface that owns the outer shell so modal
             // bodies no longer paint their own translucent gradient.
             content()
+                .padding(.trailing, AppShellSurfaceMetrics.appModalCloseButtonReserve)
                 .frame(
                     width: AppShellSurfaceMetrics.appModalWidth(for: appState.windowSize, size: size),
                     height: AppShellSurfaceMetrics.appModalAvailableHeight(
@@ -588,11 +590,35 @@ struct AppModalOverlay<Content: View>: View {
                 )
                 .contentShape(Rectangle())
                 .onTapGesture {}
+                .overlay(alignment: .topTrailing) {
+                    AppModalCloseButton(action: dismiss)
+                        .padding(.top, 12)
+                        .padding(.trailing, 12)
+                }
                 .padding(.top, reservedTopInset)
         }
         .padding(AppShellSurfaceMetrics.appModalBackdropInset)
         .ignoresSafeArea()
         .onExitCommand(perform: dismiss)
+    }
+}
+
+struct AppModalCloseButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark")
+                .font(.system(size: 12, weight: .bold))
+                .frame(width: 30, height: 30)
+                .foregroundStyle(Theme.textSecondary)
+                .background(Theme.surface2.opacity(0.78), in: Circle())
+                .overlay(Circle().strokeBorder(Theme.borderSubtle, lineWidth: 0.7))
+        }
+        .buttonStyle(.plain)
+        .contentShape(Circle())
+        .help("Close")
+        .accessibilityLabel("Close")
     }
 }
 

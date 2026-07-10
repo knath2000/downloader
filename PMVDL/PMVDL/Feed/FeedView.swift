@@ -167,7 +167,7 @@ struct FeedView: View {
             .frame(maxWidth: FeedLayout.contentMaxWidth, maxHeight: .infinity, alignment: .topLeading)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(.horizontal, FeedLayout.outerSpacing)
-            .padding(.top, 6)
+            .padding(.top, 0)
             .background(siteTheme.backgroundTint.opacity(0.18).ignoresSafeArea())
             .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.82), value: isSelecting)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: model.selectedSite)

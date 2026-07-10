@@ -28,7 +28,6 @@ struct ExtractionModalView: View {
     let onGDrive: (String) -> Void
     let onSeedbox: (String) -> Void
     let onBatchDownload: () -> Void
-    let onClose: () -> Void
 
     @FocusState private var isAddURLFocused: Bool
 
@@ -210,14 +209,6 @@ struct ExtractionModalView: View {
                 .help(isBatchSubmitting ? batchProgressText : batchTarget.homeBatchButtonTitle)
             }
 
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .frame(width: 28, height: 28)
-                    .background(Theme.surface2.opacity(0.72), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .help("Close")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

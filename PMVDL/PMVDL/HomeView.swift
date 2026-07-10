@@ -618,8 +618,7 @@ struct HomeView: View {
             onMega: { url in Task { await startDownload(url: url, cloud: .mega) } },
             onGDrive: { url in Task { await startDownload(url: url, cloud: .gdrive) } },
             onSeedbox: { url in Task { await startDownload(url: url, cloud: .seedbox) } },
-            onBatchDownload: batchDownloadAll,
-            onClose: { showResultsSheet = false }
+            onBatchDownload: batchDownloadAll
         )
     }
 

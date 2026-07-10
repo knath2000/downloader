@@ -207,14 +207,6 @@ struct HomeCompactQueue: View {
                 }
             }
 
-            Button(action: closeModal) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .frame(width: 28, height: 28)
-                    .background(Theme.surface2.opacity(0.72), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .help("Close")
         }
         .padding(12)
         .background(Theme.surfaceGlass.opacity(0.46), in: RoundedRectangle(cornerRadius: 14))

@@ -159,7 +159,7 @@ struct SettingsView: View {
     }
 
     private func settingsModal(for panel: SettingsPanel) -> some View {
-        SettingsModalSurface(panel: panel, tint: panelTint(for: panel), dismiss: { activePanel = nil }) {
+        SettingsModalSurface(panel: panel, tint: panelTint(for: panel)) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     switch panel {
@@ -1039,18 +1039,15 @@ private struct SettingsTile: View {
 private struct SettingsModalSurface<Content: View>: View {
     let panel: SettingsPanel
     let tint: Color
-    let dismiss: () -> Void
     let content: Content
 
     init(
         panel: SettingsPanel,
         tint: Color,
-        dismiss: @escaping () -> Void,
         @ViewBuilder content: () -> Content
     ) {
         self.panel = panel
         self.tint = tint
-        self.dismiss = dismiss
         self.content = content()
     }
 
@@ -1077,18 +1074,6 @@ private struct SettingsModalSurface<Content: View>: View {
                 }
 
                 Spacer(minLength: 10)
-
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .frame(width: 28, height: 28)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Theme.textSecondary)
-                .background(Theme.surfaceGlass.opacity(0.58), in: Circle())
-                .overlay(Circle().strokeBorder(Theme.borderSubtle, lineWidth: 0.6))
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 15)
