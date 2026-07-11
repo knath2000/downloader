@@ -93,9 +93,8 @@ struct HomeView: View {
     @State private var hadActiveDownloads = false
     @State private var completionBannerToken = UUID()
     @State private var modalAddURLText = ""
-    @AppStorage(ExtractionVPNPreferenceKeys.enabled) private var extractionVPNRetryEnabled = false
-    @AppStorage(ExtractionVPNPreferenceKeys.serviceName) private var extractionVPNServiceName = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.appShellWindowSize) private var appShellWindowSize
     var megaRemotePath: String
     var gdriveRemoteName: String
     var gdriveRemotePath: String
@@ -106,6 +105,10 @@ struct HomeView: View {
     var seedboxWebdavUser: String
     var seedboxWebdavPassword: String
     let onUpgradeRequired: () -> Void
+
+    private var layoutWindowSize: CGSize {
+        appShellWindowSize == .zero ? appState.windowSize : appShellWindowSize
+    }
 
     var urlLines: [String] {
         inputModel.validURLs
@@ -222,10 +225,6 @@ struct HomeView: View {
         ExtractionRetrySupport.retryableFailedIndices(in: results, retryingIndices: retryingResultIndices)
     }
 
-    private var canRetryWithVPN: Bool {
-        extractionVPNRetryEnabled
-    }
-
     private var isRetryingFailedResults: Bool {
         !retryingResultIndices.isEmpty
     }
@@ -250,7 +249,7 @@ struct HomeView: View {
         ZStack {
             ScrollView {
                 mainColumn
-                .frame(maxWidth: AppShellSurfaceMetrics.pageMaxWidth(for: appState.windowSize), alignment: .top)
+                .frame(maxWidth: AppShellSurfaceMetrics.pageMaxWidth(for: layoutWindowSize), alignment: .top)
                 .frame(maxWidth: .infinity, alignment: .top)
                 .padding(HomeLayoutMetrics.pagePadding)
             }
@@ -364,7 +363,7 @@ struct HomeView: View {
 
             DependencySetupPanel(gdriveRemoteName: gdriveRemoteName)
         }
-        .frame(maxWidth: AppShellSurfaceMetrics.mainPanelWidth(for: appState.windowSize))
+        .frame(maxWidth: AppShellSurfaceMetrics.mainPanelWidth(for: layoutWindowSize))
         .frame(maxWidth: .infinity)
         .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.82), value: results.isEmpty)
     }
@@ -604,7 +603,6 @@ struct HomeView: View {
             isBatchSubmitting: isCurrentBatchSubmitting,
             batchProgressText: currentBatchProgressText,
             canRetryFailed: !retryableFailedResultIndices.isEmpty,
-            canRetryWithVPN: canRetryWithVPN,
             isYtDlpReady: ScraperEngine.isYTDLPAvailable,
             localState: { tracker.localDownloads[$0] },
             megaState: { tracker.megaUploads[$0] },
@@ -613,7 +611,6 @@ struct HomeView: View {
             onAddURL: addURLFromResultsModal,
             onRetryFailed: retryFailedResults,
             onRetry: retryExtractResult,
-            onVPNRetry: retryExtractResultWithVPN,
             onLocal: { url in Task { await startDownload(url: url, cloud: .local) } },
             onMega: { url in Task { await startDownload(url: url, cloud: .mega) } },
             onGDrive: { url in Task { await startDownload(url: url, cloud: .gdrive) } },
@@ -817,17 +814,6 @@ struct HomeView: View {
 
     @MainActor
     private func retryExtractResult(at index: Int) {
-        retryExtractResult(at: index, requireVPN: false)
-    }
-
-    @MainActor
-    private func retryExtractResultWithVPN(at index: Int) {
-        guard canRetryWithVPN else { return }
-        retryExtractResult(at: index, requireVPN: true)
-    }
-
-    @MainActor
-    private func retryExtractResult(at index: Int, requireVPN: Bool) {
         guard results.indices.contains(index),
               retryingResultIndices.insert(index).inserted else { return }
 
@@ -836,21 +822,7 @@ struct HomeView: View {
         let slotID = ExtractionSlotSupport.slotIDForCompletedResult(at: index, in: extractionSlots)
 
         Task {
-            let retried: ExtractResult
-            let selectedVPNServiceName = extractionVPNServiceName.trimmingCharacters(in: .whitespacesAndNewlines)
-            let isSelectedVPNConnected = !requireVPN || selectedVPNServiceName.isEmpty
-                ? true
-                : await ExtractionVPNManager.isConnected(serviceName: selectedVPNServiceName)
-            let isSelectedVPNDisconnected = !isSelectedVPNConnected
-            if isSelectedVPNDisconnected {
-                retried = ExtractResult(
-                    url: url,
-                    source: nil,
-                    error: "VPN profile \"\(selectedVPNServiceName)\" is not connected. Connect it in macOS Settings, then retry with VPN."
-                )
-            } else {
-                retried = await extractResult(for: url)
-            }
+            let retried = await extractResult(for: url)
             await MainActor.run {
                 guard extractionGeneration == generation else { return }
                 retryingResultIndices.remove(index)

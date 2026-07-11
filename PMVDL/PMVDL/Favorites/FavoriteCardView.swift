@@ -25,17 +25,17 @@ struct FavoriteCardView: View {
         .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.72), value: isHovered)
         .contentShape(RoundedRectangle(cornerRadius: 16))
         .onHover { isHovered = $0 }
-        .contextMenu {
-            Button("Extract") { extract() }
-            Button("Copy Link") { copyLink() }
-            Button("Open in Browser") { openSource() }
-
-            Divider()
-
-            Button("Remove from Favorites", role: .destructive) {
-                remove()
-            }
-        }
+        .appContextMenu(
+            title: item.title,
+            subtitle: item.url,
+            accent: Theme.hotPink,
+            actions: [
+                AppContextMenuAction("Extract", systemImage: "bolt.fill", action: extract),
+                AppContextMenuAction("Copy Link", systemImage: "doc.on.doc", action: copyLink),
+                AppContextMenuAction("Open in Browser", systemImage: "safari", action: openSource),
+                AppContextMenuAction("Remove from Favorites", systemImage: "heart.slash", role: .destructive, action: remove)
+            ]
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text("\(item.siteName), \(item.title), \(metadataText)"))
         .accessibilityAction(named: Text("Remove from Favorites")) {

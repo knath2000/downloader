@@ -5,6 +5,9 @@ private enum FeedLayout {
     static let contentMaxWidth: CGFloat = 2400
     static let outerSpacing: CGFloat = 12
     static let sectionSpacing: CGFloat = 8
+    static let titlebarOverlap: CGFloat = 0
+    static let trafficLightPadding: CGFloat = 32
+    static let browserBottomMargin: CGFloat = 4
     static let selectionBarMinimumBottomInset: CGFloat = 96
     static let selectionBarGap: CGFloat = 14
 }
@@ -142,7 +145,6 @@ struct FeedView: View {
 
     @StateObject private var appState = AppStateManager.shared
     @StateObject private var model = FeedViewModel.shared
-    @StateObject private var favorites = FeedFavoritesStore.shared
     @StateObject private var library = VideoLibrary.shared
     @StateObject private var pornHubSession = PornHubSessionManager.shared
     @StateObject private var epornerSession = EpornerSessionManager.shared
@@ -167,11 +169,13 @@ struct FeedView: View {
             .frame(maxWidth: FeedLayout.contentMaxWidth, maxHeight: .infinity, alignment: .topLeading)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(.horizontal, FeedLayout.outerSpacing)
-            .padding(.top, 0)
+            .padding(.top, FeedLayout.trafficLightPadding)
+            .offset(y: -FeedLayout.titlebarOverlap)
             .background(siteTheme.backgroundTint.opacity(0.18).ignoresSafeArea())
             .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.82), value: isSelecting)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: model.selectedSite)
         }
+        .ignoresSafeArea(.container, edges: .top)
         .task {
             await model.loadPornHubSubscriptionsIfNeeded()
             await model.loadEpornerSubscriptionsIfNeeded()
@@ -246,11 +250,9 @@ struct FeedView: View {
                 browser: feedBrowser,
                 selectedSite: $model.selectedSite,
                 accent: siteTheme.accent,
-                currentPageIsFavorite: currentItem.map { favorites.contains(url: $0.url) } ?? false,
                 currentPageDownloadedMatch: currentDownloadedMatch,
                 goHome: { feedBrowser.loadHome(feedModel: model) },
-                extractCurrentPage: extractCurrentBrowserPage,
-                toggleFavoriteCurrentPage: toggleFavoriteCurrentBrowserPage
+                extractCurrentPage: extractCurrentBrowserPage
             )
 
             PornHubBrowserWebView(
@@ -300,7 +302,7 @@ struct FeedView: View {
             width: AppShellSurfaceMetrics.browserSurfaceWidth(for: appState.windowSize),
             height: AppShellSurfaceMetrics.browserSurfaceHeight(
                 for: appState.windowSize,
-                reservedBottomInset: bottomChromeInset
+                reservedBottomInset: FeedLayout.browserBottomMargin
             )
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -370,14 +372,17 @@ struct FeedView: View {
     }
 
     private func extractCurrentBrowserPage() {
-        guard let item = feedBrowser.currentFeedItem else { return }
-        extract(item)
-    }
-
-    private func toggleFavoriteCurrentBrowserPage() {
-        guard let item = feedBrowser.currentFeedItem else { return }
-        withAnimation {
-            favorites.toggle(feedItem: item)
+        feedBrowser.detectVideosOnCurrentPage { items in
+            let urls = items.map(\.url)
+            if urls.isEmpty, let item = feedBrowser.currentFeedItem {
+                extract(item)
+                return
+            }
+            guard !urls.isEmpty else { return }
+            AppStateManager.shared.pendingExtractThumbnailURL = nil
+            AppStateManager.shared.pendingExtractShouldStart = true
+            AppStateManager.shared.pendingExtractURL = urls.joined(separator: "\n")
+            AppStateManager.shared.select(.home)
         }
     }
 

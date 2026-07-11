@@ -65,6 +65,7 @@ struct ContentView: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .clipped()
+            .environment(\.appShellWindowSize, proxy.size)
             .overlay(alignment: .bottom) {
                 bottomNavigation
                     .zIndex(100)
@@ -178,7 +179,6 @@ struct ContentView: View {
                 .padding(.bottom, floatingTabContentInset)
         case .library:
             LibraryView(onUpgradeRequired: presentUpgradeOverlay)
-                .padding(.bottom, floatingTabContentInset)
         case .feed:
             FeedView(bottomChromeInset: floatingTabContentInset)
         case .settings:

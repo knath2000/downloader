@@ -395,7 +395,7 @@ private struct HistoryEntryRow: View {
         .contentShape(RoundedRectangle(cornerRadius: 14))
         .onHover { isHovering = $0 }
         .help(entry.url)
-        .contextMenu { contextMenu }
+        .appContextMenu(title: historyMenuTitle, subtitle: historyMenuSubtitle, accent: providerColor, actions: contextActions)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(entry.accessibilityLabel))
     }
@@ -473,25 +473,36 @@ private struct HistoryEntryRow: View {
         }
     }
 
-    @ViewBuilder
-    private var contextMenu: some View {
+    private var historyMenuTitle: String {
+        entry.title
+    }
+
+    private var historyMenuSubtitle: String {
+        entry.url
+    }
+
+    private var contextActions: [AppContextMenuAction] {
         switch entry {
         case .link(let item):
-            Button("Extract Again") { extractAgain(item) }
-            Button("Copy Link") { ClipboardManager.copy(item.url) }
+            var actions = [
+                AppContextMenuAction("Extract Again", systemImage: "arrow.clockwise", action: { extractAgain(item) }),
+                AppContextMenuAction("Copy Link", systemImage: "doc.on.doc", action: { ClipboardManager.copy(item.url) })
+            ]
             if let url = URL(string: item.url), url.scheme?.hasPrefix("http") == true {
-                Button("Open Link") { NSWorkspace.shared.open(url) }
+                actions.append(AppContextMenuAction("Open Link", systemImage: "safari", action: { NSWorkspace.shared.open(url) }))
             }
-            Divider()
-            Button("Remove", role: .destructive) { removeLink(item) }
+            actions.append(AppContextMenuAction("Remove", systemImage: "trash", role: .destructive, action: { removeLink(item) }))
+            return actions
         case .upload(let item):
-            Button("Copy Remote Path") { ClipboardManager.copy(item.remotePath) }
-            Button("Copy Source Link") { ClipboardManager.copy(item.url) }
+            var actions = [
+                AppContextMenuAction("Copy Remote Path", systemImage: "folder", action: { ClipboardManager.copy(item.remotePath) }),
+                AppContextMenuAction("Copy Source Link", systemImage: "doc.on.doc", action: { ClipboardManager.copy(item.url) })
+            ]
             if let url = URL(string: item.url), url.scheme?.hasPrefix("http") == true {
-                Button("Open Source Link") { NSWorkspace.shared.open(url) }
+                actions.append(AppContextMenuAction("Open Source Link", systemImage: "safari", action: { NSWorkspace.shared.open(url) }))
             }
-            Divider()
-            Button("Remove", role: .destructive) { removeUpload(item) }
+            actions.append(AppContextMenuAction("Remove", systemImage: "trash", role: .destructive, action: { removeUpload(item) }))
+            return actions
         }
     }
 }

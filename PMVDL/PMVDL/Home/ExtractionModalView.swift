@@ -13,7 +13,6 @@ struct ExtractionModalView: View {
     let isBatchSubmitting: Bool
     let batchProgressText: String
     let canRetryFailed: Bool
-    let canRetryWithVPN: Bool
     let isYtDlpReady: Bool
     let localState: (String) -> UploadState?
     let megaState: (String) -> UploadState?
@@ -22,7 +21,6 @@ struct ExtractionModalView: View {
     let onAddURL: () -> Void
     let onRetryFailed: () -> Void
     let onRetry: (Int) -> Void
-    let onVPNRetry: (Int) -> Void
     let onLocal: (String) -> Void
     let onMega: (String) -> Void
     let onGDrive: (String) -> Void
@@ -141,8 +139,6 @@ struct ExtractionModalView: View {
                                     gdriveState: gdriveState,
                                     seedboxState: seedboxState,
                                     onRetry: { onRetry(resultIndex) },
-                                    canRetryWithVPN: canRetryWithVPN,
-                                    onVPNRetry: { onVPNRetry(resultIndex) },
                                     onLocal: onLocal,
                                     onMega: onMega,
                                     onGDrive: onGDrive,
@@ -386,8 +382,6 @@ private struct ExtractionResultRow: View {
     let gdriveState: (String) -> UploadState?
     let seedboxState: (String) -> UploadState?
     let onRetry: () -> Void
-    let canRetryWithVPN: Bool
-    let onVPNRetry: () -> Void
     let onLocal: (String) -> Void
     let onMega: (String) -> Void
     let onGDrive: (String) -> Void
@@ -647,15 +641,6 @@ private struct ExtractionResultRow: View {
                     .buttonStyle(.bordered)
                     .controlSize(.large)
 
-                    if canRetryWithVPN {
-                        Button {
-                            onVPNRetry()
-                        } label: {
-                            Label("Retry with VPN", systemImage: "network")
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.large)
-                    }
                 }
             }
         }

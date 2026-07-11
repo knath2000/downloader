@@ -1,3 +1,7 @@
+# Latest Session - 2026-07-10 Feed, Library, Sleep Prevention, and VPN Cleanup
+
+See `docs/SESSION_2026_07_10_FEED_LIBRARY_SHELL.md` for the durable summary of the custom context menus, compact completed-download modal rows, keep-awake hardening, VPN retry removal, Feed shell geometry/extraction behavior, Library shell sizing, version `2.2.3`, and local unsigned DMG validation.
+
 # Latest Session - 2026-07-09 Internal Feed Source Navigation and Shell Alignment
 
 See `docs/SESSION_2026_07_09_FEED_SOURCE_NAVIGATION.md` for the durable summary of in-app queue source navigation, deferred WebView loading, unsupported-source feedback, opaque titlebar fallback, Feed chrome spacing, and validation.

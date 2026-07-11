@@ -10,8 +10,6 @@ struct SettingsView: View {
     @AppStorage("embeddedSubsMode") private var embeddedSubsMode = false
     @AppStorage(AppPreferenceKeys.preventSleepWhileRunning) private var preventSleepWhileRunning = false
     @AppStorage(DownloadPaths.customDownloadDirectoryKey) private var customDownloadDirectory = ""
-    @AppStorage(ExtractionVPNPreferenceKeys.enabled) private var extractionVPNRetryEnabled = false
-    @AppStorage(ExtractionVPNPreferenceKeys.serviceName) private var extractionVPNServiceName = ""
 
     @StateObject private var license = LicenseManager.shared
     @StateObject private var dependencyStore = SettingsDependencyStore.shared
@@ -22,11 +20,6 @@ struct SettingsView: View {
     @State private var isActivating = false
     @State private var showsGDriveManualFields = false
     @State private var activePanel: SettingsPanel?
-    @State private var vpnServices: [ExtractionVPNService] = []
-    @State private var vpnStatus = ""
-    @State private var vpnTestResult = ""
-    @State private var isRefreshingVPNServices = false
-    @State private var isTestingVPN = false
 
     private var trimmedActivationEmail: String {
         activateEmail.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -119,11 +112,6 @@ struct SettingsView: View {
             return "\(enabled) of 3 alerts enabled"
         case .downloads:
             return DownloadPaths.hasCustomDownloadDir ? "Custom folder selected" : "Default download folder"
-        case .vpn:
-            if extractionVPNRetryEnabled {
-                return extractionVPNServiceName.isEmpty ? "Manual VPN check before retry" : extractionVPNServiceName
-            }
-            return "Direct extraction by default"
         case .pro:
             return ProFeatureGate.isPro ? "Activated for \(license.activationEmail.isEmpty ? "this Mac" : license.activationEmail)" : "\(license.freeDownloadsRemaining) free downloads remaining"
         case .about:
@@ -140,8 +128,6 @@ struct SettingsView: View {
         case .downloads:
             let readyCount = [dependencyModel.ytDlp.isReady, dependencyModel.ffmpeg.isReady].filter { $0 }.count
             return "\(readyCount)/2 tools"
-        case .vpn:
-            return extractionVPNRetryEnabled ? (vpnStatus.isEmpty ? "Enabled" : vpnStatus) : "Off"
         case .pro:
             return ProFeatureGate.isPro ? "Active" : "Free"
         case .about:
@@ -169,8 +155,6 @@ struct SettingsView: View {
                         notificationsCard
                     case .downloads:
                         downloadBehaviorCard
-                    case .vpn:
-                        extractionVPNCard
                     case .pro:
                         proSection
                     case .about:
@@ -356,166 +340,6 @@ struct SettingsView: View {
 
     private var downloadLocationDisplay: String {
         DownloadPaths.downloadDir.path
-    }
-
-    private var selectedVPNService: ExtractionVPNService? {
-        vpnServices.first { $0.name == extractionVPNServiceName }
-    }
-
-    private var extractionVPNCard: some View {
-        SettingsCard(tint: Theme.skyBlue) {
-            VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
-                SettingsCardTitle(
-                    title: "VPN Retry",
-                    subtitle: "Use an already-connected macOS VPN profile for failed extraction retries.",
-                    systemImage: "network",
-                    tint: Theme.skyBlue,
-                    status: extractionVPNRetryEnabled ? "Enabled" : "Off"
-                )
-
-                SettingsToggleRow(
-                    title: "Enable VPN retry",
-                    subtitle: "Failed extraction rows can be retried after the selected VPN profile is connected.",
-                    systemImage: "arrow.triangle.2.circlepath",
-                    tint: Theme.skyBlue,
-                    isOn: $extractionVPNRetryEnabled
-                )
-
-                SettingsDivider()
-
-                SettingsFieldRow("VPN profile") {
-                    Picker("VPN profile", selection: $extractionVPNServiceName) {
-                        Text("Any connected VPN").tag("")
-                        ForEach(vpnServices) { service in
-                            Text(service.name).tag(service.name)
-                        }
-                    }
-                    .labelsHidden()
-                    .frame(maxWidth: 320)
-                }
-
-                if vpnServices.isEmpty {
-                    SettingsInlineAlert(
-                        text: "No macOS VPN profiles were found. Third-party VPN apps that do not register as Network services may not appear here.",
-                        tint: Theme.warning
-                    )
-                } else if let selectedVPNService {
-                    SettingsInlineAlert(
-                        text: "\(selectedVPNService.name): \(selectedVPNService.status)",
-                        tint: selectedVPNService.isConnected ? Theme.success : Theme.warning
-                    )
-                }
-
-                if !vpnTestResult.isEmpty {
-                    SettingsInlineAlert(
-                        text: vpnTestResult,
-                        tint: vpnTestResult.hasPrefix("OK") ? Theme.success : Theme.error
-                    )
-                }
-
-                HStack(spacing: 8) {
-                    Button {
-                        refreshVPNServices()
-                    } label: {
-                        if isRefreshingVPNServices {
-                            ProgressView()
-                                .controlSize(.small)
-                                .scaleEffect(0.7)
-                            Text("Refreshing")
-                        } else {
-                            Label("Refresh", systemImage: "arrow.clockwise")
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .tint(Theme.skyBlue)
-                    .disabled(isRefreshingVPNServices)
-
-                    Button {
-                        openVPNSettings()
-                    } label: {
-                        Label("Open VPN Settings", systemImage: "gearshape")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-
-                    Button {
-                        testExtractionVPN()
-                    } label: {
-                        if isTestingVPN {
-                            ProgressView()
-                                .controlSize(.small)
-                                .scaleEffect(0.7)
-                            Text("Testing")
-                        } else {
-                            Label("Test Playmogo", systemImage: "checkmark.circle")
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .tint(Theme.skyBlue)
-                    .disabled(isTestingVPN)
-                }
-
-                SettingsHelpText("VPN retry uses macOS system routing. Connect the profile first, then retry a failed extraction row.")
-            }
-            .task {
-                if vpnServices.isEmpty {
-                    refreshVPNServices()
-                }
-            }
-            .onChange(of: extractionVPNServiceName) { _, _ in
-                vpnTestResult = ""
-                vpnStatus = selectedVPNService?.status ?? ""
-            }
-        }
-    }
-
-    private func refreshVPNServices() {
-        isRefreshingVPNServices = true
-        Task {
-            let services = await ExtractionVPNManager.services()
-            await MainActor.run {
-                vpnServices = services
-                if !extractionVPNServiceName.isEmpty,
-                   !services.contains(where: { $0.name == extractionVPNServiceName }) {
-                    extractionVPNServiceName = ""
-                }
-                vpnStatus = selectedVPNService?.status ?? ""
-                isRefreshingVPNServices = false
-            }
-        }
-    }
-
-    private func testExtractionVPN() {
-        isTestingVPN = true
-        vpnTestResult = ""
-        Task {
-            let selectedName = extractionVPNServiceName.trimmingCharacters(in: .whitespacesAndNewlines)
-            let isSelectedVPNConnected = selectedName.isEmpty
-                ? true
-                : await ExtractionVPNManager.isConnected(serviceName: selectedName)
-            let isSelectedVPNDisconnected = !isSelectedVPNConnected
-            if isSelectedVPNDisconnected {
-                await MainActor.run {
-                    vpnTestResult = "Failed - \(selectedName) is not connected."
-                    isTestingVPN = false
-                }
-                return
-            }
-
-            let result = await ExtractionVPNManager.testPlaymogoReachability()
-            await MainActor.run {
-                vpnTestResult = result.message
-                isTestingVPN = false
-            }
-        }
-    }
-
-    private func openVPNSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.Network-Settings.extension") {
-            NSWorkspace.shared.open(url)
-        }
     }
 
     private var notificationsCard: some View {
@@ -920,7 +744,6 @@ private enum SettingsPanel: String, CaseIterable, Identifiable {
     case cloud
     case notifications
     case downloads
-    case vpn
     case pro
     case about
 
@@ -931,7 +754,6 @@ private enum SettingsPanel: String, CaseIterable, Identifiable {
         case .cloud: return "Cloud Destination"
         case .notifications: return "Notifications"
         case .downloads: return "Downloads & Helpers"
-        case .vpn: return "VPN Retry"
         case .pro: return "VidDL Pro"
         case .about: return "About"
         }
@@ -942,7 +764,6 @@ private enum SettingsPanel: String, CaseIterable, Identifiable {
         case .cloud: return "Google Drive upload remote."
         case .notifications: return "Event alerts."
         case .downloads: return "Saving, subtitles, and tools."
-        case .vpn: return "Retry through a connected VPN."
         case .pro: return "License and unlocks."
         case .about: return "Version and app info."
         }
@@ -953,7 +774,6 @@ private enum SettingsPanel: String, CaseIterable, Identifiable {
         case .cloud: return "Configure the Google Drive remote used after downloads finish."
         case .notifications: return "Choose which VidDL events can notify you."
         case .downloads: return "Fine-tune downloads, subtitles, sleep prevention, and helper tools."
-        case .vpn: return "Choose the installed VPN profile used for manual failed-extraction retries."
         case .pro: return "Manage your VidDL Pro purchase and activation."
         case .about: return "Check the installed version and open the system About panel."
         }
@@ -964,7 +784,6 @@ private enum SettingsPanel: String, CaseIterable, Identifiable {
         case .cloud: return "cloud.fill"
         case .notifications: return "bell.badge.fill"
         case .downloads: return "arrow.down.circle.fill"
-        case .vpn: return "network"
         case .pro: return "crown.fill"
         case .about: return "info.circle.fill"
         }
@@ -975,7 +794,6 @@ private enum SettingsPanel: String, CaseIterable, Identifiable {
         case .cloud: return Theme.electricLime
         case .notifications: return Theme.amber
         case .downloads: return Theme.gold
-        case .vpn: return Theme.skyBlue
         case .pro: return Theme.coral
         case .about: return Theme.skyBlue
         }

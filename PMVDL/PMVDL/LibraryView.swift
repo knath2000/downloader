@@ -172,18 +172,19 @@ struct LibraryView: View {
         ScrollView {
             commandPanel
                 .frame(
-                    width: AppShellSurfaceMetrics.appModalSurfaceWidth(for: appState.windowSize),
+                    width: max(AppShellSurfaceMetrics.appModalSurfaceWidth(for: appState.windowSize) - 12, 760),
                     alignment: .topLeading
                 )
                 .frame(
                     minHeight: AppShellSurfaceMetrics.appModalAvailableHeight(
                         for: appState.windowSize,
                         reservedTopInset: AppShellSurfaceMetrics.appModalTitlebarClearance,
-                        reservedBottomInset: AppShellSurfaceMetrics.appModalBottomNavClearance
+                        reservedBottomInset: 4
                     ),
                     alignment: .topLeading
                 )
-                .padding(AppShellSurfaceMetrics.appModalBackdropInset)
+                .padding(.horizontal, 12)
+                .padding(.top, AppShellSurfaceMetrics.appModalBackdropInset)
                 .padding(.bottom, selection.isEmpty ? 92 : 132)
         }
     }
@@ -997,7 +998,7 @@ private struct LibraryTimelineRow: View {
         .onHover { isHovering = $0 }
         .onTapGesture { handleTap() }
         .help(entry.url)
-        .contextMenu { contextMenu }
+        .appContextMenu(title: entry.title, subtitle: entry.url, accent: rowTint, actions: contextActions)
     }
 
     @ViewBuilder
@@ -1184,47 +1185,47 @@ private struct LibraryTimelineRow: View {
         }
     }
 
-    @ViewBuilder
-    private var contextMenu: some View {
+    private var contextActions: [AppContextMenuAction] {
         switch entry {
         case .video(let item):
-            Button(favoritesStore.contains(url: item.url) ? "Remove Favorite" : "Add Favorite") {
-                toggleFavoriteVideo(item)
-            }
-            Button("Open Source Page") { openSource(item) }
-            Button("Open Media") { openMedia(item) }
-            Button("Re-extract") { reExtractVideo(item) }
-            Divider()
-            Button("Send to Local") { uploadVideo(item, .local) }
-            Button("Send to Mega") { uploadVideo(item, .mega) }
-            Button("Send to Google Drive") { uploadVideo(item, .gdrive) }
-            Button("Send to Seedbox") { uploadVideo(item, .seedbox) }
-            Divider()
-            Button("Refresh Thumbnail") { refreshThumbnail(item) }
-            Button("Copy Page URL") { ClipboardManager.copy(item.url) }
+            var actions = [
+                AppContextMenuAction(favoritesStore.contains(url: item.url) ? "Remove Favorite" : "Add Favorite", systemImage: "heart", action: { toggleFavoriteVideo(item) }),
+                AppContextMenuAction("Open Source Page", systemImage: "safari", action: { openSource(item) }),
+                AppContextMenuAction("Open Media", systemImage: "play.rectangle", action: { openMedia(item) }),
+                AppContextMenuAction("Re-extract", systemImage: "arrow.clockwise", action: { reExtractVideo(item) }),
+                AppContextMenuAction("Send to Local", systemImage: "arrow.up.circle", action: { uploadVideo(item, .local) }),
+                AppContextMenuAction("Send to Mega", systemImage: "arrow.up.circle", action: { uploadVideo(item, .mega) }),
+                AppContextMenuAction("Send to Google Drive", systemImage: "arrow.up.circle", action: { uploadVideo(item, .gdrive) }),
+                AppContextMenuAction("Send to Seedbox", systemImage: "arrow.up.circle", action: { uploadVideo(item, .seedbox) }),
+                AppContextMenuAction("Refresh Thumbnail", systemImage: "photo", action: { refreshThumbnail(item) }),
+                AppContextMenuAction("Copy Page URL", systemImage: "doc.on.doc", action: { ClipboardManager.copy(item.url) })
+            ]
             if let mp4 = item.mp4Url {
-                Button("Copy MP4 Link") { ClipboardManager.copy(mp4) }
+                actions.append(AppContextMenuAction("Copy MP4 Link", systemImage: "doc.on.doc", action: { ClipboardManager.copy(mp4) }))
             }
-            Divider()
-            Button("Delete from Library", role: .destructive) { requestDeleteVideo(item) }
+            actions.append(AppContextMenuAction("Delete from Library", systemImage: "trash", role: .destructive, action: { requestDeleteVideo(item) }))
+            return actions
         case .link(let item):
-            Button("Extract Again") { extractAgain(item) }
-            Button("Copy Link") { ClipboardManager.copy(item.url) }
-            Button("Open Link") { openURL(item.url) }
-            Divider()
-            Button("Remove", role: .destructive) { removeLink(item) }
+            return [
+                AppContextMenuAction("Extract Again", systemImage: "arrow.clockwise", action: { extractAgain(item) }),
+                AppContextMenuAction("Copy Link", systemImage: "doc.on.doc", action: { ClipboardManager.copy(item.url) }),
+                AppContextMenuAction("Open Link", systemImage: "safari", action: { openURL(item.url) }),
+                AppContextMenuAction("Remove", systemImage: "trash", role: .destructive, action: { removeLink(item) })
+            ]
         case .upload(let item):
-            Button("Copy Remote Path") { ClipboardManager.copy(item.remotePath) }
-            Button("Copy Source Link") { ClipboardManager.copy(item.url) }
-            Button("Open Source Link") { openURL(item.url) }
-            Divider()
-            Button("Remove", role: .destructive) { removeUpload(item) }
+            return [
+                AppContextMenuAction("Copy Remote Path", systemImage: "folder", action: { ClipboardManager.copy(item.remotePath) }),
+                AppContextMenuAction("Copy Source Link", systemImage: "doc.on.doc", action: { ClipboardManager.copy(item.url) }),
+                AppContextMenuAction("Open Source Link", systemImage: "safari", action: { openURL(item.url) }),
+                AppContextMenuAction("Remove", systemImage: "trash", role: .destructive, action: { removeUpload(item) })
+            ]
         case .favorite(let item):
-            Button("Extract") { extractFavorite(item) }
-            Button("Copy Link") { ClipboardManager.copy(item.url) }
-            Button("Open Link") { openURL(item.url) }
-            Divider()
-            Button("Remove Favorite", role: .destructive) { removeFavorite(item) }
+            return [
+                AppContextMenuAction("Extract", systemImage: "bolt.fill", action: { extractFavorite(item) }),
+                AppContextMenuAction("Copy Link", systemImage: "doc.on.doc", action: { ClipboardManager.copy(item.url) }),
+                AppContextMenuAction("Open Link", systemImage: "safari", action: { openURL(item.url) }),
+                AppContextMenuAction("Remove Favorite", systemImage: "heart.slash", role: .destructive, action: { removeFavorite(item) })
+            ]
         }
     }
 

@@ -71,7 +71,13 @@ final class SleepPreventionManager {
     private func begin() {
         guard activity == nil else { return }
         activity = ProcessInfo.processInfo.beginActivity(
-            options: [.userInitiated, .idleSystemSleepDisabled],
+            options: [
+                .userInitiated,
+                .idleSystemSleepDisabled,
+                .idleDisplaySleepDisabled,
+                .automaticTerminationDisabled,
+                .suddenTerminationDisabled
+            ],
             reason: "VidDL downloads are running"
         )
     }

@@ -40,6 +40,17 @@ extension EnvironmentValues {
     }
 }
 
+private struct AppShellWindowSizeKey: EnvironmentKey {
+    static let defaultValue = CGSize.zero
+}
+
+extension EnvironmentValues {
+    var appShellWindowSize: CGSize {
+        get { self[AppShellWindowSizeKey.self] }
+        set { self[AppShellWindowSizeKey.self] = newValue }
+    }
+}
+
 enum AppShellSurfaceMetrics {
     /// Inset reserved for the titlebar / traffic lights behind a full-window modal.
     static let appModalBackdropInset: CGFloat = 6
@@ -619,6 +630,216 @@ struct AppModalCloseButton: View {
         .contentShape(Circle())
         .help("Close")
         .accessibilityLabel("Close")
+    }
+}
+
+enum AppContextMenuActionRole {
+    case normal
+    case destructive
+}
+
+struct AppContextMenuAction {
+    let title: String
+    let systemImage: String
+    let role: AppContextMenuActionRole
+    let isEnabled: Bool
+    let showsSeparatorBefore: Bool
+    let action: () -> Void
+
+    init(
+        _ title: String,
+        systemImage: String,
+        role: AppContextMenuActionRole = .normal,
+        isEnabled: Bool = true,
+        showsSeparatorBefore: Bool = false,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.role = role
+        self.isEnabled = isEnabled
+        self.showsSeparatorBefore = showsSeparatorBefore
+        self.action = action
+    }
+}
+
+private final class AppContextMenuPresenter {
+    static let shared = AppContextMenuPresenter()
+
+    private var panel: NSPanel?
+    private var monitor: Any?
+
+    func present(
+        at screenPoint: NSPoint,
+        title: String,
+        subtitle: String,
+        accent: Color,
+        actions: [AppContextMenuAction]
+    ) {
+        dismiss()
+        let content = NSHostingView(rootView: AppContextMenuView(
+            title: title,
+            subtitle: subtitle,
+            accent: accent,
+            actions: actions,
+            dismiss: { [weak self] in self?.dismiss() }
+        ))
+        content.frame = NSRect(x: 0, y: 0, width: 260, height: 1)
+        content.layoutSubtreeIfNeeded()
+        let fittingSize = content.fittingSize
+        let menuSize = NSSize(width: 260, height: max(120, fittingSize.height))
+        let visibleFrame = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? .zero
+        let origin = NSPoint(
+            x: min(max(screenPoint.x, visibleFrame.minX + 8), visibleFrame.maxX - menuSize.width - 8),
+            y: min(max(screenPoint.y - menuSize.height, visibleFrame.minY + 8), visibleFrame.maxY - menuSize.height - 8)
+        )
+        let panel = NSPanel(
+            contentRect: NSRect(origin: origin, size: menuSize),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = false
+        panel.level = .popUpMenu
+        panel.collectionBehavior = [.transient, .ignoresCycle]
+        panel.contentView = content
+        self.panel = panel
+        panel.orderFront(nil)
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) { [weak self] event in
+            self?.dismiss()
+            return event
+        }
+    }
+
+    func dismiss() {
+        panel?.close()
+        panel = nil
+        if let monitor {
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
+        }
+    }
+}
+
+struct AppContextMenuView: View {
+    let title: String
+    let subtitle: String
+    let accent: Color
+    let actions: [AppContextMenuAction]
+    let dismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 9) {
+                Image(systemName: "cursorarrow.click.2")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.caption.weight(.bold)).foregroundStyle(.white).lineLimit(1)
+                    Text(subtitle).font(.caption2).foregroundStyle(.white.opacity(0.58)).lineLimit(1)
+                }
+            }
+            .padding(.bottom, 3)
+
+            ForEach(Array(actions.enumerated()), id: \.offset) { _, action in
+                if action.showsSeparatorBefore {
+                    Divider().overlay(.white.opacity(0.10))
+                }
+                Button {
+                    dismiss()
+                    action.action()
+                } label: {
+                    HStack(spacing: 9) {
+                        Image(systemName: action.systemImage)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(action.role == .destructive ? Theme.error : accent)
+                            .frame(width: 18)
+                        Text(action.title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(action.role == .destructive ? Theme.error : .white.opacity(0.92))
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 32)
+                    .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(accent.opacity(0.16), lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
+                .disabled(!action.isEnabled)
+                .opacity(action.isEnabled ? 1 : 0.42)
+            }
+        }
+        .padding(12)
+        .frame(width: 260)
+        .background(LinearGradient(colors: [Color(red: 0.11, green: 0.07, blue: 0.03), Color(red: 0.05, green: 0.04, blue: 0.07)], startPoint: .topLeading, endPoint: .bottomTrailing), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(accent.opacity(0.42), lineWidth: 1))
+        .shadow(color: .black.opacity(0.45), radius: 18, y: 10)
+    }
+}
+
+private struct AppContextMenuAnchor: NSViewRepresentable {
+    let title: String
+    let subtitle: String
+    let accent: Color
+    let actions: [AppContextMenuAction]
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        view.postsFrameChangedNotifications = true
+        context.coordinator.attach(to: view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.update(title: title, subtitle: subtitle, accent: accent, actions: actions)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator {
+        weak var view: NSView?
+        var title = ""
+        var subtitle = ""
+        var accent = Color.white
+        var actions: [AppContextMenuAction] = []
+        var monitor: Any?
+
+        func attach(to view: NSView) {
+            self.view = view
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
+                guard let self, let view = self.view, event.window === view.window else { return event }
+                let point = view.convert(event.locationInWindow, from: nil)
+                guard view.bounds.contains(point), let window = view.window else { return event }
+                let windowPoint = view.convert(point, to: nil)
+                let screenPoint = window.convertPoint(toScreen: windowPoint)
+                AppContextMenuPresenter.shared.present(at: screenPoint, title: self.title, subtitle: self.subtitle, accent: self.accent, actions: self.actions)
+                return event
+            }
+        }
+
+        func update(title: String, subtitle: String, accent: Color, actions: [AppContextMenuAction]) {
+            self.title = title
+            self.subtitle = subtitle
+            self.accent = accent
+            self.actions = actions
+        }
+
+        deinit {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+        }
+    }
+}
+
+extension View {
+    func appContextMenu(
+        title: String,
+        subtitle: String,
+        accent: Color = Theme.lavender,
+        actions: [AppContextMenuAction]
+    ) -> some View {
+        background(AppContextMenuAnchor(title: title, subtitle: subtitle, accent: accent, actions: actions))
     }
 }
 

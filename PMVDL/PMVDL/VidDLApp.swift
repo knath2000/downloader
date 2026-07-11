@@ -70,10 +70,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 queueItems: DownloadQueue.shared.queue
             )
         }
-        Task { @MainActor in
-            await Task.yield()
-            SleepPreventionManager.shared.start()
-        }
+        SleepPreventionManager.shared.start()
         Task { @MainActor in
             await Task.yield()
             let seedboxWebdavPassword = UserDefaults.standard.string(forKey: "seedboxWebdavPassword") ?? ""

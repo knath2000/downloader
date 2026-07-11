@@ -612,7 +612,7 @@ private struct DownloadQueueRow: View {
                 onToggleSelection()
             }
         }
-        .contextMenu { contextMenu }
+        .appContextMenu(title: item.displayTitle ?? item.filename, subtitle: item.url, accent: tint, actions: contextActions)
         .help(item.url)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(accessibilityLabel))
@@ -730,21 +730,21 @@ private struct DownloadQueueRow: View {
         return .white.opacity(0.08)
     }
 
-    @ViewBuilder
-    private var contextMenu: some View {
+    private var contextActions: [AppContextMenuAction] {
+        var actions = [AppContextMenuAction]()
         if item.canRetry {
-            Button("Retry") { onRetry() }
+            actions.append(AppContextMenuAction("Retry", systemImage: "arrow.clockwise", isEnabled: item.retryPayload != nil, action: onRetry))
         }
         if canStartNow {
-            Button("Start Now") { onStartNow() }
+            actions.append(AppContextMenuAction("Start Now", systemImage: "bolt.fill", action: onStartNow))
         }
-        Button("Show Source") { onShowSource() }
-        Button("Show in Finder") { onShowInFinder() }
+        actions.append(AppContextMenuAction("Show Source", systemImage: "safari", action: onShowSource))
+        actions.append(AppContextMenuAction("Show in Finder", systemImage: "folder", action: onShowInFinder))
         if !item.status.isTerminal && item.status != .processing {
-            Button("Move to Front") { onMoveToFront() }
+            actions.append(AppContextMenuAction("Move to Front", systemImage: "forward.fill", action: onMoveToFront))
         }
-        Divider()
-        Button("Remove", role: .destructive) { onRemove() }
+        actions.append(AppContextMenuAction("Remove", systemImage: "trash", role: .destructive, action: onRemove))
+        return actions
     }
 
     private var accessibilityLabel: String {

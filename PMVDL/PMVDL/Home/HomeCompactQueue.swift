@@ -411,23 +411,46 @@ struct HomeCompactQueue: View {
         }
     }
 
+    @ViewBuilder
     private func queueRow(_ item: DownloadQueueItem, isHistory: Bool = false) -> some View {
-        HomeCompactQueueRow(
-            item: item,
-            isHistory: isHistory,
-            isModalPresentation: isModal,
-            pause: { queue.pause(item) },
-            resume: { resume(item) },
-            retry: { retry(item) },
-            startNow: { startNow(item) },
-            remove: { queue.remove(item) },
-            moveToFront: { moveToFront(item) },
-            showInFinder: { showInFinder(item) },
-            showSource: { showSource(item) },
-            copyError: { copyError(item) },
-            onUpgradeRequired: onUpgradeRequired
-        )
-        .equatable()
+        if displayMode == .completedModal {
+            HomeCompletedQueueRow(
+                item: item,
+                openLibrary: { openLibrary(item) },
+                showInFinder: { showInFinder(item) },
+                showSource: { showSource(item) },
+                remove: { queue.remove(item) }
+            )
+        } else {
+            HomeCompactQueueRow(
+                item: item,
+                isHistory: isHistory,
+                isModalPresentation: isModal,
+                pause: { queue.pause(item) },
+                resume: { resume(item) },
+                retry: { retry(item) },
+                startNow: { startNow(item) },
+                remove: { queue.remove(item) },
+                moveToFront: { moveToFront(item) },
+                showInFinder: { showInFinder(item) },
+                showSource: { showSource(item) },
+                copyError: { copyError(item) },
+                onUpgradeRequired: onUpgradeRequired
+            )
+            .equatable()
+        }
+    }
+
+    private func openLibrary(_ item: DownloadQueueItem) {
+        let sourceURLs = [
+            item.retryPayload?.resolution.result.url,
+            item.url
+        ].compactMap { $0 }
+        if let libraryItem = VideoLibrary.shared.items.first(where: { sourceURLs.contains($0.url) }) {
+            appState.pendingLibraryItemID = libraryItem.id
+        }
+        appState.select(.library)
+        closeModal()
     }
 
     private var activeOverflowButton: some View {
@@ -659,6 +682,104 @@ struct HomeCompactQueue: View {
 
 }
 
+private struct HomeCompletedQueueRow: View {
+    let item: DownloadQueueItem
+    let openLibrary: () -> Void
+    let showInFinder: () -> Void
+    let showSource: () -> Void
+    let remove: () -> Void
+
+    @State private var isHovered = false
+
+    private let tint = Theme.success
+
+    private var title: String {
+        item.displayTitle ?? item.filename
+    }
+
+    private var destination: String {
+        item.targetCloud.displayName
+    }
+
+    private var path: String {
+        item.finalPath ?? item.retryPayload?.resolution.result.url ?? item.url
+    }
+
+    private var contextActions: [AppContextMenuAction] {
+        [
+            AppContextMenuAction("Open in Library", systemImage: "books.vertical.fill", action: openLibrary),
+            AppContextMenuAction("Show in Finder", systemImage: "folder", action: showInFinder),
+            AppContextMenuAction("Show Source", systemImage: "safari", action: showSource),
+            AppContextMenuAction("Copy Source Link", systemImage: "doc.on.doc", action: { ClipboardManager.copy(item.retryPayload?.resolution.result.url ?? item.url) }),
+            AppContextMenuAction("Remove", systemImage: "trash", role: .destructive, action: remove)
+        ]
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            HomeCompactQueueThumbnail(item: item, tint: tint, size: CGSize(width: 64, height: 44))
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+
+                HStack(spacing: 7) {
+                    Label("Completed", systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(tint)
+                    Text(destination)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(1)
+                }
+
+                if isHovered {
+                    Text(path)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Theme.textSecondary.opacity(0.86))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .transition(.opacity)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            if isHovered {
+                HStack(spacing: 5) {
+                    HomeCompactQueueIconButton(systemName: "books.vertical.fill", tint: Theme.skyBlue, help: "Open in Library", action: openLibrary)
+                    HomeCompactQueueIconButton(systemName: "folder", tint: Theme.textSecondary, help: "Show in Finder", action: showInFinder)
+                    HomeCompactQueueIconButton(systemName: "trash", tint: Theme.error, help: "Remove", action: remove)
+                }
+                .transition(.opacity)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(Theme.surface1.opacity(isHovered ? 0.42 : 0.24), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(tint.opacity(isHovered ? 0.30 : 0.14), lineWidth: 0.8)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .onTapGesture { openLibrary() }
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.14)) {
+                isHovered = hovering
+            }
+        }
+        .appContextMenu(title: title, subtitle: path, accent: tint, actions: contextActions)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("\(title), completed, destination \(destination)"))
+        .accessibilityAction(named: Text("Open in Library"), openLibrary)
+        .accessibilityAction(named: Text("Show in Finder"), showInFinder)
+        .accessibilityAction(named: Text("Remove"), remove)
+    }
+}
+
 private struct HomeCompactQueueRow: View, Equatable {
     let item: DownloadQueueItem
     let isHistory: Bool
@@ -786,7 +907,7 @@ private struct HomeCompactQueueRow: View, Equatable {
         .help(details.helpText)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(accessibilityLabel))
-        .contextMenu { contextMenu }
+        .appContextMenu(title: item.displayTitle ?? item.filename, subtitle: details.location, accent: tint, actions: contextActions)
         .onHover { isHovered = $0 }
     }
 
@@ -831,24 +952,24 @@ private struct HomeCompactQueueRow: View, Equatable {
         }
     }
 
-    @ViewBuilder
-    private var contextMenu: some View {
+    private var contextActions: [AppContextMenuAction] {
+        var actions = [AppContextMenuAction]()
         if item.canRetry {
-            Button("Retry") { retry() }
+            actions.append(AppContextMenuAction("Retry", systemImage: "arrow.clockwise", isEnabled: item.retryPayload != nil, action: retry))
         }
         if canStartNow {
-            Button("Start Now") { startNow() }
+            actions.append(AppContextMenuAction("Start Now", systemImage: "bolt.fill", action: startNow))
         }
-        Button("Show Source") { showSource() }
-        Button("Show in Finder") { showInFinder() }
+        actions.append(AppContextMenuAction("Show Source", systemImage: "safari", action: showSource))
+        actions.append(AppContextMenuAction("Show in Finder", systemImage: "folder", action: showInFinder))
         if !item.status.isTerminal && item.status != .processing {
-            Button("Move to Front") { moveToFront() }
+            actions.append(AppContextMenuAction("Move to Front", systemImage: "forward.fill", action: moveToFront))
         }
         if case .failed = item.status {
-            Button("Copy Error") { copyError() }
+            actions.append(AppContextMenuAction("Copy Error", systemImage: "doc.on.doc", action: copyError))
         }
-        Divider()
-        Button("Remove", role: .destructive) { remove() }
+        actions.append(AppContextMenuAction("Remove", systemImage: "trash", role: .destructive, action: remove))
+        return actions
     }
 
     private var rowBackground: some View {

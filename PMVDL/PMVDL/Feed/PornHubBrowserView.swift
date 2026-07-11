@@ -646,13 +646,18 @@ final class PornHubBrowserViewModel: ObservableObject {
         isLoading = webView.isLoading
     }
 
-    func detectVideosOnCurrentPage() {
-        guard let webView else { return }
+    func detectVideosOnCurrentPage(completion: @escaping ([FeedItem]) -> Void) {
+        guard let webView else {
+            completion([])
+            return
+        }
         webView.evaluateJavaScript(Self.videoDetectionScript) { [weak self] result, _ in
             Task { @MainActor in
                 guard let self else { return }
                 let rawItems = result as? [[String: Any]] ?? []
-                self.detectedItems = PornHubBrowserFeedMapper.items(from: rawItems, site: self.site)
+                let items = PornHubBrowserFeedMapper.items(from: rawItems, site: self.site)
+                self.detectedItems = items
+                completion(items)
             }
         }
     }
@@ -698,11 +703,9 @@ struct PornHubBrowserChrome: View {
     @Binding var selectedSite: String
 
     let accent: Color
-    let currentPageIsFavorite: Bool
     let currentPageDownloadedMatch: DownloadedFeedMatch?
     let goHome: () -> Void
     let extractCurrentPage: () -> Void
-    let toggleFavoriteCurrentPage: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.performanceProfile) private var performanceProfile
@@ -740,18 +743,7 @@ struct PornHubBrowserChrome: View {
                     Label("Extract Current Page", systemImage: "bolt.fill")
                 }
                 .buttonStyle(MobilePrimaryButtonStyle(tint: accent))
-                .disabled(browser.currentFeedItem == nil)
-                .pressEffect(scale: allowsMotion ? 0.98 : 1)
-
-                Button {
-                    toggleFavoriteCurrentPage()
-                } label: {
-                    Label(currentPageIsFavorite ? "Favorited" : "Favorite Page", systemImage: currentPageIsFavorite ? "heart.fill" : "heart")
-                }
-                .buttonStyle(.bordered)
-                .tint(accent)
-                .controlSize(.large)
-                .disabled(browser.currentFeedItem == nil)
+                .disabled(browser.currentURL == nil)
                 .pressEffect(scale: allowsMotion ? 0.98 : 1)
 
                 if let currentPageDownloadedMatch {
@@ -1092,17 +1084,20 @@ struct PornHubBrowserWebView: NSViewRepresentable {
             panel.isMovable = false
             panel.isOpaque = false
             panel.level = NSWindow.Level.popUpMenu
-            panel.contentView = NSHostingView(rootView: PornHubContextMenuView(
+            let accent = FeedSiteTheme.theme(for: browser?.site.host ?? PornHubFeedScraper.supportedHost).accent
+            panel.contentView = NSHostingView(rootView: AppContextMenuView(
                 title: context.title,
-                url: context.url,
-                accent: FeedSiteTheme.theme(for: browser?.site.host ?? PornHubFeedScraper.supportedHost).accent,
-                isSelected: isSelected(item),
-                toggleSelection: { [weak self] in self?.performToggleSelection(item) },
-                extract: { [weak self] in self?.performExtract(context) },
-                toggleFavorite: { [weak self] in self?.performToggleFavorite(context) },
-                openLibrary: { [weak self] in self?.performOpenLibrary(context) },
-                copyLink: { [weak self] in self?.performCopy(context) },
-                openExternally: { [weak self] in self?.performOpenExternally(context) }
+                subtitle: context.url.hostAndPathDisplay,
+                accent: accent,
+                actions: [
+                    AppContextMenuAction(isSelected(item) ? "Deselect" : "Select", systemImage: isSelected(item) ? "checkmark.circle.fill" : "circle", action: { [weak self] in self?.performToggleSelection(item) }),
+                    AppContextMenuAction("Extract with VidDL", systemImage: "bolt.fill", action: { [weak self] in self?.performExtract(context) }),
+                    AppContextMenuAction("Toggle Favorite", systemImage: "heart.fill", action: { [weak self] in self?.performToggleFavorite(context) }),
+                    AppContextMenuAction("Open in Library", systemImage: "checkmark.circle.fill", action: { [weak self] in self?.performOpenLibrary(context) }),
+                    AppContextMenuAction("Copy Link", systemImage: "doc.on.doc.fill", action: { [weak self] in self?.performCopy(context) }),
+                    AppContextMenuAction("Open Externally", systemImage: "safari.fill", action: { [weak self] in self?.performOpenExternally(context) })
+                ],
+                dismiss: { [weak self] in self?.dismissContextMenu() }
             ))
             contextPanel = panel
             panel.orderFront(nil as Any?)
@@ -1232,106 +1227,6 @@ private final class PornHubContextMenuWebView: WKWebView {
 
     override func menu(for event: NSEvent) -> NSMenu? {
         nil
-    }
-}
-
-private struct PornHubContextMenuView: View {
-    let title: String
-    let url: URL
-    let accent: Color
-    let isSelected: Bool
-    let toggleSelection: () -> Void
-    let extract: () -> Void
-    let toggleFavorite: () -> Void
-    let openLibrary: () -> Void
-    let copyLink: () -> Void
-    let openExternally: () -> Void
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.performanceProfile) private var performanceProfile
-
-    private var allowsMotion: Bool {
-        !reduceMotion && performanceProfile != .reducedEffects
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            header
-            actionButton(isSelected ? "Deselect" : "Select", icon: isSelected ? "checkmark.circle.fill" : "circle", action: toggleSelection)
-            actionButton("Extract with VidDL", icon: "bolt.fill", isPrimary: true, action: extract)
-            actionButton("Toggle Favorite", icon: "heart.fill", action: toggleFavorite)
-            actionButton("Open in Library", icon: "checkmark.circle.fill", action: openLibrary)
-            Divider()
-                .overlay(.white.opacity(0.10))
-            actionButton("Copy Link", icon: "doc.on.doc.fill", action: copyLink)
-            actionButton("Open Externally", icon: "safari.fill", action: openExternally)
-        }
-        .padding(12)
-        .frame(width: 252)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.11, green: 0.07, blue: 0.03),
-                            Color(red: 0.05, green: 0.04, blue: 0.07)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(accent.opacity(0.42), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.45), radius: 18, x: 0, y: 10)
-    }
-
-    private var header: some View {
-        HStack(spacing: 9) {
-            Image(systemName: "play.circle.fill")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(accent)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                Text(url.hostAndPathDisplay)
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.58))
-                    .lineLimit(1)
-            }
-        }
-        .padding(.bottom, 2)
-    }
-
-    private func actionButton(_ title: String, icon: String, isPrimary: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 9) {
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(isPrimary ? .black : accent)
-                    .frame(width: 18)
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(isPrimary ? .black : .white.opacity(0.92))
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 32)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isPrimary ? accent : Color.white.opacity(0.07))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(isPrimary ? Color.white.opacity(0.18) : accent.opacity(0.16), lineWidth: 0.5)
-            )
-        }
-        .buttonStyle(.plain)
-        .pressEffect(scale: allowsMotion ? 0.97 : 1)
     }
 }
 
