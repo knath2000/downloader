@@ -14,7 +14,7 @@ struct ContentView: View {
     @AppStorage("seedboxRemotePath") var seedboxRemotePath = "/"
     @AppStorage("seedboxWebdavURL") var seedboxWebdavURL = ""
     @AppStorage("seedboxWebdavUser") var seedboxWebdavUser = ""
-    @AppStorage("seedboxWebdavPassword") var seedboxWebdavPassword = ""
+    @SecureStringStorage("seedboxWebdavPassword") var seedboxWebdavPassword = ""
     @State private var showUpgradeOverlay = false
     @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
     @State private var lastAccessibleDestination: NavDestination = .home
@@ -184,6 +184,12 @@ struct ContentView: View {
         case .settings:
             SettingsView(gdriveRemoteName: $gdriveRemoteName,
                          gdriveRemotePath: $gdriveRemotePath,
+                         seedboxTransferMode: $seedboxTransferMode,
+                         seedboxRemoteName: $seedboxRemoteName,
+                         seedboxRemotePath: $seedboxRemotePath,
+                         seedboxWebdavURL: $seedboxWebdavURL,
+                         seedboxWebdavUser: $seedboxWebdavUser,
+                         seedboxWebdavPassword: $seedboxWebdavPassword,
                          onUpgradeRequired: presentUpgradeOverlay)
                 .padding()
                 .padding(.bottom, floatingTabContentInset)

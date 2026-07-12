@@ -35,6 +35,9 @@ struct HLSDownloader {
                      headers: [String: String]? = nil,
                      sourcePageUrl: String? = nil,
                      onProgress: @escaping (ProgressEvent) -> Void) async throws -> URL {
+        guard URLTrustPolicy.validated(m3u8Url) != nil else {
+            throw DownloadError.invalidURL(m3u8Url)
+        }
         // Check if this is a LuluStream source that needs the local download path
         let isLuluSource = sourcePageUrl?.contains("lulu") == true
         if isLuluSource {
@@ -62,8 +65,9 @@ struct HLSDownloader {
 
         // Build ffmpeg arguments with optional headers
         var args = ["-y"]
-        if let headers = headers, !headers.isEmpty {
-            let headerStr = headers.map { "\($0.key): \($0.value)" }.joined(separator: "\r\n") + "\r\n"
+        let safeHeaders = MediaRequestHeaders.sanitized(headers)
+        if !safeHeaders.isEmpty {
+            let headerStr = safeHeaders.map { "\($0.key): \($0.value)" }.joined(separator: "\r\n") + "\r\n"
             args.append(contentsOf: ["-headers", headerStr])
         }
         args.append(contentsOf: ["-i", resolvedUrl, "-c", "copy", "-movflags", "+faststart", destFile.path])
@@ -435,11 +439,11 @@ struct HLSDownloader {
 
     /// Fetch playlist text with proper headers.
     private func fetchPlaylistText(_ url: String, headers: [String: String]?) async throws -> String {
-        guard let urlObj = URL(string: url) else { throw DownloadError.downloadFailed("Invalid URL") }
+        guard let urlObj = URLTrustPolicy.validated(url) else { throw DownloadError.downloadFailed("Invalid URL") }
         var request = URLRequest(url: urlObj)
         request.timeoutInterval = 30
         if let headers = headers {
-            for (key, value) in headers {
+            for (key, value) in MediaRequestHeaders.sanitized(headers) {
                 request.setValue(value, forHTTPHeaderField: key)
             }
         } else {
@@ -455,20 +459,25 @@ struct HLSDownloader {
     private func validatedData(for request: URLRequest, kind: String,
                                minimumBytes: Int? = nil,
                                disallowHTML: Bool = false) async throws -> Data {
-        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let url = request.url, URLTrustPolicy.isAllowed(url) else {
+            throw DownloadError.invalidURL(request.url?.absoluteString ?? "")
+        }
+        var trustedRequest = request
+        trustedRequest.url = url
+        let (data, response) = try await URLSession.shared.data(for: trustedRequest)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw DownloadError.downloadFailed("\(kind) request did not return an HTTP response")
         }
         guard (200..<300).contains(httpResponse.statusCode) else {
             throw DownloadError.downloadFailed(
-                "\(kind) request failed with HTTP \(httpResponse.statusCode) for \(request.url?.absoluteString ?? "unknown URL")"
+                "\(kind) request failed with HTTP \(httpResponse.statusCode) for \(url.absoluteString)"
             )
         }
         if disallowHTML,
            let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type")?.lowercased(),
            contentType.contains("text/html") {
             throw DownloadError.downloadFailed(
-                "\(kind) request returned HTML for \(request.url?.absoluteString ?? "unknown URL")"
+                "\(kind) request returned HTML for \(url.absoluteString)"
             )
         }
         if let minimumBytes, data.count < minimumBytes {
@@ -482,10 +491,10 @@ struct HLSDownloader {
     /// Resolve a master HLS playlist URL to a concrete media variant URL.
     /// If the URL is already a media playlist, returns it unchanged.
     private func resolveHlsUrl(_ url: String, headers: [String: String]? = nil) async throws -> String {
-        guard let urlObj = URL(string: url) else { return url }
+        guard let urlObj = URLTrustPolicy.validated(url) else { throw DownloadError.invalidURL(url) }
         var request = URLRequest(url: urlObj)
         request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
-        if let headers = headers { headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) } }
+        MediaRequestHeaders.sanitized(headers).forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         request.timeoutInterval = 15
         let (data, _) = try await URLSession.shared.data(for: request)
         guard let text = String(data: data, encoding: .utf8) else { return url }
@@ -508,7 +517,8 @@ struct HLSDownloader {
 
         guard let variant = bestUrl else { return url }
         // Resolve relative URLs against the master playlist base
-        if let variantURL = URL(string: variant, relativeTo: urlObj) {
+        if let variantURL = URL(string: variant, relativeTo: urlObj),
+           URLTrustPolicy.isAllowed(variantURL) {
             return variantURL.absoluteString
         }
         return variant
@@ -527,10 +537,10 @@ struct HLSDownloader {
 
     /// Fetch the total duration from a concrete HLS media playlist by summing EXTINF entries.
     private func fetchHlsDuration(from url: String, headers: [String: String]? = nil) async throws -> TimeInterval? {
-        guard let urlObj = URL(string: url) else { return nil }
+        guard let urlObj = URLTrustPolicy.validated(url) else { return nil }
         var request = URLRequest(url: urlObj)
         request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
-        if let headers = headers { headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) } }
+        MediaRequestHeaders.sanitized(headers).forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         request.timeoutInterval = 15
         let (data, _) = try await URLSession.shared.data(for: request)
         guard let text = String(data: data, encoding: .utf8) else { return nil }

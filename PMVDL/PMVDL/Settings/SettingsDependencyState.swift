@@ -36,7 +36,7 @@ struct SettingsDependencyInput: Equatable, Hashable, Sendable {
     }
 
     var hasSeedboxWebDAVURL: Bool {
-        !seedboxWebdavURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        URLTrustPolicy.validated(seedboxWebdavURL)?.scheme?.lowercased() == "https"
     }
 }
 

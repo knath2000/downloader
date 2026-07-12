@@ -9,6 +9,7 @@ final class PornHubSessionManager: ObservableObject {
     @Published var isLoggedIn = false
 
     private init() {
+        migrateLegacyCookies()
         restorePersistedCookies()
         isLoggedIn = hasPornHubSessionCookie()
     }
@@ -34,7 +35,7 @@ final class PornHubSessionManager: ObservableObject {
             }
         }
 
-        UserDefaults.standard.removeObject(forKey: Self.cookieKey)
+        SecureStore.remove(forKey: Self.cookieKey)
         isLoggedIn = false
     }
 
@@ -52,13 +53,13 @@ final class PornHubSessionManager: ObservableObject {
             }
         }
         if let encoded = try? NSKeyedArchiver.archivedData(withRootObject: properties, requiringSecureCoding: false) {
-            UserDefaults.standard.set(encoded, forKey: Self.cookieKey)
+            _ = SecureStore.set(encoded, forKey: Self.cookieKey)
         }
     }
 
     private func restorePersistedCookies() {
         let classes: [AnyClass] = [NSArray.self, NSDictionary.self, NSString.self, NSNumber.self, NSDate.self, NSURL.self]
-        guard let data = UserDefaults.standard.data(forKey: Self.cookieKey),
+        guard let data = SecureStore.data(forKey: Self.cookieKey),
               let propertiesList = try? NSKeyedUnarchiver.unarchivedObject(ofClasses: classes, from: data) as? [[String: Any]] else {
             return
         }
@@ -70,6 +71,14 @@ final class PornHubSessionManager: ObservableObject {
             if let cookie = HTTPCookie(properties: properties) {
                 HTTPCookieStorage.shared.setCookie(cookie)
             }
+        }
+    }
+
+    private func migrateLegacyCookies() {
+        guard SecureStore.data(forKey: Self.cookieKey) == nil,
+              let legacy = UserDefaults.standard.data(forKey: Self.cookieKey) else { return }
+        if SecureStore.set(legacy, forKey: Self.cookieKey) {
+            UserDefaults.standard.removeObject(forKey: Self.cookieKey)
         }
     }
 }

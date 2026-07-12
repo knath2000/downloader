@@ -57,7 +57,7 @@ struct RcloneRemoteSetupCommandBuilder {
         ["config", "show", remoteName]
     }
 
-    static func sftpCreateArguments(input: RcloneSFTPSetupInput) -> [String] {
+    static func sftpCreateArguments(input: RcloneSFTPSetupInput, obscuredPassword: String? = nil) -> [String] {
         var arguments = [
             "config", "create", input.resolvedRemoteName, "sftp",
             "host", input.host.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -69,7 +69,11 @@ struct RcloneRemoteSetupCommandBuilder {
         case .key:
             arguments += ["key_file", input.keyFile.trimmingCharacters(in: .whitespacesAndNewlines)]
         case .password:
-            arguments += ["pass", input.password, "--obscure"]
+            if let obscuredPassword {
+                arguments += ["pass", obscuredPassword]
+            } else {
+                arguments += ["pass", input.password, "--obscure"]
+            }
         }
 
         return arguments
@@ -165,9 +169,24 @@ struct LiveRcloneRemoteSetupRunner: RcloneRemoteSetupRunning {
         guard let rclone = ToolLocator.find("rclone") else {
             return SubprocessResult(exitStatus: 127, stdout: "", stderr: "rclone is not installed.")
         }
+
+        var obscuredPassword: String?
+        if input.authMode == .password {
+            let obscured = try await SubprocessRunner.run(
+                executable: rclone,
+                arguments: ["obscure", "-"],
+                timeout: 30,
+                stdin: Data((input.password + "\n").utf8)
+            )
+            guard obscured.exitStatus == 0 else {
+                return SubprocessResult(exitStatus: obscured.exitStatus, stdout: "", stderr: "Could not secure the SFTP password.")
+            }
+            obscuredPassword = obscured.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
         return try await SubprocessRunner.run(
             executable: rclone,
-            arguments: RcloneRemoteSetupCommandBuilder.sftpCreateArguments(input: input),
+            arguments: RcloneRemoteSetupCommandBuilder.sftpCreateArguments(input: input, obscuredPassword: obscuredPassword),
             timeout: 60,
             stdoutHandler: output,
             stderrHandler: output

@@ -28,7 +28,7 @@ enum SeedboxError: LocalizedError {
 
 enum SeedboxTransferMode {
     case rclone(remoteName: String, remotePath: String)
-    case webdav(baseURL: URL, user: String, password: String, remotePath: String)
+    case webdav(baseURL: URL, user: String, password: String, remotePath: String, allowSelfSigned: Bool = false)
 }
 
 final class SeedboxManager {
@@ -70,7 +70,7 @@ final class SeedboxManager {
                 headers: headers,
                 progressHandler: progressHandler
             )
-        case .webdav(let baseURL, let user, let password, let remotePath):
+        case .webdav(let baseURL, let user, let password, let remotePath, let allowSelfSigned):
             return try await uploadViaWebDAVPut(
                 sourceURL: sourceURL,
                 webdavBase: baseURL,
@@ -79,6 +79,7 @@ final class SeedboxManager {
                 user: user,
                 password: password,
                 headers: headers,
+                allowSelfSigned: allowSelfSigned,
                 progressHandler: progressHandler
             )
         }
@@ -122,9 +123,9 @@ final class SeedboxManager {
             progressHandler(1.0)
             return destination
 
-        case .webdav(let baseURL, let user, let password, let remotePath):
+        case .webdav(let baseURL, let user, let password, let remotePath, let allowSelfSigned):
             let destinationURL = Self.webDAVFileURL(baseURL: baseURL, remotePath: remotePath, filename: filename)
-            try await ensureWebDAVDirectory(baseURL: baseURL, remotePath: remotePath, user: user, password: password)
+            try await ensureWebDAVDirectory(baseURL: baseURL, remotePath: remotePath, user: user, password: password, allowSelfSigned: allowSelfSigned)
 
             var putRequest = URLRequest(url: destinationURL)
             putRequest.httpMethod = "PUT"
@@ -132,7 +133,7 @@ final class SeedboxManager {
             putRequest.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
             setBasicAuth(user: user, password: password, request: &putRequest)
 
-            let delegate = WebDAVUploadDelegate(contentLength: -1, progressHandler: progressHandler)
+            let delegate = WebDAVUploadDelegate(contentLength: -1, allowedHost: baseURL.host, allowSelfSigned: allowSelfSigned, progressHandler: progressHandler)
             let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
             defer { session.finishTasksAndInvalidate() }
 
@@ -182,7 +183,7 @@ final class SeedboxManager {
                 totalDuration: totalDuration,
                 progressHandler: progressHandler
             )
-        case .webdav(let baseURL, let user, let password, let remotePath):
+        case .webdav(let baseURL, let user, let password, let remotePath, let allowSelfSigned):
             let ffmpegArgs = ["-y"] + ffmpegHeaderArgs + ["-i", resolvedURL, "-c", "copy", "-movflags", "+faststart"]
             let mp4Filename: String
             if filename.hasSuffix(".ts") {
@@ -200,6 +201,7 @@ final class SeedboxManager {
                 filename: mp4Filename,
                 user: user,
                 password: password,
+                allowSelfSigned: allowSelfSigned,
                 totalDuration: totalDuration,
                 progressHandler: progressHandler
             )
@@ -228,7 +230,7 @@ final class SeedboxManager {
                 throw SeedboxError.transferFailed("Cannot reach seedbox remote '\(trimmed)': \(message)")
             }
 
-        case .webdav(let baseURL, let user, let password, let remotePath):
+        case .webdav(let baseURL, let user, let password, let remotePath, let allowSelfSigned):
             let dirURL = Self.webDAVDirectoryURL(baseURL: baseURL, remotePath: remotePath)
             var propfind = URLRequest(url: dirURL)
             propfind.httpMethod = "PROPFIND"
@@ -236,10 +238,10 @@ final class SeedboxManager {
             propfind.setValue("0", forHTTPHeaderField: "Depth")
             setBasicAuth(user: user, password: password, request: &propfind)
 
-            let (_, propResponse) = try await URLSession.shared.data(for: propfind)
+            let (_, propResponse) = try await webDAVData(for: propfind, baseURL: baseURL, allowSelfSigned: allowSelfSigned)
             if let http = propResponse as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                 if http.statusCode == 404 || http.statusCode == 409 {
-                    try await ensureWebDAVDirectory(baseURL: baseURL, remotePath: remotePath, user: user, password: password)
+                    try await ensureWebDAVDirectory(baseURL: baseURL, remotePath: remotePath, user: user, password: password, allowSelfSigned: allowSelfSigned)
                 } else {
                     throw SeedboxError.transferFailed("Cannot reach WebDAV path \(dirURL.absoluteString) (HTTP \(http.statusCode)). Check URL and credentials.")
                 }
@@ -257,7 +259,7 @@ final class SeedboxManager {
             put.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
             setBasicAuth(user: user, password: password, request: &put)
 
-            let (_, putResponse) = try await URLSession.shared.data(for: put)
+            let (_, putResponse) = try await webDAVData(for: put, baseURL: baseURL, allowSelfSigned: allowSelfSigned)
             guard let putHTTP = putResponse as? HTTPURLResponse, (200..<300).contains(putHTTP.statusCode) else {
                 let status = (putResponse as? HTTPURLResponse)?.statusCode ?? -1
                 let destinationURL = Self.webDAVFileURL(baseURL: baseURL, remotePath: remotePath, filename: filename)
@@ -268,7 +270,7 @@ final class SeedboxManager {
             delete.httpMethod = "DELETE"
             delete.timeoutInterval = 10
             setBasicAuth(user: user, password: password, request: &delete)
-            _ = try? await URLSession.shared.data(for: delete)
+            _ = try? await webDAVData(for: delete, baseURL: baseURL, allowSelfSigned: allowSelfSigned)
         }
     }
 
@@ -298,13 +300,13 @@ final class SeedboxManager {
             if let bytes = object["bytes"] as? Double { return Int64(bytes) }
             return nil
 
-        case .webdav(let baseURL, let user, let password, let remotePath):
+        case .webdav(let baseURL, let user, let password, let remotePath, let allowSelfSigned):
             let destinationURL = Self.webDAVFileURL(baseURL: baseURL, remotePath: remotePath, filename: filename)
             var request = URLRequest(url: destinationURL)
             request.httpMethod = "HEAD"
             request.timeoutInterval = 15
             setBasicAuth(user: user, password: password, request: &request)
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (_, response) = try await webDAVData(for: request, baseURL: baseURL, allowSelfSigned: allowSelfSigned)
             guard let http = response as? HTTPURLResponse else { return nil }
             if http.statusCode == 404 { return nil }
             guard (200..<300).contains(http.statusCode) else { return nil }
@@ -474,13 +476,14 @@ final class SeedboxManager {
         user: String,
         password: String,
         headers: [String: String]?,
+        allowSelfSigned: Bool,
         progressHandler: @escaping (Double) -> Void
     ) async throws -> String {
         let contentLength = await fetchContentLength(url: sourceURL, headers: headers)
         guard contentLength > 0 else { throw SeedboxError.headRequestFailed }
 
         let destinationURL = Self.webDAVFileURL(baseURL: webdavBase, remotePath: remotePath, filename: filename)
-        try await ensureWebDAVDirectory(baseURL: webdavBase, remotePath: remotePath, user: user, password: password)
+        try await ensureWebDAVDirectory(baseURL: webdavBase, remotePath: remotePath, user: user, password: password, allowSelfSigned: allowSelfSigned)
 
         var putRequest = URLRequest(url: destinationURL)
         putRequest.httpMethod = "PUT"
@@ -493,7 +496,7 @@ final class SeedboxManager {
             throw SeedboxError.transferFailed("Could not create upload streams.")
         }
 
-        let delegate = WebDAVUploadDelegate(contentLength: contentLength, progressHandler: progressHandler)
+        let delegate = WebDAVUploadDelegate(contentLength: contentLength, allowedHost: webdavBase.host, allowSelfSigned: allowSelfSigned, progressHandler: progressHandler)
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
 
@@ -653,11 +656,12 @@ final class SeedboxManager {
         filename: String,
         user: String,
         password: String,
+        allowSelfSigned: Bool,
         totalDuration: TimeInterval?,
         progressHandler: @escaping (Double) -> Void
     ) async throws -> String {
         let destinationURL = Self.webDAVFileURL(baseURL: webdavBase, remotePath: remotePath, filename: filename)
-        try await ensureWebDAVDirectory(baseURL: webdavBase, remotePath: remotePath, user: user, password: password)
+        try await ensureWebDAVDirectory(baseURL: webdavBase, remotePath: remotePath, user: user, password: password, allowSelfSigned: allowSelfSigned)
 
         let tempFile = FileManager.default.temporaryDirectory
             .appendingPathComponent("viddl_hls_\(UUID().uuidString.prefix(8)).mp4")
@@ -696,7 +700,7 @@ final class SeedboxManager {
         setBasicAuth(user: user, password: password, request: &putRequest)
 
         let fileSize = (try? tempFile.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { Int64($0) } ?? -1
-        let delegate = WebDAVUploadDelegate(contentLength: fileSize) { progress in
+        let delegate = WebDAVUploadDelegate(contentLength: fileSize, allowedHost: webdavBase.host, allowSelfSigned: allowSelfSigned) { progress in
             progressHandler(0.71 + progress * 0.29)
         }
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
@@ -794,7 +798,12 @@ final class SeedboxManager {
         return total > 0 ? total : nil
     }
 
-    private func ensureWebDAVDirectory(baseURL: URL, remotePath: String, user: String, password: String) async throws {
+    private func webDAVData(for request: URLRequest, baseURL: URL, allowSelfSigned: Bool) async throws -> (Data, URLResponse) {
+        let delegate = SeedboxTLSDelegate(host: baseURL.host, allowSelfSigned: allowSelfSigned)
+        return try await delegate.data(for: request)
+    }
+
+    private func ensureWebDAVDirectory(baseURL: URL, remotePath: String, user: String, password: String, allowSelfSigned: Bool) async throws {
         let parts = remotePath.split(separator: "/").map(String.init).filter { !$0.isEmpty }
         guard !parts.isEmpty else { return }
 
@@ -805,7 +814,7 @@ final class SeedboxManager {
             request.httpMethod = "MKCOL"
             request.timeoutInterval = 15
             setBasicAuth(user: user, password: password, request: &request)
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (_, response) = try await webDAVData(for: request, baseURL: baseURL, allowSelfSigned: allowSelfSigned)
             guard let http = response as? HTTPURLResponse else { throw SeedboxError.transferFailed("WebDAV MKCOL failed.") }
             if !(200..<300).contains(http.statusCode), http.statusCode != 405, http.statusCode != 409 {
                 throw SeedboxError.transferFailed("WebDAV directory creation returned \(http.statusCode).")
@@ -960,17 +969,124 @@ private final class SeedboxSourceStreamDelegate: NSObject, URLSessionDataDelegat
     }
 }
 
+final class SeedboxTLSDelegate: NSObject, URLSessionTaskDelegate {
+    private let host: String?
+    private let allowSelfSigned: Bool
+
+    init(host: String?, allowSelfSigned: Bool) {
+        self.host = host?.lowercased()
+        self.allowSelfSigned = allowSelfSigned
+    }
+
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        SeedboxTLSTrust.handle(challenge, host: host, allowSelfSigned: allowSelfSigned, completionHandler: completionHandler)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        SeedboxTLSTrust.handle(challenge, host: host, allowSelfSigned: allowSelfSigned, completionHandler: completionHandler)
+    }
+
+    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        let session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
+        return try await withCheckedThrowingContinuation { continuation in
+            session.dataTask(with: request) { data, response, error in
+                defer { session.finishTasksAndInvalidate() }
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let data, let response {
+                    continuation.resume(returning: (data, response))
+                } else {
+                    continuation.resume(throwing: URLError(.badServerResponse))
+                }
+            }.resume()
+        }
+    }
+
+    func download(for request: URLRequest) async throws -> (URL, URLResponse) {
+        let session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
+        return try await withCheckedThrowingContinuation { continuation in
+            session.downloadTask(with: request) { url, response, error in
+                defer { session.finishTasksAndInvalidate() }
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let url, let response {
+                    continuation.resume(returning: (url, response))
+                } else {
+                    continuation.resume(throwing: URLError(.badServerResponse))
+                }
+            }.resume()
+        }
+    }
+
+    func upload(for request: URLRequest, from data: Data) async throws -> (Data, URLResponse) {
+        let session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
+        return try await withCheckedThrowingContinuation { continuation in
+            session.uploadTask(with: request, from: data) { data, response, error in
+                defer { session.finishTasksAndInvalidate() }
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let data, let response {
+                    continuation.resume(returning: (data, response))
+                } else {
+                    continuation.resume(throwing: URLError(.badServerResponse))
+                }
+            }.resume()
+        }
+    }
+
+    func upload(for request: URLRequest, fromFile fileURL: URL) async throws -> (Data, URLResponse) {
+        let session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
+        return try await withCheckedThrowingContinuation { continuation in
+            session.uploadTask(with: request, fromFile: fileURL) { data, response, error in
+                defer { session.finishTasksAndInvalidate() }
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let data, let response {
+                    continuation.resume(returning: (data, response))
+                } else {
+                    continuation.resume(throwing: URLError(.badServerResponse))
+                }
+            }.resume()
+        }
+    }
+}
+
+private enum SeedboxTLSTrust {
+    static func handle(_ challenge: URLAuthenticationChallenge, host: String?, allowSelfSigned: Bool, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        guard allowSelfSigned,
+              challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              challenge.protectionSpace.host.lowercased() == host,
+              let trust = challenge.protectionSpace.serverTrust else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        completionHandler(.useCredential, URLCredential(trust: trust))
+    }
+}
+
 private final class WebDAVUploadDelegate: NSObject, URLSessionTaskDelegate, URLSessionDataDelegate, @unchecked Sendable {
     private let contentLength: Int64
     private let progressHandler: (Double) -> Void
+    private let allowedHost: String?
+    private let allowSelfSigned: Bool
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Void, Error>?
     private var completedResult: Result<Void, Error>?
     var bodyStream: InputStream?
 
-    init(contentLength: Int64, progressHandler: @escaping (Double) -> Void) {
+    init(contentLength: Int64, allowedHost: String? = nil, allowSelfSigned: Bool = false, progressHandler: @escaping (Double) -> Void) {
         self.contentLength = contentLength
+        self.allowedHost = allowedHost?.lowercased()
+        self.allowSelfSigned = allowSelfSigned
         self.progressHandler = progressHandler
+    }
+
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        SeedboxTLSTrust.handle(challenge, host: allowedHost, allowSelfSigned: allowSelfSigned, completionHandler: completionHandler)
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        SeedboxTLSTrust.handle(challenge, host: allowedHost, allowSelfSigned: allowSelfSigned, completionHandler: completionHandler)
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, needNewBodyStream completionHandler: @escaping (InputStream?) -> Void) {

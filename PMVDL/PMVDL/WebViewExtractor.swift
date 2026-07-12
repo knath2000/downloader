@@ -9,6 +9,7 @@ class WebViewExtractor {
 
     /// Load a page in WebView and extract video URL from the DOM after JavaScript execution
     func extractVideoUrl(from url: URL, timeout: TimeInterval = 10) async throws -> String {
+        guard URLTrustPolicy.isAllowed(url) else { throw WebViewError.invalidURL }
         let task = WebViewExtractorTask()
         // The task stays alive in memory for as long as this 'await' is suspended
         return try await task.extract(url: url, timeout: timeout)
@@ -30,6 +31,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
     private let messageHandlerName = "videoCandidate"
     
     func extract(url: URL, timeout: TimeInterval) async throws -> String {
+        guard URLTrustPolicy.isAllowed(url) else { throw WebViewError.invalidURL }
         return try await withCheckedThrowingContinuation { cont in
             self.continuation = cont
             self.startTime = Date()
@@ -89,6 +91,11 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
         } else {
             redirectCount += 1
             Log.extractionWebView.debug("Redirect #\(self.redirectCount, privacy: .public): \(navigationAction.request.url?.absoluteString ?? "unknown", privacy: .public)")
+        }
+        guard let target = navigationAction.request.url,
+              URLTrustPolicy.isAllowed(target) else {
+            decisionHandler(.cancel)
+            return
         }
         decisionHandler(.allow)
     }
@@ -388,7 +395,10 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
     }
 
     private func handleCandidate(_ rawUrl: String, type: String) -> Bool {
-        guard let candidate = normalizedCandidate(rawUrl), candidate != targetUrl?.absoluteString else {
+        guard let candidate = normalizedCandidate(rawUrl),
+              let trusted = URLTrustPolicy.validated(candidate),
+              trusted.absoluteString == candidate,
+              candidate != targetUrl?.absoluteString else {
             return false
         }
 
@@ -671,12 +681,14 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
 }
 
 enum WebViewError: LocalizedError {
+    case invalidURL
     case timeout
     case noVideoUrlFound
     case navigationFailed(String)
 
     var errorDescription: String? {
         switch self {
+        case .invalidURL: return "This URL is not allowed for extraction."
         case .timeout: return "Timeout loading page"
         case .noVideoUrlFound: return "Could not find video URL in page"
         case .navigationFailed(let msg): return msg

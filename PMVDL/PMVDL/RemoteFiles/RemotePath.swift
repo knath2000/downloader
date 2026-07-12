@@ -7,7 +7,7 @@ enum RemotePath {
 
         let collapsed = "/" + trimmed
             .split(separator: "/")
-            .filter { !$0.isEmpty }
+            .filter { !$0.isEmpty && $0 != "." && $0 != ".." }
             .joined(separator: "/")
 
         return collapsed == "/" ? "/" : collapsed
@@ -61,8 +61,18 @@ enum RemotePath {
     }
 
     static func sanitizeNameComponent(_ raw: String) -> String {
-        raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "/", with: "")
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isSafeNameComponent(trimmed) else { return "" }
+        return trimmed
+    }
+
+    static func isSafeNameComponent(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != ".", trimmed != "..",
+              !trimmed.contains("/"), !trimmed.contains("\\") else { return false }
+        return !trimmed.unicodeScalars.contains { scalar in
+            scalar.value < 0x20 || scalar.value == 0x7F
+        }
     }
 
     static func rclonePath(remoteName: String, directory: String) -> String {

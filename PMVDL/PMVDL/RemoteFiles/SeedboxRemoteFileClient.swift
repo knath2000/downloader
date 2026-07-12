@@ -11,7 +11,7 @@ enum SeedboxRemoteFileClientFactory {
     ) throws -> RemoteFileClient {
         if transferMode == "webdav" {
             let trimmedURL = webdavURL.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let baseURL = URL(string: trimmedURL), !trimmedURL.isEmpty else {
+            guard let baseURL = URLTrustPolicy.validated(trimmedURL), baseURL.scheme?.lowercased() == "https" else {
                 throw RemoteFileClientError.notConfigured("Seedbox WebDAV URL is not configured.")
             }
 
@@ -19,7 +19,8 @@ enum SeedboxRemoteFileClientFactory {
                 baseURL: baseURL,
                 rootPath: remotePath,
                 user: webdavUser,
-                password: webdavPassword
+                password: webdavPassword,
+                allowSelfSigned: UserDefaults.standard.bool(forKey: "seedboxWebdavAllowSelfSigned")
             )
         }
 

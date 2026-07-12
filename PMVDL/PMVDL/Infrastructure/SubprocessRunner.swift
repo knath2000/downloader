@@ -163,12 +163,16 @@ enum SubprocessRunner {
         executable: URL,
         arguments: [String],
         timeout: TimeInterval? = nil,
+        stdin: Data? = nil,
+        environment: [String: String]? = nil,
         stdoutHandler: ((String) -> Void)? = nil,
         stderrHandler: ((String) -> Void)? = nil
     ) async throws -> SubprocessResult {
         let running = try start(
             executable: executable,
             arguments: arguments,
+            stdin: stdin,
+            environment: environment,
             stdoutHandler: stdoutHandler,
             stderrHandler: stderrHandler
         )
@@ -180,12 +184,16 @@ enum SubprocessRunner {
         executable: URL,
         arguments: [String],
         timeout: TimeInterval? = nil,
+        stdin: Data? = nil,
+        environment: [String: String]? = nil,
         stdoutHandler: ((String) -> Void)? = nil,
         stderrHandler: ((String) -> Void)? = nil
     ) throws -> SubprocessResult {
         let running = try start(
             executable: executable,
             arguments: arguments,
+            stdin: stdin,
+            environment: environment,
             stdoutHandler: stdoutHandler,
             stderrHandler: stderrHandler
         )
@@ -196,12 +204,17 @@ enum SubprocessRunner {
     static func start(
         executable: URL,
         arguments: [String],
+        stdin: Data? = nil,
+        environment: [String: String]? = nil,
         stdoutHandler: ((String) -> Void)? = nil,
         stderrHandler: ((String) -> Void)? = nil
     ) throws -> RunningSubprocess {
         let process = Process()
         process.executableURL = executable
         process.arguments = arguments
+        if let environment {
+            process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, new in new }
+        }
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
@@ -234,7 +247,19 @@ enum SubprocessRunner {
 
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
+        let stdinPipe: Pipe?
+        if stdin != nil {
+            let pipe = Pipe()
+            process.standardInput = pipe
+            stdinPipe = pipe
+        } else {
+            stdinPipe = nil
+        }
         try process.run()
+        if let stdin, let stdinPipe {
+            stdinPipe.fileHandleForWriting.write(stdin)
+            stdinPipe.fileHandleForWriting.closeFile()
+        }
 
         return RunningSubprocess(
             process: process,

@@ -1,5 +1,4 @@
 import AppKit
-import CryptoKit
 import Foundation
 
 struct LicenseStatusResponse: Decodable {
@@ -25,52 +24,56 @@ struct TrialUseResponse: Decodable {
     let isPro: Bool
 }
 
+private struct EntitlementCache: Codable {
+    let isPro: Bool
+    let email: String
+    let hardwareID: String
+    let verifiedAt: Date
+    let expiresAt: Date
+}
+
 @MainActor
 class LicenseManager: ObservableObject {
     static let shared = LicenseManager()
 
     nonisolated static let freeDownloadLimit = 3
-    private static let baseURLKey = "licenseBackendBaseURL"
-    private nonisolated static let userDefaultsIsProKey = "licenseIsPro"
+    private nonisolated static let entitlementCacheKey = "license.entitlement.cache"
     private static let userDefaultsFreeUsedKey = "licenseFreeUsed"
     private static let userDefaultsActivationEmailKey = "licenseActivationEmail"
-    private static let userDefaultsRedeemedHwidKey = "licenseRedeemedHwid"
-    private static let userDefaultsTrialSyncedKey = "licenseTrialSynced"
-    private static let trialHMACSecretKey = "licenseTrialHMACSecret"
+    private static let legacyKeys = [
+        "licenseIsPro", "licenseTrialSynced", "licenseRedeemedHwid", "licenseTrialHMACSecret", "licenseBackendBaseURL"
+    ]
 
     @Published var isPro: Bool
     @Published var activationEmail: String
     @Published var freeDownloadsUsed: Int
     @Published var lastError: String = ""
     @Published var isChecking = false
-    @Published private(set) var trialSynced: Bool
 
-    private let hwid = HardwareID.current
+    private let hwid: String
+    private let offlineGrace: TimeInterval
 
     nonisolated static var storedIsPro: Bool {
-        UserDefaults.standard.bool(forKey: userDefaultsIsProKey)
+        guard let data = SecureStore.data(forKey: entitlementCacheKey),
+              let cache = try? JSONDecoder().decode(EntitlementCache.self, from: data) else { return false }
+        return cache.isPro && cache.hardwareID == HardwareID.current && cache.expiresAt > Date()
     }
 
     private init() {
-        isPro = UserDefaults.standard.bool(forKey: Self.userDefaultsIsProKey)
-        activationEmail = UserDefaults.standard.string(forKey: Self.userDefaultsActivationEmailKey) ?? ""
+        self.hwid = HardwareID.current
+        self.offlineGrace = 7 * 24 * 60 * 60
+        self.isPro = false
+        self.activationEmail = ""
+        self.freeDownloadsUsed = 0
+        migrateLegacyState()
+        let cached = Self.loadCache()
+        isPro = cached.map { $0.isPro && $0.hardwareID == hwid && $0.expiresAt > Date() } ?? false
+        activationEmail = cached?.email ?? UserDefaults.standard.string(forKey: Self.userDefaultsActivationEmailKey) ?? ""
         freeDownloadsUsed = UserDefaults.standard.integer(forKey: Self.userDefaultsFreeUsedKey)
-        trialSynced = UserDefaults.standard.bool(forKey: Self.userDefaultsTrialSyncedKey)
-
-        if UserDefaults.standard.string(forKey: Self.userDefaultsRedeemedHwidKey) == nil {
-            UserDefaults.standard.set(hwid, forKey: Self.userDefaultsRedeemedHwidKey)
-        }
     }
 
     var freeDownloadsRemaining: Int {
         max(0, Self.freeDownloadLimit - freeDownloadsUsed)
-    }
-
-    var backendBaseURL: URL? {
-        let configured = UserDefaults.standard.string(forKey: Self.baseURLKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallback = "https://pmvdl-license.knath2000.workers.dev"
-        return URL(string: configured?.isEmpty == false ? configured! : fallback)
     }
 
     func canStartDownload(count: Int = 1) -> Bool {
@@ -78,16 +81,12 @@ class LicenseManager: ObservableObject {
     }
 
     func bootstrap() async {
+        if !activationEmail.isEmpty { _ = await refreshLicense() }
         do {
             let status: TrialSyncResponse = try await postTrial("sync")
-            applyTrialState(count: status.count, isPro: status.isPro, redeemedEmail: status.redeemedEmail, markSynced: true)
-            if !activationEmail.isEmpty {
-                _ = await refreshLicense()
-            }
+            applyTrialState(count: status.count, isPro: status.isPro, redeemedEmail: status.redeemedEmail)
         } catch {
-            if !activationEmail.isEmpty {
-                _ = await refreshLicense()
-            }
+            if !isPro { lastError = "Connect to the internet once before using free downloads." }
         }
     }
 
@@ -95,27 +94,19 @@ class LicenseManager: ObservableObject {
         if isPro { return true }
         do {
             let status: TrialSyncResponse = try await postTrial("sync")
-            applyTrialState(count: status.count, isPro: status.isPro, redeemedEmail: status.redeemedEmail, markSynced: true)
-            if isPro || status.isPro { return true }
+            applyTrialState(count: status.count, isPro: status.isPro, redeemedEmail: status.redeemedEmail)
             let used = status.count ?? freeDownloadsUsed
-            return max(0, Self.freeDownloadLimit - used) >= count
+            return status.isPro || max(0, Self.freeDownloadLimit - used) >= count
         } catch {
-            guard trialSynced else {
-                lastError = "Connect to the internet once before using free downloads."
-                return false
-            }
-            return canStartDownload(count: count)
+            lastError = "Connect to the internet before using free downloads."
+            return false
         }
     }
 
     func startCheckout(email: String) async -> Bool {
         let normalized = normalize(email)
-        guard !normalized.isEmpty else {
-            lastError = "Enter the email you want to use for Pro."
-            return false
-        }
-        guard let endpoint = backendBaseURL?.appendingPathComponent("checkout") else {
-            lastError = "License server is not configured."
+        guard !normalized.isEmpty, let endpoint = endpoint("checkout") else {
+            lastError = "Enter a valid email for Pro."
             return false
         }
 
@@ -126,17 +117,11 @@ class LicenseManager: ObservableObject {
             var request = URLRequest(url: endpoint)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            var body = signedTrialBody()
-            body["email"] = normalized
-            request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["email": normalized, "hwid": hwid])
             let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                throw LicenseError.serverRejected
-            }
-
+            try validate(response)
             let checkout = try JSONDecoder().decode(CheckoutResponse.self, from: data)
-            guard let url = URL(string: checkout.url) else { throw LicenseError.invalidCheckoutURL }
+            guard let url = URL(string: checkout.url), url.scheme == "https" else { throw LicenseError.invalidCheckoutURL }
             activationEmail = normalized
             UserDefaults.standard.set(normalized, forKey: Self.userDefaultsActivationEmailKey)
             NSWorkspace.shared.open(url)
@@ -161,21 +146,9 @@ class LicenseManager: ObservableObject {
 
     func refreshLicense() async -> Bool {
         let normalized = normalize(activationEmail)
-        guard !normalized.isEmpty else {
+        guard !normalized.isEmpty, let endpoint = endpoint("license/status") else {
             isPro = false
-            UserDefaults.standard.set(false, forKey: Self.userDefaultsIsProKey)
-            return false
-        }
-        guard var components = URLComponents(url: backendBaseURL?.appendingPathComponent("license") ?? URL(fileURLWithPath: ""), resolvingAgainstBaseURL: false) else {
-            lastError = "License server is not configured."
-            return false
-        }
-        components.queryItems = [
-            URLQueryItem(name: "email", value: normalized),
-            URLQueryItem(name: "hwid", value: hwid)
-        ]
-        guard let url = components.url else {
-            lastError = "License server is not configured."
+            clearCache()
             return false
         }
 
@@ -183,19 +156,28 @@ class LicenseManager: ObservableObject {
         defer { isChecking = false }
 
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                throw LicenseError.serverRejected
-            }
+            var request = URLRequest(url: endpoint)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: ["email": normalized, "hwid": hwid])
+            let (data, response) = try await URLSession.shared.data(for: request)
+            try validate(response)
             let status = try JSONDecoder().decode(LicenseStatusResponse.self, from: data)
-            isPro = status.active
-            activationEmail = status.email ?? normalized
-            UserDefaults.standard.set(isPro, forKey: Self.userDefaultsIsProKey)
-            UserDefaults.standard.set(activationEmail, forKey: Self.userDefaultsActivationEmailKey)
-            lastError = status.active ? "" : (status.status ?? "No active Pro license found.")
-            return status.active
+            if status.active {
+                activationEmail = status.email ?? normalized
+                isPro = true
+                storeCache(email: activationEmail)
+                lastError = ""
+                return true
+            }
+            isPro = false
+            clearCache()
+            lastError = status.status ?? "No active Pro license found."
+            return false
         } catch {
-            lastError = error.localizedDescription
+            let cache = Self.loadCache()
+            isPro = cache.map { $0.isPro && $0.hardwareID == hwid && $0.expiresAt > Date() } ?? false
+            lastError = isPro ? "License service unavailable; using offline verification." : error.localizedDescription
             return isPro
         }
     }
@@ -205,33 +187,18 @@ class LicenseManager: ObservableObject {
         guard !isPro else { return true }
         do {
             let status: TrialUseResponse = try await postTrial("use")
-            applyTrialState(count: status.count, isPro: status.isPro, redeemedEmail: nil, markSynced: true)
-            if status.allowed || status.isPro {
-                lastError = ""
-                return true
-            }
-            setFreeDownloadsUsed(Self.freeDownloadLimit)
+            applyTrialState(count: status.count, isPro: status.isPro, redeemedEmail: nil)
+            if status.allowed || status.isPro { lastError = ""; return true }
             lastError = "Free download limit reached."
             return false
         } catch {
-            if isPro {
-                return true
-            }
-            guard trialSynced else {
-                lastError = "Connect to the internet once before using free downloads."
-                return false
-            }
-            guard freeDownloadsUsed < Self.freeDownloadLimit else {
-                lastError = "Free download limit reached."
-                return false
-            }
-            setFreeDownloadsUsed(freeDownloadsUsed + 1)
-            return true
+            lastError = "Connect to the internet before using free downloads."
+            return false
         }
     }
 
     func handleLicenseSuccess(email: String?) {
-        if let email {
+        if let email, !email.isEmpty {
             activationEmail = normalize(email)
             UserDefaults.standard.set(activationEmail, forKey: Self.userDefaultsActivationEmailKey)
         }
@@ -242,28 +209,15 @@ class LicenseManager: ObservableObject {
         isPro = false
         activationEmail = ""
         UserDefaults.standard.removeObject(forKey: Self.userDefaultsActivationEmailKey)
-        UserDefaults.standard.set(false, forKey: Self.userDefaultsIsProKey)
+        clearCache()
     }
 
-    private func normalize(_ email: String) -> String {
-        email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-    }
-
-    private func applyTrialState(count: Int?, isPro serverIsPro: Bool, redeemedEmail: String?, markSynced: Bool) {
-        if let count {
-            setFreeDownloadsUsed(min(Self.freeDownloadLimit, max(0, count)))
-        }
+    private func applyTrialState(count: Int?, isPro serverIsPro: Bool, redeemedEmail: String?) {
+        if let count { setFreeDownloadsUsed(count) }
         if serverIsPro {
             isPro = true
-            UserDefaults.standard.set(true, forKey: Self.userDefaultsIsProKey)
-        }
-        if let redeemedEmail, !redeemedEmail.isEmpty {
-            activationEmail = normalize(redeemedEmail)
-            UserDefaults.standard.set(activationEmail, forKey: Self.userDefaultsActivationEmailKey)
-        }
-        if markSynced {
-            trialSynced = true
-            UserDefaults.standard.set(true, forKey: Self.userDefaultsTrialSyncedKey)
+            if let redeemedEmail, !redeemedEmail.isEmpty { activationEmail = normalize(redeemedEmail) }
+            storeCache(email: activationEmail)
         }
     }
 
@@ -273,51 +227,48 @@ class LicenseManager: ObservableObject {
     }
 
     private func postTrial<T: Decodable>(_ action: String) async throws -> T {
-        guard let endpoint = backendBaseURL?
-            .appendingPathComponent("trial")
-            .appendingPathComponent(action) else {
-            throw LicenseError.serverRejected
-        }
+        guard let endpoint = endpoint("trial/\(action)") else { throw LicenseError.serverRejected }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: signedTrialBody())
-
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["hwid": hwid])
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw LicenseError.serverRejected
-        }
+        try validate(response)
         return try JSONDecoder().decode(T.self, from: data)
     }
 
-    private func signedTrialBody() -> [String: Any] {
-        let timestamp = Int(Date().timeIntervalSince1970)
-        return [
-            "hwid": hwid,
-            "ts": timestamp,
-            "sig": trialSignature(timestamp: timestamp)
-        ]
+    private func endpoint(_ path: String) -> URL? {
+        URL(string: "https://pmvdl-license.knath2000.workers.dev")?.appendingPathComponent(path)
     }
 
-    private func trialSignature(timestamp: Int) -> String {
-        let payload = "\(hwid).\(timestamp)"
-        let key = SymmetricKey(data: Data(trialHMACSecret.utf8))
-        let signature = HMAC<SHA256>.authenticationCode(for: Data(payload.utf8), using: key)
-        return signature.map { String(format: "%02x", $0) }.joined()
+    private func validate(_ response: URLResponse) throws {
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw LicenseError.serverRejected
+        }
     }
 
-    private var trialHMACSecret: String {
-        if let value = UserDefaults.standard.string(forKey: Self.trialHMACSecretKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !value.isEmpty {
-            return value
-        }
-        if let value = Bundle.main.object(forInfoDictionaryKey: "VIDDL_TRIAL_HMAC_SECRET") as? String,
-           !value.isEmpty,
-           !value.hasPrefix("$(") {
-            return value
-        }
-        return "viddl-trial-development-secret"
+    private func storeCache(email: String) {
+        let now = Date()
+        let cache = EntitlementCache(isPro: true, email: email, hardwareID: hwid, verifiedAt: now, expiresAt: now.addingTimeInterval(offlineGrace))
+        if let data = try? JSONEncoder().encode(cache) { _ = SecureStore.set(data, forKey: Self.entitlementCacheKey) }
+    }
+
+    private func clearCache() {
+        SecureStore.remove(forKey: Self.entitlementCacheKey)
+    }
+
+    private static func loadCache() -> EntitlementCache? {
+        guard let data = SecureStore.data(forKey: entitlementCacheKey) else { return nil }
+        return try? JSONDecoder().decode(EntitlementCache.self, from: data)
+    }
+
+    private func migrateLegacyState() {
+        SecureStore.migrateLegacyString("seedboxWebdavPassword", to: "seedboxWebdavPassword")
+        for key in Self.legacyKeys { UserDefaults.standard.removeObject(forKey: key) }
+    }
+
+    private func normalize(_ email: String) -> String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }
 

@@ -1,4 +1,8 @@
-# Latest Session - 2026-07-10 Feed, Library, Sleep Prevention, and VPN Cleanup
+# Latest Session - 2026-07-12 Security, Seedbox Connections, and Self-Signed WebDAV
+
+See `docs/SESSION_2026_07_12_SECURITY_SEEDBOX_WEBDAV.md` for the Seedbox WebDAV/SFTP settings flow, the self-signed WebDAV ATS finding and narrow endpoint exception, current security-hardening work, and validation.
+
+# Previous Session - 2026-07-10 Feed, Library, Sleep Prevention, and VPN Cleanup
 
 See `docs/SESSION_2026_07_10_FEED_LIBRARY_SHELL.md` for the durable summary of the custom context menus, compact completed-download modal rows, keep-awake hardening, VPN retry removal, Feed shell geometry/extraction behavior, Library shell sizing, version `2.2.3`, and local unsigned DMG validation.
 

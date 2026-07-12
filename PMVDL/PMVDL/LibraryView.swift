@@ -2633,7 +2633,7 @@ private enum LibraryDownloadContext {
             seedboxRemotePath: defaults.string(forKey: "seedboxRemotePath") ?? "/",
             seedboxWebdavURL: defaults.string(forKey: "seedboxWebdavURL") ?? "",
             seedboxWebdavUser: defaults.string(forKey: "seedboxWebdavUser") ?? "",
-            seedboxWebdavPassword: defaults.string(forKey: "seedboxWebdavPassword") ?? ""
+            seedboxWebdavPassword: SecureStore.string(forKey: "seedboxWebdavPassword") ?? ""
         )
     }
 

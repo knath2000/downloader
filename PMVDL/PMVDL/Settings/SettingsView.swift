@@ -4,21 +4,37 @@ import SwiftUI
 struct SettingsView: View {
     @Binding var gdriveRemoteName: String
     @Binding var gdriveRemotePath: String
+    @Binding var seedboxTransferMode: String
+    @Binding var seedboxRemoteName: String
+    @Binding var seedboxRemotePath: String
+    @Binding var seedboxWebdavURL: String
+    @Binding var seedboxWebdavUser: String
+    @Binding var seedboxWebdavPassword: String
     let onUpgradeRequired: () -> Void
 
     @AppStorage("downloadSubtitles") private var downloadSubtitles = false
     @AppStorage("embeddedSubsMode") private var embeddedSubsMode = false
     @AppStorage(AppPreferenceKeys.preventSleepWhileRunning) private var preventSleepWhileRunning = false
     @AppStorage(DownloadPaths.customDownloadDirectoryKey) private var customDownloadDirectory = ""
+    @AppStorage("seedboxWebdavAllowSelfSigned") private var seedboxWebdavAllowSelfSigned = false
 
     @StateObject private var license = LicenseManager.shared
     @StateObject private var dependencyStore = SettingsDependencyStore.shared
     @StateObject private var gdriveSetup = RcloneRemoteSetupViewModel()
+    @StateObject private var seedboxSetup = RcloneRemoteSetupViewModel()
 
     @State private var activateEmail = ""
     @State private var activationResult = ""
     @State private var isActivating = false
     @State private var showsGDriveManualFields = false
+    @State private var seedboxAuthMode: RcloneSFTPAuthMode = .password
+    @State private var seedboxSFTPHost = ""
+    @State private var seedboxSFTPPort = "22"
+    @State private var seedboxSFTPUser = ""
+    @State private var seedboxSFTPPassword = ""
+    @State private var seedboxSFTPKeyFile = ""
+    @State private var seedboxConnectionMessage = ""
+    @State private var seedboxIsTesting = false
     @State private var activePanel: SettingsPanel?
 
     private var trimmedActivationEmail: String {
@@ -28,9 +44,9 @@ struct SettingsView: View {
     private var dependencyInput: SettingsDependencyInput {
         SettingsDependencyInput(
             gdriveRemoteName: gdriveRemoteName,
-            seedboxTransferMode: "rclone",
-            seedboxRemoteName: "",
-            seedboxWebdavURL: ""
+            seedboxTransferMode: seedboxTransferMode,
+            seedboxRemoteName: seedboxRemoteName,
+            seedboxWebdavURL: seedboxWebdavURL
         )
     }
 
@@ -84,7 +100,7 @@ struct SettingsView: View {
                             panel: panel,
                             detail: tileDetail(for: panel),
                             status: tileStatus(for: panel),
-                            isEmphasized: panel == .cloud && dependencyModel.gdrive.tone != .success
+                            isEmphasized: panel == .cloud && (!dependencyModel.gdrive.isReady || !dependencyModel.seedbox.isReady)
                         )
                     }
                     .buttonStyle(.plain)
@@ -102,7 +118,7 @@ struct SettingsView: View {
     private func tileDetail(for panel: SettingsPanel) -> String {
         switch panel {
         case .cloud:
-            return dependencyModel.gdrive.detail
+            return "GDrive: \(dependencyModel.gdrive.status) · Seedbox: \(dependencyModel.seedbox.status)"
         case .notifications:
             let enabled = [
                 NotificationManager.shared.isEnabled(.uploadComplete),
@@ -122,7 +138,7 @@ struct SettingsView: View {
     private func tileStatus(for panel: SettingsPanel) -> String? {
         switch panel {
         case .cloud:
-            return dependencyModel.gdrive.status
+            return dependencyModel.seedbox.isReady && dependencyModel.gdrive.isReady ? "2 destinations ready" : "Configure destinations"
         case .notifications:
             return nil
         case .downloads:
@@ -191,19 +207,220 @@ struct SettingsView: View {
         let model = dependencyModel.gdrive
         let tint = color(for: model.tone)
 
+        return VStack(alignment: .leading, spacing: 14) {
+            SettingsCard(tint: tint) {
+                VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
+                    SettingsCardTitle(
+                        title: "Google Drive Upload",
+                        subtitle: "Use rclone to upload completed files to a Google Drive remote.",
+                        systemImage: "externaldrive.fill.badge.checkmark",
+                        tint: tint,
+                        status: model.status
+                    )
+
+                    SettingsDependencySummary(model: model, color: tint)
+                    gdriveGuidedSetupFields
+                }
+            }
+
+            seedboxSection
+        }
+    }
+
+    private var seedboxSection: some View {
+        let model = dependencyModel.seedbox
+        let tint = color(for: model.tone)
+
         return SettingsCard(tint: tint) {
             VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
                 SettingsCardTitle(
-                    title: "Google Drive Upload",
-                    subtitle: "Use rclone to upload completed files to a Google Drive remote.",
-                    systemImage: "externaldrive.fill.badge.checkmark",
+                    title: "Seedbox Upload",
+                    subtitle: "Choose the connection that best fits your server and transfer needs.",
+                    systemImage: "server.rack",
                     tint: tint,
                     status: model.status
                 )
 
                 SettingsDependencySummary(model: model, color: tint)
-                gdriveGuidedSetupFields
+
+                Picker("Connection", selection: $seedboxTransferMode) {
+                    Text("WebDAV HTTPS").tag("webdav")
+                    Text("SFTP via rclone").tag("rclone")
+                }
+                .pickerStyle(.segmented)
+
+                Text(seedboxTransferMode == "webdav"
+                     ? "WebDAV HTTPS is usually the quickest to configure and works well when your provider exposes a direct upload URL."
+                     : "SFTP is the safest general-purpose option: encrypted SSH transport and reliable remote-folder access through rclone.")
+                    .font(.caption)
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if seedboxTransferMode == "webdav" {
+                    webDAVSetupFields
+                } else {
+                    sftpSetupFields
+                }
             }
+        }
+    }
+
+    private var webDAVSetupFields: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            GlassTextField(label: "WebDAV HTTPS URL", placeholder: "https://seedbox.example.com/remote.php/dav/files/user/", text: $seedboxWebdavURL, help: "Use HTTPS whenever your provider supports it. The URL should be the WebDAV base path.")
+            GlassTextField(label: "Username", placeholder: "seedbox user", text: $seedboxWebdavUser, help: "Your WebDAV account username.")
+            SecureField("WebDAV password", text: $seedboxWebdavPassword)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(Theme.accentDim.opacity(0.25), in: RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius))
+            GlassTextField(label: "Remote path", placeholder: "/", text: $seedboxRemotePath, help: "Folder where completed files will be uploaded.")
+            Toggle("Allow this server's self-signed certificate", isOn: $seedboxWebdavAllowSelfSigned)
+                .toggleStyle(.switch)
+                .font(.caption.weight(.semibold))
+            if seedboxWebdavAllowSelfSigned {
+                SettingsInlineAlert(text: "Only enable this for a server you control. VidDL will trust an unverified certificate only for this WebDAV host.", tint: Theme.warning)
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    testWebDAVConnection()
+                } label: {
+                    Label(seedboxIsTesting ? "Testing…" : "Test WebDAV", systemImage: "checkmark.seal")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(tintForSeedbox)
+                .disabled(seedboxIsTesting)
+
+                if !seedboxConnectionMessage.isEmpty {
+                    Text(seedboxConnectionMessage)
+                        .font(.caption2)
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
+        }
+    }
+
+    private var sftpSetupFields: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            GlassTextField(label: "rclone remote name", placeholder: "seedbox", text: $seedboxRemoteName, help: "The local rclone name used by VidDL.")
+            HStack(spacing: 8) {
+                GlassTextField(label: "Host", placeholder: "sftp.example.com", text: $seedboxSFTPHost, help: "Seedbox hostname or IP.")
+                GlassTextField(label: "Port", placeholder: "22", text: $seedboxSFTPPort, help: "SSH/SFTP port, usually 22.")
+            }
+            GlassTextField(label: "Username", placeholder: "seedbox user", text: $seedboxSFTPUser, help: "SFTP account username.")
+
+            Picker("Authentication", selection: $seedboxAuthMode) {
+                Text("Password").tag(RcloneSFTPAuthMode.password)
+                Text("SSH key").tag(RcloneSFTPAuthMode.key)
+            }
+            .pickerStyle(.segmented)
+
+            if seedboxAuthMode == .password {
+                SecureField("SFTP password", text: $seedboxSFTPPassword)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Theme.accentDim.opacity(0.25), in: RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius))
+            } else {
+                GlassTextField(label: "SSH key file", placeholder: "~/.ssh/id_ed25519", text: $seedboxSFTPKeyFile, help: "Path to the private key used by rclone.")
+            }
+
+            GlassTextField(label: "Remote path", placeholder: "/", text: $seedboxRemotePath, help: "Folder where completed files will be uploaded.")
+
+            RcloneSeedboxSetupCard(
+                phase: seedboxSetup.phase,
+                message: seedboxSetup.progressMessage,
+                tint: tintForSeedbox,
+                remoteName: resolvedSeedboxRemoteName,
+                isRunning: seedboxSetup.isRunning,
+                start: startSFTPSetup,
+                useExisting: {
+                    seedboxSetup.useExistingSFTP(remoteName: resolvedSeedboxRemoteName, path: seedboxRemotePath) { name, path in
+                        seedboxRemoteName = name
+                        seedboxRemotePath = path
+                        seedboxTransferMode = "rclone"
+                        refreshDependencyChecks()
+                    }
+                },
+                cancel: seedboxSetup.cancel,
+                retry: startSFTPSetup,
+                refresh: {
+                    seedboxSetup.refresh(remoteName: resolvedSeedboxRemoteName)
+                    refreshDependencyChecks()
+                }
+            )
+        }
+    }
+
+    private var resolvedSeedboxRemoteName: String {
+        let trimmed = seedboxRemoteName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "seedbox" : trimmed
+    }
+
+    private var tintForSeedbox: Color {
+        color(for: dependencyModel.seedbox.tone)
+    }
+
+    private var sftpInput: RcloneSFTPSetupInput {
+        RcloneSFTPSetupInput(
+            remoteName: resolvedSeedboxRemoteName,
+            host: seedboxSFTPHost,
+            port: seedboxSFTPPort,
+            username: seedboxSFTPUser,
+            authMode: seedboxAuthMode,
+            keyFile: seedboxSFTPKeyFile,
+            password: seedboxSFTPPassword,
+            rootPath: seedboxRemotePath
+        )
+    }
+
+    private func startSFTPSetup() {
+        seedboxSetup.startSFTPSetup(input: sftpInput) { name, path in
+            seedboxRemoteName = name
+            seedboxRemotePath = path
+            seedboxTransferMode = "rclone"
+            refreshDependencyChecks()
+        }
+    }
+
+    private func testWebDAVConnection() {
+        guard let url = URLTrustPolicy.validated(seedboxWebdavURL), url.scheme?.lowercased() == "https" else {
+            seedboxConnectionMessage = "Enter a valid HTTPS WebDAV URL."
+            return
+        }
+        seedboxIsTesting = true
+        seedboxConnectionMessage = "Connecting…"
+        Task {
+            do {
+                try await SeedboxManager(mode: .webdav(baseURL: url, user: seedboxWebdavUser, password: seedboxWebdavPassword, remotePath: seedboxRemotePath, allowSelfSigned: seedboxWebdavAllowSelfSigned)).testConnection()
+                await MainActor.run {
+                    seedboxTransferMode = "webdav"
+                    seedboxConnectionMessage = "WebDAV is ready for uploads."
+                    seedboxIsTesting = false
+                    refreshDependencyChecks()
+                }
+            } catch {
+                await MainActor.run {
+                    seedboxConnectionMessage = webDAVConnectionErrorMessage(error)
+                    seedboxIsTesting = false
+                }
+            }
+        }
+    }
+
+    private func webDAVConnectionErrorMessage(_ error: Error) -> String {
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain else { return error.localizedDescription }
+        switch nsError.code {
+        case NSURLErrorSecureConnectionFailed, NSURLErrorServerCertificateUntrusted, NSURLErrorServerCertificateHasBadDate, NSURLErrorServerCertificateHasUnknownRoot, NSURLErrorServerCertificateNotYetValid:
+            return "TLS certificate validation failed. Enable the self-signed certificate option only for this server, or use a certificate trusted by macOS."
+        case NSURLErrorUserAuthenticationRequired:
+            return "WebDAV reached the server, but the username or password was rejected."
+        case NSURLErrorTimedOut:
+            return "WebDAV timed out. Check the URL, network, and server availability."
+        default:
+            return error.localizedDescription
         }
     }
 
@@ -761,7 +978,7 @@ private enum SettingsPanel: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .cloud: return "Google Drive upload remote."
+        case .cloud: return "Google Drive and seedbox destinations."
         case .notifications: return "Event alerts."
         case .downloads: return "Saving, subtitles, and tools."
         case .pro: return "License and unlocks."
@@ -771,7 +988,7 @@ private enum SettingsPanel: String, CaseIterable, Identifiable {
 
     var modalSubtitle: String {
         switch self {
-        case .cloud: return "Configure the Google Drive remote used after downloads finish."
+        case .cloud: return "Configure Google Drive plus WebDAV HTTPS or SFTP seedbox uploads used after downloads finish."
         case .notifications: return "Choose which VidDL events can notify you."
         case .downloads: return "Fine-tune downloads, subtitles, sleep prevention, and helper tools."
         case .pro: return "Manage your VidDL Pro purchase and activation."
@@ -1317,6 +1534,77 @@ private struct GDriveSetupStatusCard: View {
             .buttonStyle(.borderedProminent)
             .tint(tint)
             .controlSize(.small)
+        }
+    }
+}
+
+private struct RcloneSeedboxSetupCard: View {
+    let phase: RcloneRemoteSetupPhase
+    let message: String
+    let tint: Color
+    let remoteName: String
+    let isRunning: Bool
+    let start: () -> Void
+    let useExisting: () -> Void
+    let cancel: () -> Void
+    let retry: () -> Void
+    let refresh: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundStyle(tint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.caption.weight(.bold)).foregroundStyle(Theme.textPrimary)
+                    Text(message).font(.caption2).foregroundStyle(Theme.textSecondary)
+                }
+                Spacer()
+                if isRunning { ProgressView().controlSize(.small) }
+            }
+            HStack(spacing: 8) {
+                switch phase {
+                case .idle, .ready:
+                    Button("Connect SFTP", action: start).buttonStyle(.borderedProminent).tint(tint).controlSize(.small)
+                    Button("Refresh", action: refresh).buttonStyle(.bordered).controlSize(.small)
+                case .existingRemote:
+                    Button("Use Existing", action: useExisting).buttonStyle(.borderedProminent).tint(tint).controlSize(.small)
+                    Button("Refresh", action: refresh).buttonStyle(.bordered).controlSize(.small)
+                case .authorizing, .verifying:
+                    Button("Cancel", action: cancel).buttonStyle(.bordered).controlSize(.small)
+                case .configured:
+                    Label("\(remoteName): ready", systemImage: "checkmark.circle.fill").font(.caption2).foregroundStyle(Theme.success)
+                    Button("Refresh", action: refresh).buttonStyle(.bordered).controlSize(.small)
+                case .missingRclone, .failed:
+                    Button("Retry", action: retry).buttonStyle(.borderedProminent).tint(tint).controlSize(.small)
+                    Button("Refresh", action: refresh).buttonStyle(.bordered).controlSize(.small)
+                }
+            }
+            if case .missingRclone = phase { SettingsCommandRow(command: "brew install rclone") }
+            if case .failed(let detail) = phase { SettingsInlineAlert(text: detail, tint: Theme.error) }
+        }
+        .padding(10)
+        .background(Theme.surface2.opacity(0.14), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(tint.opacity(0.18), lineWidth: 0.5))
+    }
+
+    private var title: String {
+        switch phase {
+        case .configured: return "Seedbox SFTP is ready"
+        case .missingRclone: return "rclone is required"
+        case .existingRemote: return "SFTP remote already exists"
+        case .authorizing: return "Connecting to SFTP"
+        case .verifying: return "Verifying SFTP remote"
+        case .failed: return "SFTP setup failed"
+        case .idle, .ready: return "Connect a seedbox over SFTP"
+        }
+    }
+
+    private var icon: String {
+        switch phase {
+        case .configured: return "checkmark.circle.fill"
+        case .missingRclone, .failed: return "exclamationmark.triangle.fill"
+        default: return "server.rack"
         }
     }
 }

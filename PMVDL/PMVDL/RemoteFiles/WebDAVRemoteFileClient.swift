@@ -115,12 +115,14 @@ final class WebDAVRemoteFileClient: RemoteFileClient {
     private let rootPath: String
     private let user: String
     private let password: String
+    private let tlsDelegate: SeedboxTLSDelegate
 
-    init(baseURL: URL, rootPath: String, user: String, password: String) {
+    init(baseURL: URL, rootPath: String, user: String, password: String, allowSelfSigned: Bool = false) {
         self.baseURL = baseURL
         self.rootPath = RemotePath.normalizeDirectory(rootPath)
         self.user = user
         self.password = password
+        self.tlsDelegate = SeedboxTLSDelegate(host: baseURL.host, allowSelfSigned: allowSelfSigned)
     }
 
     func list(path: String) async throws -> RemoteDirectoryListing {
@@ -132,7 +134,7 @@ final class WebDAVRemoteFileClient: RemoteFileClient {
         request.setValue("1", forHTTPHeaderField: "Depth")
         setBasicAuth(&request)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await tlsDelegate.data(for: request)
         try validateHTTP(response)
 
         let entries = try WebDAVMultiStatusParser.parse(data: data)
@@ -178,7 +180,7 @@ final class WebDAVRemoteFileClient: RemoteFileClient {
         request.timeoutInterval = 30
         setBasicAuth(&request)
 
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await tlsDelegate.data(for: request)
         if let http = response as? HTTPURLResponse, http.statusCode == 405 {
             return
         }
@@ -197,7 +199,7 @@ final class WebDAVRemoteFileClient: RemoteFileClient {
         request.setValue("F", forHTTPHeaderField: "Overwrite")
         setBasicAuth(&request)
 
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await tlsDelegate.data(for: request)
         try validateHTTP(response)
     }
 
@@ -216,7 +218,7 @@ final class WebDAVRemoteFileClient: RemoteFileClient {
         request.setValue("F", forHTTPHeaderField: "Overwrite")
         setBasicAuth(&request)
 
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await tlsDelegate.data(for: request)
         try validateHTTP(response)
     }
 
@@ -238,7 +240,7 @@ final class WebDAVRemoteFileClient: RemoteFileClient {
         }
         setBasicAuth(&request)
 
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await tlsDelegate.data(for: request)
         try validateHTTP(response)
     }
 
@@ -250,7 +252,7 @@ final class WebDAVRemoteFileClient: RemoteFileClient {
         request.timeoutInterval = 120
         setBasicAuth(&request)
 
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await tlsDelegate.data(for: request)
         try validateHTTP(response)
     }
 
@@ -262,7 +264,7 @@ final class WebDAVRemoteFileClient: RemoteFileClient {
         request.timeoutInterval = 7200
         setBasicAuth(&request)
 
-        let (tempURL, response) = try await URLSession.shared.download(for: request)
+        let (tempURL, response) = try await tlsDelegate.download(for: request)
         try validateHTTP(response)
 
         try? FileManager.default.removeItem(at: localURL)
@@ -283,7 +285,7 @@ final class WebDAVRemoteFileClient: RemoteFileClient {
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         setBasicAuth(&request)
 
-        let (_, response) = try await URLSession.shared.upload(for: request, fromFile: localURL)
+        let (_, response) = try await tlsDelegate.upload(for: request, fromFile: localURL)
         try validateHTTP(response)
     }
 
@@ -295,7 +297,7 @@ final class WebDAVRemoteFileClient: RemoteFileClient {
         request.timeoutInterval = 60
         setBasicAuth(&request)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await tlsDelegate.data(for: request)
         try validateHTTP(response)
 
         guard Int64(data.count) <= maxBytes else {
@@ -319,7 +321,7 @@ final class WebDAVRemoteFileClient: RemoteFileClient {
         request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
         setBasicAuth(&request)
 
-        let (_, response) = try await URLSession.shared.upload(for: request, from: data)
+        let (_, response) = try await tlsDelegate.upload(for: request, from: data)
         try validateHTTP(response)
     }
 

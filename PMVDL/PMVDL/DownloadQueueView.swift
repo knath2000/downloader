@@ -5,7 +5,7 @@ import SwiftUI
 struct DownloadQueueViewNew: View {
     @StateObject private var queue = DownloadQueue.shared
     @ObservedObject private var appState = AppStateManager.shared
-    @AppStorage("seedboxWebdavPassword") private var seedboxWebdavPassword = ""
+    @SecureStringStorage("seedboxWebdavPassword") private var seedboxWebdavPassword = ""
 
     @State private var searchText = ""
     @State private var statusFilter: DownloadStatusFilter = .all

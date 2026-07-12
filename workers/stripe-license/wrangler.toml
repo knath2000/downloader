@@ -1,8 +1,10 @@
 name = "pmvdl-license"
 main = "src/index.js"
 compatibility_date = "2026-04-29"
-# Required secret, set outside git:
-# wrangler secret put TRIAL_HMAC_SECRET
+# Required secrets, set outside git:
+# wrangler secret put STRIPE_SECRET_KEY
+# wrangler secret put STRIPE_WEBHOOK_SECRET
+# wrangler secret put RESEND_API_KEY
 
 [[kv_namespaces]]
 binding = "LICENSES"
@@ -12,3 +14,4 @@ id = "bafe9f17a7a24cd8b32fd0cfdc4076ca"
 PMVDL_PRO_PRICE_ID = "price_1TRRmdBlEcaRurIYAXvQkYAL"
 SUCCESS_SCHEME = "pmvdl://license-success"
 CANCEL_URL = "https://pmvdl-license.knath2000.workers.dev/cancel"
+RESEND_FROM_EMAIL = "VidDL <licenses@pmvhavendownloader.com>"

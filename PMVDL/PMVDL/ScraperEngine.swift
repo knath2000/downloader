@@ -2,24 +2,26 @@ import Foundation
 
 struct ToolLocator {
  static func find(_ executable: String, extraPaths: [String] = []) -> URL? {
-  for path in extraPaths where FileManager.default.isExecutableFile(atPath: path) {
-   return URL(fileURLWithPath: path)
+  for path in extraPaths {
+   if let trusted = trustedExecutable(atPath: path) {
+    return trusted
+   }
   }
   for directory in searchDirectories() {
    let path = (directory as NSString).appendingPathComponent(executable)
-   if FileManager.default.isExecutableFile(atPath: path) {
-    return URL(fileURLWithPath: path)
+   if let trusted = trustedExecutable(atPath: path) {
+    return trusted
    }
   }
   return nil
  }
 
- private static func searchDirectories() -> [String] {
-  let home = FileManager.default.homeDirectoryForCurrentUser.path
-  let envPaths = (ProcessInfo.processInfo.environment["PATH"] ?? "")
-   .split(separator: ":")
-   .map(String.init)
+ private static func trustedExecutable(atPath path: String) -> URL? {
+  let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath()
+  return FileManager.default.isExecutableFile(atPath: resolved.path) ? resolved : nil
+ }
 
+ private static func searchDirectories() -> [String] {
   let defaults = [
    "/opt/homebrew/bin",
    "/opt/homebrew/sbin",
@@ -28,13 +30,12 @@ struct ToolLocator {
    "/opt/local/bin",
    "/usr/bin",
    "/bin",
-   "\(home)/.local/bin",
-   "\(home)/.nix-profile/bin",
-   "/nix/var/nix/profiles/default/bin"
+   "/usr/sbin",
+   "/sbin"
   ]
 
   var seen = Set<String>()
-  return (envPaths + defaults).filter { path in
+  return defaults.filter { path in
    guard !path.isEmpty, !seen.contains(path) else { return false }
    seen.insert(path)
    return true
@@ -71,7 +72,7 @@ struct ScraperEngine {
  }
 
  static func extract(from urlString: String) async throws -> VideoSource {
-  guard let url = URL(string: urlString) else { throw VideoExtractorError.invalidURL }
+  guard let url = URLTrustPolicy.validated(urlString) else { throw VideoExtractorError.invalidURL }
   if let extractor = findExtractor(for: url) {
    return try await extractor.extract(fromHTML: "", url: url)
   }

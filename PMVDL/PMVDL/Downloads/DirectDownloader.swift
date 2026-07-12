@@ -6,19 +6,21 @@ struct DirectDownloader {
     /// Properly encodes a URL string to handle special characters like ~ in paths
     private func sanitizeURLString(_ urlString: String) -> URL? {
         // Try direct URL creation first (for already-encoded URLs)
-        if let url = URL(string: urlString) {
+        if let url = URLTrustPolicy.validated(urlString) {
             return url
         }
 
         // If that fails, try to use URLComponents to parse and rebuild
-        if let components = URLComponents(string: urlString) {
-            return components.url
+        if let components = URLComponents(string: urlString),
+           let url = components.url,
+           URLTrustPolicy.isAllowed(url) {
+            return url
         }
 
         // Last resort: manually encode the string
         let allowedCharacters = CharacterSet(charactersIn: "!*'();:@&=+$,/?#[]~")
         if let encoded = urlString.addingPercentEncoding(withAllowedCharacters: allowedCharacters) {
-            return URL(string: encoded)
+            return URLTrustPolicy.validated(encoded)
         }
 
         return nil
@@ -42,7 +44,7 @@ struct DirectDownloader {
         var request = URLRequest(url: validUrl)
         request.timeoutInterval = 120
         request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
-        headers?.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        MediaRequestHeaders.sanitized(headers).forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         try await delegate.performDownload(session: session, request: request)
 
         return destFile
@@ -80,7 +82,7 @@ struct DirectDownloader {
         var request = URLRequest(url: url)
         request.timeoutInterval = 120
         request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
-        headers?.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        MediaRequestHeaders.sanitized(headers).forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         if existingSize > 0 {
             request.setValue("bytes=\(existingSize)-", forHTTPHeaderField: "Range")
         }

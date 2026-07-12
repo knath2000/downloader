@@ -868,7 +868,7 @@ struct PornHubBrowserWebView: NSViewRepresentable {
         configuration.userContentController.addUserScript(WKUserScript(
             source: Self.contextMenuScript,
             injectionTime: .atDocumentEnd,
-            forMainFrameOnly: false
+            forMainFrameOnly: true
         ))
         let webView = PornHubContextMenuWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
@@ -1002,11 +1002,11 @@ struct PornHubBrowserWebView: NSViewRepresentable {
                   let scheme = url.scheme?.lowercased(),
                   ["http", "https"].contains(scheme),
                   let site = browser?.site else {
-                decisionHandler(.allow)
+                decisionHandler(.cancel)
                 return
             }
 
-            if site.allows(url) {
+            if URLTrustPolicy.isAllowed(url) && site.allows(url) {
                 decisionHandler(.allow)
             } else {
                 decisionHandler(.cancel)
@@ -1031,7 +1031,8 @@ struct PornHubBrowserWebView: NSViewRepresentable {
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard let rawContext = message.body as? [String: Any] else { return }
+            guard message.frameInfo.isMainFrame,
+                  let rawContext = message.body as? [String: Any] else { return }
             latestContext = rawContext.reduce(into: [String: String]()) { output, element in
                 output[element.key] = String(describing: element.value)
             }

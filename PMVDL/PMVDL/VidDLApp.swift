@@ -38,7 +38,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if url.scheme == "pmvdl", url.host == "extract" {
                 let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
                 if let queryItem = components?.queryItems?.first(where: { $0.name == "url" }),
-                   let extractURL = queryItem.value {
+                   let extractURL = queryItem.value,
+                   URLTrustPolicy.validated(extractURL) != nil {
                     Task { @MainActor in
                         AppStateManager.shared.pendingExtractURL = extractURL
                         AppStateManager.shared.select(.home)
@@ -47,9 +48,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             } else if url.scheme == "pmvdl", url.host == "license-success" {
                 let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-                let email = components?.queryItems?.first(where: { $0.name == "email" })?.value
                 Task { @MainActor in
-                    LicenseManager.shared.handleLicenseSuccess(email: email)
+                    LicenseManager.shared.handleLicenseSuccess(email: nil)
                     AppStateManager.shared.select(.settings)
                     AppStateManager.shared.showMainWindow()
                 }
@@ -73,7 +73,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         SleepPreventionManager.shared.start()
         Task { @MainActor in
             await Task.yield()
-            let seedboxWebdavPassword = UserDefaults.standard.string(forKey: "seedboxWebdavPassword") ?? ""
+            let seedboxWebdavPassword = SecureStore.string(forKey: "seedboxWebdavPassword") ?? ""
             DownloadQueue.shared.resumeInterruptedOnLaunch(seedboxWebdavPassword: seedboxWebdavPassword)
         }
 
@@ -91,16 +91,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         if let queryItem = components?.queryItems?.first(where: { $0.name == "url" }),
-           let extractURL = queryItem.value {
+           let extractURL = queryItem.value,
+           URLTrustPolicy.validated(extractURL) != nil {
             Task { @MainActor in
                 AppStateManager.shared.pendingExtractURL = extractURL
                 AppStateManager.shared.select(.home)
                 AppStateManager.shared.showMainWindow()
             }
         } else if url.host == "license-success" {
-            let email = components?.queryItems?.first(where: { $0.name == "email" })?.value
             Task { @MainActor in
-                LicenseManager.shared.handleLicenseSuccess(email: email)
+                LicenseManager.shared.handleLicenseSuccess(email: nil)
                 AppStateManager.shared.select(.settings)
                 AppStateManager.shared.showMainWindow()
             }

@@ -1,4 +1,8 @@
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
+const FREE_DOWNLOAD_LIMIT = 3;
+const TRIAL_RATE_LIMIT = 12;
+const MOVE_TOKEN_TTL = 900;
+const STRIPE_SIGNATURE_TOLERANCE = 300;
 
 export default {
   async fetch(request, env) {
@@ -7,8 +11,14 @@ export default {
     if (request.method === "POST" && url.pathname === "/checkout") {
       return createCheckout(request, env);
     }
-    if (request.method === "GET" && url.pathname === "/license") {
-      return getLicense(url, env);
+    if (request.method === "POST" && url.pathname === "/license/status") {
+      return getLicenseStatus(request, env);
+    }
+    if (request.method === "POST" && url.pathname === "/license/move/request") {
+      return requestLicenseMove(request, env);
+    }
+    if (request.method === "GET" && url.pathname === "/license/move/confirm") {
+      return confirmLicenseMove(url, env);
     }
     if (request.method === "POST" && url.pathname === "/trial/sync") {
       return syncTrial(request, env);
@@ -70,35 +80,88 @@ async function createCheckout(request, env) {
   return json({ url: session.url });
 }
 
-async function getLicense(url, env) {
-  const email = normalizeEmail(url.searchParams.get("email"));
-  const hwid = normalizeHwid(url.searchParams.get("hwid"));
+async function getLicenseStatus(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const email = normalizeEmail(body.email);
+  const hwid = normalizeHwid(body.hwid);
   if (!email) {
-    return json({ active: false, email: null, status: "email_required" }, 400);
+    return json({ active: false, email: null, status: "inactive" });
   }
 
   const record = await env.LICENSES.get(email, "json");
-  if (record?.redeemedByHwid && hwid && record.redeemedByHwid !== hwid) {
-    console.log("license_hwid_mismatch", JSON.stringify({ email, expected: record.redeemedByHwid, got: hwid }));
-  }
+  const active = record?.status === "active" && Boolean(hwid) && record.redeemedByHwid === hwid;
   return json({
-    active: record?.status === "active",
-    email,
-    status: record?.status ?? "not_found"
+    active,
+    email: active ? email : null,
+    status: active ? "active" : "inactive"
   });
+}
+
+async function requestLicenseMove(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const email = normalizeEmail(body.email);
+  const hwid = normalizeHwid(body.hwid);
+  const rateKey = `move-rate:${await sha256Hex(`${email}|${request.headers.get("CF-Connecting-IP") ?? "unknown"}`)}`;
+  if (!(await allowRate(env, rateKey, 3, 900))) {
+    return json({ accepted: true });
+  }
+
+  if (email && hwid) {
+    const record = await env.LICENSES.get(email, "json");
+    if (record?.status === "active") {
+      const token = randomToken();
+      await env.LICENSES.put(`move:${token}`, JSON.stringify({ email, hwid }), { expirationTtl: MOVE_TOKEN_TTL });
+      const link = `${new URL(request.url).origin}/license/move/confirm?token=${encodeURIComponent(token)}`;
+      await sendMoveEmail(email, link, env);
+    }
+  }
+
+  return json({ accepted: true });
+}
+
+async function confirmLicenseMove(url, env) {
+  const token = String(url.searchParams.get("token") ?? "").trim();
+  if (!token || token.length > 128) return html("This transfer link is invalid or expired.", 400);
+
+  const key = `move:${token}`;
+  const move = await env.LICENSES.get(key, "json");
+  if (!move?.email || !move?.hwid) return html("This transfer link is invalid or expired.", 410);
+  await env.LICENSES.delete(key);
+
+  const record = await env.LICENSES.get(move.email, "json");
+  if (!record || record.status !== "active") return html("This license is no longer active.", 410);
+  await env.LICENSES.put(move.email, JSON.stringify({ ...record, redeemedByHwid: move.hwid, updatedAt: new Date().toISOString() }));
+  return html(`<p>VidDL Pro was moved to this Mac. Return to VidDL and refresh the license.</p>`);
+}
+
+async function sendMoveEmail(email, link, env) {
+  if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) return false;
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from: env.RESEND_FROM_EMAIL,
+      to: [email],
+      subject: "Move your VidDL Pro license",
+      html: `<p>Confirm moving VidDL Pro to this Mac:</p><p><a href="${escapeHtml(link)}">Move license</a></p><p>This link expires in 15 minutes.</p>`
+    })
+  });
+  return response.ok;
 }
 
 async function syncTrial(request, env) {
   const body = await request.json().catch(() => ({}));
-  const verified = await verifyTrialRequest(body, env);
-  if (!verified.ok) {
-    return json({ error: verified.error }, verified.status);
-  }
+  const hwid = normalizeHwid(body.hwid);
+  if (!hwid) return json({ error: "invalid_trial_request" }, 400);
+  if (!(await allowRate(env, `trial-rate:${hwid}`, TRIAL_RATE_LIMIT, 60))) return json({ error: "rate_limited" }, 429);
 
   const now = new Date().toISOString();
-  const record = await getTrialRecord(env, verified.hwid, now);
+  const record = await getTrialRecord(env, hwid, now);
   record.lastSeen = now;
-  await putTrialRecord(env, verified.hwid, record);
+  await putTrialRecord(env, hwid, record);
 
   const active = await trialHasActiveLicense(env, record);
   return json({
@@ -110,13 +173,11 @@ async function syncTrial(request, env) {
 
 async function useTrial(request, env) {
   const body = await request.json().catch(() => ({}));
-  const verified = await verifyTrialRequest(body, env);
-  if (!verified.ok) {
-    return json({ error: verified.error }, verified.status);
-  }
+  const hwid = normalizeHwid(body.hwid);
+  if (!hwid) return json({ error: "invalid_trial_request" }, 400);
 
   const now = new Date().toISOString();
-  const record = await getTrialRecord(env, verified.hwid, now);
+  const record = await getTrialRecord(env, hwid, now);
   record.lastSeen = now;
 
   const active = await trialHasActiveLicense(env, record);
@@ -125,13 +186,17 @@ async function useTrial(request, env) {
     return json({
       allowed: true,
       count: record.count ?? 0,
-      remaining: 5,
+      remaining: FREE_DOWNLOAD_LIMIT,
       isPro: true
     });
   }
 
+  if (!(await allowRate(env, `trial-use-rate:${hwid}`, TRIAL_RATE_LIMIT, 60))) {
+    return json({ allowed: false, count: Number(record.count ?? 0), remaining: 0, isPro: false }, 429);
+  }
+
   const count = Number(record.count ?? 0);
-  if (count >= 5) {
+  if (count >= FREE_DOWNLOAD_LIMIT) {
     await putTrialRecord(env, verified.hwid, record);
     return json({
       allowed: false,
@@ -148,15 +213,13 @@ async function useTrial(request, env) {
   return json({
     allowed: true,
     count: record.count,
-    remaining: Math.max(0, 5 - record.count),
+    remaining: Math.max(0, FREE_DOWNLOAD_LIMIT - record.count),
     isPro: false
   });
 }
 
 async function successPage(url, env) {
-  const email = normalizeEmail(url.searchParams.get("email"));
-  const appUrl = `${env.SUCCESS_SCHEME}?email=${encodeURIComponent(email)}`;
-  const escapedEmail = escapeHtml(email);
+  const appUrl = `${env.SUCCESS_SCHEME}`;
   const escapedAppUrl = escapeHtml(appUrl);
 
   return html(`<!doctype html>
@@ -177,7 +240,7 @@ async function successPage(url, env) {
 <body>
   <main>
     <h1>Payment complete</h1>
-    <p>Your VidDL Pro purchase was received${escapedEmail ? ` for <span class="email">${escapedEmail}</span>` : ""}. Return to VidDL to refresh your license.</p>
+    <p>Your VidDL Pro purchase was received. Return to VidDL to refresh your license.</p>
     <p>If VidDL does not open automatically, click the button below.</p>
     <a class="button" href="${escapedAppUrl}">Open VidDL</a>
   </main>
@@ -193,18 +256,25 @@ async function successPage(url, env) {
 async function handleWebhook(request, env) {
   const payload = await request.text();
   const signature = request.headers.get("Stripe-Signature") ?? "";
-  const valid = await verifyStripeSignature(payload, signature, env.STRIPE_WEBHOOK_SECRET);
-  if (!valid) {
+  const verified = await verifyStripeSignature(payload, signature, env.STRIPE_WEBHOOK_SECRET);
+  if (!verified.valid) {
     return json({ error: "invalid_signature" }, 400);
   }
 
-  const event = JSON.parse(payload);
+  const event = await parseJSON(payload);
+  if (!event?.id || verified.timestamp < Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60) {
+    return json({ error: "invalid_event" }, 400);
+  }
+  const eventKey = `stripe:event:${event.id}`;
+  if (await env.LICENSES.get(eventKey)) return json({ received: true, duplicate: true });
+
   if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
     await activateFromCheckoutSession(event.data.object, env);
   } else if (event.type === "charge.refunded") {
     await deactivateFromRefund(event.data.object, env);
   }
 
+  await env.LICENSES.put(eventKey, "1", { expirationTtl: 30 * 24 * 60 * 60 });
   return json({ received: true });
 }
 
@@ -266,12 +336,15 @@ async function deactivateFromRefund(charge, env) {
 }
 
 async function verifyStripeSignature(payload, header, secret) {
-  const parts = Object.fromEntries(header.split(",").map((part) => {
-    const [key, value] = part.split("=");
-    return [key, value];
-  }));
-  if (!parts.t || !parts.v1 || !secret) {
-    return false;
+  const parts = header.split(",").reduce((result, part) => {
+    const [key, value] = part.trim().split("=", 2);
+    if (key === "v1") result.v1.push(value ?? "");
+    else if (key === "t") result.t = value;
+    return result;
+  }, { t: null, v1: [] });
+  const timestamp = Number(parts.t);
+  if (!Number.isFinite(timestamp) || Math.abs(Math.floor(Date.now() / 1000) - timestamp) > STRIPE_SIGNATURE_TOLERANCE || !parts.v1.length || !secret) {
+    return { valid: false, timestamp };
   }
 
   const signedPayload = `${parts.t}.${payload}`;
@@ -283,40 +356,28 @@ async function verifyStripeSignature(payload, header, secret) {
     ["sign"]
   );
   const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(signedPayload));
-  return timingSafeEqual(hex(signature), parts.v1);
+  return { valid: parts.v1.some((candidate) => timingSafeEqual(hex(signature), candidate)), timestamp };
 }
 
 function normalizeEmail(email) {
-  return String(email ?? "").trim().toLowerCase();
+  const value = String(email ?? "").trim().toLowerCase();
+  return value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? value : "";
 }
 
 function normalizeHwid(hwid) {
   const value = String(hwid ?? "").trim();
-  if (!value || value === "unknown" || value.length > 128) {
+  if (!value || value === "unknown" || value.length > 128 || /[^A-Za-z0-9._:-]/.test(value)) {
     return "";
   }
   return value;
 }
 
-async function verifyTrialRequest(body, env) {
-  const hwid = normalizeHwid(body.hwid);
-  const sig = String(body.sig ?? "").trim().toLowerCase();
-  const ts = Number(body.ts);
-  if (!env.TRIAL_HMAC_SECRET) {
-    return { ok: false, error: "trial_secret_not_configured", status: 500 };
+async function parseJSON(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
   }
-  if (!hwid || !sig || !Number.isFinite(ts)) {
-    return { ok: false, error: "invalid_trial_request", status: 400 };
-  }
-  const now = Math.floor(Date.now() / 1000);
-  if (Math.abs(now - ts) > 120) {
-    return { ok: false, error: "trial_request_expired", status: 401 };
-  }
-  const expected = await hmacHex(`${hwid}.${Math.trunc(ts)}`, env.TRIAL_HMAC_SECRET);
-  if (!timingSafeEqual(expected, sig)) {
-    return { ok: false, error: "invalid_trial_signature", status: 401 };
-  }
-  return { ok: true, hwid };
 }
 
 async function getTrialRecord(env, hwid, now) {
@@ -333,6 +394,24 @@ async function putTrialRecord(env, hwid, record) {
   await env.LICENSES.put(`trial:${hwid}`, JSON.stringify(record));
 }
 
+async function allowRate(env, key, limit, ttl) {
+  const current = Number(await env.LICENSES.get(key) ?? "0");
+  if (current >= limit) return false;
+  await env.LICENSES.put(key, String(current + 1), { expirationTtl: ttl });
+  return true;
+}
+
+function randomToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return base64url(bytes);
+}
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return hex(digest);
+}
+
 async function trialHasActiveLicense(env, trialRecord) {
   const email = normalizeEmail(trialRecord.redeemedByEmail);
   if (!email) {
@@ -342,22 +421,10 @@ async function trialHasActiveLicense(env, trialRecord) {
   return license?.status === "active";
 }
 
-async function hmacHex(payload, secret) {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
-  return hex(signature);
-}
-
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" }
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }
   });
 }
 
@@ -381,6 +448,13 @@ function hex(buffer) {
   return [...new Uint8Array(buffer)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+function base64url(bytes) {
+  return btoa(String.fromCharCode(...bytes))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
 }
 
 function timingSafeEqual(a, b) {

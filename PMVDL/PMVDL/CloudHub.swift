@@ -24,7 +24,8 @@ enum CloudProviderID: String, Codable, CaseIterable, Identifiable {
         case .gdrive: return GDriveManager.isAvailable && GDriveManager.isConfigured()
         case .seedbox:
             if UserDefaults.standard.string(forKey: "seedboxTransferMode") == "webdav" {
-                return !(UserDefaults.standard.string(forKey: "seedboxWebdavURL") ?? "").isEmpty
+                let raw = UserDefaults.standard.string(forKey: "seedboxWebdavURL") ?? ""
+                return URLTrustPolicy.validated(raw)?.scheme?.lowercased() == "https"
             }
             return SeedboxManager.isRcloneAvailable
         case .dropbox, .onedrive: return GDriveManager.isAvailable  // rclone-based
@@ -193,12 +194,13 @@ class CloudHub: ObservableObject {
         let remotePath = UserDefaults.standard.string(forKey: "seedboxRemotePath") ?? "/"
         if UserDefaults.standard.string(forKey: "seedboxTransferMode") == "webdav" {
             let rawURL = UserDefaults.standard.string(forKey: "seedboxWebdavURL") ?? ""
-            guard let baseURL = URL(string: rawURL), !rawURL.isEmpty else { throw SeedboxError.notConfigured }
+            guard let baseURL = URLTrustPolicy.validated(rawURL), baseURL.scheme?.lowercased() == "https" else { throw SeedboxError.notConfigured }
             return .webdav(
                 baseURL: baseURL,
                 user: UserDefaults.standard.string(forKey: "seedboxWebdavUser") ?? "",
-                password: UserDefaults.standard.string(forKey: "seedboxWebdavPassword") ?? "",
-                remotePath: remotePath
+                password: SecureStore.string(forKey: "seedboxWebdavPassword") ?? "",
+                remotePath: remotePath,
+                allowSelfSigned: UserDefaults.standard.bool(forKey: "seedboxWebdavAllowSelfSigned")
             )
         }
         return .rclone(
