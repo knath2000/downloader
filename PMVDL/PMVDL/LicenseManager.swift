@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import Foundation
 
 struct LicenseStatusResponse: Decodable {
@@ -32,6 +33,24 @@ private struct EntitlementCache: Codable {
     let expiresAt: Date
 }
 
+enum PersonalLicenseConfig {
+    static let bootstrapCode = "VIDDL-LOCAL-633D52B5-3F6C-4E42-8159-A9B627D55A6E"
+    static let codeKey = "personal.license.codeHash"
+    static let activeKey = "personal.license.active"
+}
+
+enum PersonalLicenseCode {
+    static func hash(_ code: String) -> String {
+        SHA256.hash(data: Data(code.trimmingCharacters(in: .whitespacesAndNewlines).utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    static func generate() -> String {
+        "VIDDL-LOCAL-" + UUID().uuidString
+    }
+}
+
 @MainActor
 class LicenseManager: ObservableObject {
     static let shared = LicenseManager()
@@ -54,6 +73,9 @@ class LicenseManager: ObservableObject {
     private let offlineGrace: TimeInterval
 
     nonisolated static var storedIsPro: Bool {
+        if SecureStore.string(forKey: PersonalLicenseConfig.activeKey) == "true" {
+            return true
+        }
         guard let data = SecureStore.data(forKey: entitlementCacheKey),
               let cache = try? JSONDecoder().decode(EntitlementCache.self, from: data) else { return false }
         return cache.isPro && cache.hardwareID == HardwareID.current && cache.expiresAt > Date()
@@ -67,8 +89,9 @@ class LicenseManager: ObservableObject {
         self.freeDownloadsUsed = 0
         migrateLegacyState()
         let cached = Self.loadCache()
-        isPro = cached.map { $0.isPro && $0.hardwareID == hwid && $0.expiresAt > Date() } ?? false
-        activationEmail = cached?.email ?? UserDefaults.standard.string(forKey: Self.userDefaultsActivationEmailKey) ?? ""
+        let localLicenseActive = SecureStore.string(forKey: PersonalLicenseConfig.activeKey) == "true"
+        isPro = localLicenseActive || (cached.map { $0.isPro && $0.hardwareID == hwid && $0.expiresAt > Date() } ?? false)
+        activationEmail = localLicenseActive ? "Personal license" : (cached?.email ?? UserDefaults.standard.string(forKey: Self.userDefaultsActivationEmailKey) ?? "")
         freeDownloadsUsed = UserDefaults.standard.integer(forKey: Self.userDefaultsFreeUsedKey)
     }
 
@@ -81,26 +104,16 @@ class LicenseManager: ObservableObject {
     }
 
     func bootstrap() async {
-        if !activationEmail.isEmpty { _ = await refreshLicense() }
-        do {
-            let status: TrialSyncResponse = try await postTrial("sync")
-            applyTrialState(count: status.count, isPro: status.isPro, redeemedEmail: status.redeemedEmail)
-        } catch {
-            if !isPro { lastError = "Connect to the internet once before using free downloads." }
-        }
+        guard !isPro else { return }
     }
 
     func preflight(count: Int = 1) async -> Bool {
         if isPro { return true }
-        do {
-            let status: TrialSyncResponse = try await postTrial("sync")
-            applyTrialState(count: status.count, isPro: status.isPro, redeemedEmail: status.redeemedEmail)
-            let used = status.count ?? freeDownloadsUsed
-            return status.isPro || max(0, Self.freeDownloadLimit - used) >= count
-        } catch {
-            lastError = "Connect to the internet before using free downloads."
+        guard freeDownloadsRemaining >= count else {
+            lastError = "Free download limit reached."
             return false
         }
+        return true
     }
 
     func startCheckout(email: String) async -> Bool {
@@ -185,16 +198,41 @@ class LicenseManager: ObservableObject {
     @discardableResult
     func recordSuccessfulDownload() async -> Bool {
         guard !isPro else { return true }
-        do {
-            let status: TrialUseResponse = try await postTrial("use")
-            applyTrialState(count: status.count, isPro: status.isPro, redeemedEmail: nil)
-            if status.allowed || status.isPro { lastError = ""; return true }
+        guard freeDownloadsRemaining > 0 else {
             lastError = "Free download limit reached."
             return false
-        } catch {
-            lastError = "Connect to the internet before using free downloads."
-            return false
         }
+        setFreeDownloadsUsed(freeDownloadsUsed + 1)
+        lastError = ""
+        return true
+    }
+
+    func activatePersonal(code: String) -> String? {
+        let normalized = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            lastError = "Enter your personal activation code."
+            return nil
+        }
+
+        let enteredHash = PersonalLicenseCode.hash(normalized)
+        let expectedHash = SecureStore.string(forKey: PersonalLicenseConfig.codeKey)
+            ?? PersonalLicenseCode.hash(PersonalLicenseConfig.bootstrapCode)
+        guard enteredHash == expectedHash else {
+            lastError = "That activation code is not valid."
+            return nil
+        }
+
+        let replacement = PersonalLicenseCode.generate()
+        guard SecureStore.set(PersonalLicenseCode.hash(replacement), forKey: PersonalLicenseConfig.codeKey),
+              SecureStore.set("true", forKey: PersonalLicenseConfig.activeKey) else {
+            lastError = "Could not save the personal license on this Mac."
+            return nil
+        }
+
+        isPro = true
+        activationEmail = "Personal license"
+        lastError = ""
+        return replacement
     }
 
     func handleLicenseSuccess(email: String?) {
@@ -209,6 +247,7 @@ class LicenseManager: ObservableObject {
         isPro = false
         activationEmail = ""
         UserDefaults.standard.removeObject(forKey: Self.userDefaultsActivationEmailKey)
+        SecureStore.remove(forKey: PersonalLicenseConfig.activeKey)
         clearCache()
     }
 

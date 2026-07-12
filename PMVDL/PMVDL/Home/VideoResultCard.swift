@@ -13,9 +13,12 @@ struct VideoResultCard: View {
     let onMega: (String) -> Void
     let onGDrive: (String) -> Void
     let onSeedbox: (String) -> Void
+    let onMultiple: (String, Set<CloudTarget>) -> Void
 
     @State private var selectedQualityID: String?
     @State private var selectedTarget: CloudTarget = .local
+    @State private var selectedDestinations: Set<CloudTarget> = []
+    @State private var showsDestinationPicker = false
     @State private var showAdvanced = false
 
     private var presentation: VideoResultPresentation {
@@ -183,6 +186,7 @@ struct VideoResultCard: View {
                 qualityPicker
                 targetPicker
                 primaryAction
+                multipleDestinationButton
                 copyButton
             }
             VStack(alignment: .leading, spacing: 8) {
@@ -190,6 +194,7 @@ struct VideoResultCard: View {
                 targetPicker
                 HStack(spacing: 8) {
                     primaryAction
+                    multipleDestinationButton
                     copyButton
                 }
             }
@@ -234,6 +239,26 @@ struct VideoResultCard: View {
         .buttonStyle(.borderedProminent)
         .tint(Theme.skyBlue)
         .disabled(selectedQuality == nil)
+    }
+
+    private var multipleDestinationButton: some View {
+        Button {
+            showsDestinationPicker = true
+        } label: {
+            Label("Multiple", systemImage: "square.3.layers.3d.down.right")
+        }
+        .buttonStyle(.bordered)
+        .disabled(selectedQuality == nil)
+        .popover(isPresented: $showsDestinationPicker, arrowEdge: .bottom) {
+            MultiDestinationPicker(
+                selected: $selectedDestinations,
+                start: {
+                    guard let url = selectedQuality?.url else { return }
+                    showsDestinationPicker = false
+                    onMultiple(url, selectedDestinations)
+                }
+            )
+        }
     }
 
     private var copyButton: some View {
@@ -289,5 +314,40 @@ struct VideoResultCard: View {
         case .done: return Theme.success
         case .failed: return Theme.error
         }
+    }
+}
+
+struct MultiDestinationPicker: View {
+    @Binding var selected: Set<CloudTarget>
+    let start: () -> Void
+
+    private let destinations: [CloudTarget] = [.gdrive, .seedbox]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Send to multiple destinations")
+                .font(.headline.weight(.semibold))
+
+            ForEach(destinations, id: \.self) { destination in
+                Button {
+                    if selected.contains(destination) {
+                        selected.remove(destination)
+                    } else {
+                        selected.insert(destination)
+                    }
+                } label: {
+                    Label(destination.homeDisplayName, systemImage: selected.contains(destination) ? "checkmark.square.fill" : "square")
+                        .foregroundStyle(selected.contains(destination) ? Theme.success : Theme.textPrimary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Button("Start transfers", action: start)
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.skyBlue)
+                .disabled(selected.isEmpty)
+        }
+        .padding(16)
+        .frame(width: 240)
     }
 }

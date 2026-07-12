@@ -25,6 +25,7 @@ struct ExtractionModalView: View {
     let onMega: (String) -> Void
     let onGDrive: (String) -> Void
     let onSeedbox: (String) -> Void
+    let onMultiple: (String, Set<CloudTarget>) -> Void
     let onBatchDownload: () -> Void
 
     @FocusState private var isAddURLFocused: Bool
@@ -142,7 +143,8 @@ struct ExtractionModalView: View {
                                     onLocal: onLocal,
                                     onMega: onMega,
                                     onGDrive: onGDrive,
-                                    onSeedbox: onSeedbox
+                                    onSeedbox: onSeedbox,
+                                    onMultiple: onMultiple
                                 )
                             } else {
                                 ExtractionLoadingRow(subtitle: loadingSubtitle(for: row.url))
@@ -386,9 +388,12 @@ private struct ExtractionResultRow: View {
     let onMega: (String) -> Void
     let onGDrive: (String) -> Void
     let onSeedbox: (String) -> Void
+    let onMultiple: (String, Set<CloudTarget>) -> Void
 
     @State private var selectedQualityID: String?
     @State private var selectedTarget: CloudTarget = .local
+    @State private var selectedDestinations: Set<CloudTarget> = []
+    @State private var showsDestinationPicker = false
 
     private var result: ExtractResult {
         row.result
@@ -539,6 +544,7 @@ private struct ExtractionResultRow: View {
                 qualityPicker
                 targetPicker
                 Spacer(minLength: 8)
+                multipleDestinationButton
                 primaryAction
                 copyButton
             }
@@ -548,6 +554,7 @@ private struct ExtractionResultRow: View {
                     targetPicker
                 }
                 HStack(spacing: 10) {
+                    multipleDestinationButton
                     primaryAction
                     copyButton
                 }
@@ -600,6 +607,25 @@ private struct ExtractionResultRow: View {
         }
         .buttonStyle(MobilePrimaryButtonStyle(tint: tint))
         .disabled(selectedQuality == nil)
+    }
+
+    private var multipleDestinationButton: some View {
+        Button {
+            showsDestinationPicker = true
+        } label: {
+            Label("Multiple", systemImage: "square.3.layers.3d.down.right")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
+        .disabled(selectedQuality == nil)
+        .popover(isPresented: $showsDestinationPicker, arrowEdge: .bottom) {
+            MultiDestinationPicker(selected: $selectedDestinations) {
+                guard let url = selectedQuality?.url else { return }
+                showsDestinationPicker = false
+                onMultiple(url, selectedDestinations)
+            }
+        }
+        .help("Transfer to multiple destinations")
     }
 
     private var copyButton: some View {

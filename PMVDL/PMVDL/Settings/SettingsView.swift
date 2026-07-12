@@ -23,8 +23,9 @@ struct SettingsView: View {
     @StateObject private var gdriveSetup = RcloneRemoteSetupViewModel()
     @StateObject private var seedboxSetup = RcloneRemoteSetupViewModel()
 
-    @State private var activateEmail = ""
+    @State private var activationCode = ""
     @State private var activationResult = ""
+    @State private var recoveryCode = ""
     @State private var isActivating = false
     @State private var showsGDriveManualFields = false
     @State private var seedboxAuthMode: RcloneSFTPAuthMode = .password
@@ -39,8 +40,8 @@ struct SettingsView: View {
     @State private var showsWebDAVFolderPicker = false
     @State private var activePanel: SettingsPanel?
 
-    private var trimmedActivationEmail: String {
-        activateEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+    private var trimmedActivationCode: String {
+        activationCode.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var dependencyInput: SettingsDependencyInput {
@@ -787,7 +788,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
                 SettingsCardTitle(
                     title: "VidDL Pro",
-                    subtitle: "Activated for \(license.activationEmail.isEmpty ? "this Mac" : license.activationEmail)",
+                    subtitle: "Activated for this Mac with a personal license",
                     systemImage: "crown.fill",
                     tint: Theme.success,
                     status: "Active"
@@ -819,17 +820,17 @@ struct SettingsView: View {
         SettingsCard(tint: Theme.coral) {
             VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
                 SettingsCardTitle(
-                    title: "Upgrade to Pro",
-                    subtitle: "Unlock VidDL Pro features with a one-time purchase.",
+                    title: "Activate VidDL Pro",
+                    subtitle: "Use your personal recovery code for offline activation.",
                     systemImage: "crown.fill",
                     tint: Theme.coral
                 )
 
                 HStack(spacing: 9) {
-                    Text("VidDL Pro")
+                    Text("Personal VidDL Pro")
                         .font(.subheadline.weight(.black))
                         .foregroundStyle(Theme.textPrimary)
-                    Text("$0.99 one-time")
+                    Text("Offline activation")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(Theme.gold)
                         .padding(.horizontal, 8)
@@ -849,11 +850,15 @@ struct SettingsView: View {
                 freeDownloadsMeter
 
                 GlassTextField(
-                    label: "Email",
-                    placeholder: "you@example.com",
-                    text: $activateEmail,
-                    help: "Enter the email to use for your Pro license."
+                    label: "Activation code",
+                    placeholder: "VIDDL-LOCAL-…",
+                    text: $activationCode,
+                    help: "Enter your current personal recovery code."
                 )
+
+                Text("Activating rotates the code. Save the new recovery code shown after activation.")
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textSecondary)
 
                 if !activationResult.isEmpty {
                     SettingsInlineAlert(
@@ -866,29 +871,37 @@ struct SettingsView: View {
                     SettingsInlineAlert(text: license.lastError, tint: Theme.error)
                 }
 
-                HStack(spacing: 8) {
-                    MarketplaceButton(title: "Buy Pro", icon: "crown.fill") {
-                        Task {
-                            isActivating = true
-                            let ok = await license.startCheckout(email: trimmedActivationEmail)
-                            activationResult = ok ? "Checkout opened. After payment, return here or click Open VidDL on the success page." : "Checkout failed."
-                            isActivating = false
+                if !recoveryCode.isEmpty {
+                    HStack(spacing: 8) {
+                        Text(recoveryCode)
+                            .font(.system(.caption, design: .monospaced).weight(.bold))
+                            .foregroundStyle(Theme.success)
+                            .textSelection(.enabled)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                        Button("Copy") {
+                            ClipboardManager.copy(recoveryCode)
                         }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                     }
-                    .frame(width: 180)
-                    .disabled(isActivating || trimmedActivationEmail.isEmpty)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(Theme.success.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
 
+                HStack(spacing: 8) {
                     Button("Activate Pro") {
                         Task {
                             isActivating = true
-                            let ok = await license.activate(email: trimmedActivationEmail)
-                            activationResult = ok ? "OK - Pro activated." : "No active Pro license found."
+                            recoveryCode = license.activatePersonal(code: trimmedActivationCode) ?? ""
+                            activationResult = recoveryCode.isEmpty ? "Activation failed." : "OK - Pro activated. Save your new recovery code."
                             isActivating = false
                         }
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .disabled(isActivating || trimmedActivationEmail.isEmpty)
+                    .disabled(isActivating || trimmedActivationCode.isEmpty)
 
                     if isActivating {
                         ProgressView()
@@ -898,12 +911,11 @@ struct SettingsView: View {
                 }
             }
             .onAppear {
-                if activateEmail.isEmpty {
-                    activateEmail = license.activationEmail
-                }
+                recoveryCode = ""
             }
-            .onChange(of: activateEmail) { _, _ in
+            .onChange(of: activationCode) { _, _ in
                 activationResult = ""
+                recoveryCode = ""
                 license.lastError = ""
             }
         }

@@ -22,6 +22,7 @@ class AppStateManager: ObservableObject {
     func showMainWindow() {
         isMainWindowVisible = true
         NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first(where: { $0.canBecomeMain })?.makeKeyAndOrderFront(nil)
     }
 
     func select(_ destination: NavDestination) {

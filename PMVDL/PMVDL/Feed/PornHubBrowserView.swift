@@ -857,6 +857,7 @@ private extension URL {
 struct PornHubBrowserWebView: NSViewRepresentable {
     @ObservedObject var browser: PornHubBrowserViewModel
     let initialURL: URL?
+    let downloadedItems: [LibraryItem]
     let isSelected: (FeedItem) -> Bool
     let toggleSelection: (FeedItem) -> Void
     let onNavigationFinished: () -> Void
@@ -881,16 +882,85 @@ struct PornHubBrowserWebView: NSViewRepresentable {
         return webView
     }
 
-    func updateNSView(_ webView: WKWebView, context: Context) {}
-
     func makeCoordinator() -> Coordinator {
         Coordinator(
             browser: browser,
+            downloadedItems: downloadedItems,
             isSelected: isSelected,
             toggleSelection: toggleSelection,
             onNavigationFinished: onNavigationFinished
         )
     }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        context.coordinator.updateDownloadedIndicators(in: webView, items: downloadedItems)
+    }
+
+    private static func downloadedIndicatorPayload(for items: [LibraryItem]) -> String {
+        let index = DownloadedFeedIndex(items: items)
+        return index.javascriptPayload
+    }
+
+    private static let downloadedIndicatorScript = """
+    (() => {
+      const payload = __PAYLOAD__;
+      window.__viddlDownloadedPayload = payload;
+      window.__viddlDownloadedObserver?.disconnect();
+      const normalize = value => {
+        try {
+          const url = new URL(value, document.location.href);
+          url.protocol = url.protocol.toLowerCase();
+          url.hostname = url.hostname.toLowerCase();
+          url.hash = "";
+          return url.href;
+        } catch (_) { return String(value || "").trim(); }
+      };
+      const viewkey = value => {
+        try {
+          const url = new URL(value, document.location.href);
+          if (!url.hostname.toLowerCase().includes("pornhub.com")) return "";
+          return (url.searchParams.get("viewkey") || "").trim().toLowerCase();
+        } catch (_) { return ""; }
+      };
+      const matches = value => {
+        const normalized = normalize(value);
+        const key = viewkey(value);
+        return payload.urls.includes(normalized) || (key && payload.viewkeys.includes(key));
+      };
+      const selectors = 'a[href*="view_video.php"][href*="viewkey="], a[href*="/hdporn/"], a[href*="/post/"], a[href*="/video-"], a[href*="luluvid.com"], a[href*="luluvdo.com"], a[href*="lulustream.com"], a[href*="vidara.so"], a[href*="playmogo.com"], a[href*="doodstream.com"], a[href*="dood.wf"]';
+      let observer;
+      const decorate = () => {
+        observer?.disconnect();
+        document.querySelectorAll(selectors).forEach(anchor => {
+          const href = anchor.getAttribute("href");
+          const card = anchor.closest("li, .pcVideoListItem, .videoBox, .videoUList, .phimage, article, section, div") || anchor;
+          const existingBadge = card.querySelector('.viddl-downloaded-badge');
+          if (!matches(href)) {
+            existingBadge?.remove();
+            return;
+          }
+          if (existingBadge) return;
+          if (getComputedStyle(card).position === "static") card.style.position = "relative";
+          const badge = document.createElement("span");
+          badge.className = "viddl-downloaded-badge";
+          badge.textContent = "✓";
+          badge.title = "Already downloaded in VidDL";
+          card.appendChild(badge);
+        });
+        observer?.observe(document.body, { childList: true, subtree: true });
+      };
+      if (!document.getElementById("viddl-downloaded-style")) {
+        const style = document.createElement("style");
+        style.id = "viddl-downloaded-style";
+        style.textContent = '.viddl-downloaded-badge { position: absolute; top: 8px; right: 8px; z-index: 2147483647; width: 22px; height: 22px; border-radius: 999px; display: flex; align-items: center; justify-content: center; background: #35d07f; color: #07150d; font: 700 15px -apple-system, BlinkMacSystemFont, sans-serif; box-shadow: 0 2px 8px rgba(0,0,0,.35); pointer-events: none; }';
+        document.head.appendChild(style);
+      }
+      decorate();
+      observer = new MutationObserver(() => { window.requestAnimationFrame(decorate); });
+      window.__viddlDownloadedObserver = observer;
+      observer.observe(document.body, { childList: true, subtree: true });
+    })();
+    """
 
     private static let contextMenuScript = """
     (() => {
@@ -954,6 +1024,8 @@ struct PornHubBrowserWebView: NSViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         private weak var browser: PornHubBrowserViewModel?
         private weak var webView: PornHubContextMenuWebView?
+        private var downloadedItems: [LibraryItem]
+        private var lastDownloadedPayload: String?
         private let isSelected: (FeedItem) -> Bool
         private let toggleSelection: (FeedItem) -> Void
         private let onNavigationFinished: () -> Void
@@ -964,14 +1036,25 @@ struct PornHubBrowserWebView: NSViewRepresentable {
 
         init(
             browser: PornHubBrowserViewModel,
+            downloadedItems: [LibraryItem],
             isSelected: @escaping (FeedItem) -> Bool,
             toggleSelection: @escaping (FeedItem) -> Void,
             onNavigationFinished: @escaping () -> Void
         ) {
             self.browser = browser
+            self.downloadedItems = downloadedItems
             self.isSelected = isSelected
             self.toggleSelection = toggleSelection
             self.onNavigationFinished = onNavigationFinished
+        }
+
+        func updateDownloadedIndicators(in webView: WKWebView, items: [LibraryItem]) {
+            downloadedItems = items
+            let payload = PornHubBrowserWebView.downloadedIndicatorPayload(for: items)
+            guard payload != lastDownloadedPayload else { return }
+            lastDownloadedPayload = payload
+            let script = PornHubBrowserWebView.downloadedIndicatorScript.replacingOccurrences(of: "__PAYLOAD__", with: payload)
+            webView.evaluateJavaScript(script)
         }
 
         func attach(to webView: WKWebView) {
@@ -1019,6 +1102,7 @@ struct PornHubBrowserWebView: NSViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             browser?.updateState(from: webView)
+            updateDownloadedIndicators(in: webView, items: downloadedItems)
             onNavigationFinished()
         }
 

@@ -1,4 +1,8 @@
-# Latest Session - 2026-07-12 Modular Refactor and WebDAV Folder Picker
+# Latest Session - 2026-07-12 Personal Pro License, Multi-Destination Transfers, and Menu Bar
+
+See `docs/SESSION_2026_07_12_PERSONAL_LICENSE_TRANSFERS_MENU_BAR.md` for the local rotating Pro-code activation flow, Feed downloaded badges, concurrent Google Drive plus Seedbox transfers, persistent macOS menu-bar controls, version `2.2.4`, and validation.
+
+# Previous Session - 2026-07-12 Modular Refactor and WebDAV Folder Picker
 
 See `docs/SESSION_2026_07_12_MODULAR_REFACTOR_WEBDAV_PICKER.md` for the provider/job/UI modularization, WebDAV folder picker, successful external-Xcode Debug build, and follow-up boundary for Pro/license work.
 

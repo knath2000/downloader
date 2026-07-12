@@ -213,6 +213,21 @@ final class FeedFavoritesTests: XCTestCase {
         XCTAssertEqual(match?.libraryID, libraryID)
     }
 
+    func testDownloadedFeedIndexJavascriptPayloadIncludesURLAndViewkeyMatches() {
+        let item = LibraryItem(
+            url: "https://www.pornhub.com/view_video.php?viewkey=ABC123",
+            title: "Downloaded",
+            mp4Url: nil,
+            hlsUrls: [],
+            extractedAt: Date(timeIntervalSince1970: 100)
+        )
+
+        let payload = DownloadedFeedIndex(items: [item]).javascriptPayload
+
+        XCTAssertTrue(payload.contains("view_video.php"))
+        XCTAssertTrue(payload.contains("abc123"))
+    }
+
     private func favorite(
         id: String = UUID().uuidString,
         title: String = "Favorite",

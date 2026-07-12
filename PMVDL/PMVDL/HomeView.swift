@@ -573,7 +573,8 @@ struct HomeView: View {
                         onLocal: { url in Task { await startDownload(url: url, cloud: .local) } },
                         onMega: { url in Task { await startDownload(url: url, cloud: .mega) } },
                         onGDrive: { url in Task { await startDownload(url: url, cloud: .gdrive) } },
-                        onSeedbox: { url in Task { await startDownload(url: url, cloud: .seedbox) } }
+                        onSeedbox: { url in Task { await startDownload(url: url, cloud: .seedbox) } },
+                        onMultiple: { url, destinations in Task { await startDownload(url: url, destinations: destinations) } }
                     )
                 }
             }
@@ -615,6 +616,7 @@ struct HomeView: View {
             onMega: { url in Task { await startDownload(url: url, cloud: .mega) } },
             onGDrive: { url in Task { await startDownload(url: url, cloud: .gdrive) } },
             onSeedbox: { url in Task { await startDownload(url: url, cloud: .seedbox) } },
+            onMultiple: { url, destinations in Task { await startDownload(url: url, destinations: destinations) } },
             onBatchDownload: batchDownloadAll
         )
     }
@@ -894,6 +896,10 @@ struct HomeView: View {
     }
 
     private func startDownload(url: String, cloud: CloudTarget) async {
+        await startDownload(url: url, destinations: [cloud])
+    }
+
+    private func startDownload(url: String, destinations: Set<CloudTarget>) async {
         guard await LicenseManager.shared.preflight() else {
             onUpgradeRequired()
             return
@@ -904,10 +910,14 @@ struct HomeView: View {
                 onUpgradeRequired()
                 return
             }
-            DownloadJobRunner.shared.start(resolution: resolution, target: cloud, context: downloadJobContext)
+            for destination in destinations {
+                DownloadJobRunner.shared.start(resolution: resolution, target: destination, context: downloadJobContext)
+            }
         } catch {
-            tracker.projectFailure(url: url, target: cloud, message: error.localizedDescription)
-            NotificationManager.shared.notifyUploadFailed(filename: uploadFileName(for: url), reason: error.localizedDescription)
+            for destination in destinations {
+                tracker.projectFailure(url: url, target: destination, message: error.localizedDescription)
+                NotificationManager.shared.notifyUploadFailed(filename: uploadFileName(for: url), reason: error.localizedDescription)
+            }
         }
     }
 

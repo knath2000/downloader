@@ -12,4 +12,15 @@ final class NavigationGateTests: XCTestCase {
         XCTAssertFalse(NavDestination.library.requiresPro)
         XCTAssertFalse(NavDestination.settings.requiresPro)
     }
+
+    func testPersonalLicenseCodeHashIsStable() {
+        XCTAssertEqual(
+            PersonalLicenseCode.hash("VIDDL-LOCAL-test"),
+            PersonalLicenseCode.hash(" VIDDL-LOCAL-test ")
+        )
+    }
+
+    func testPersonalLicenseCodeGenerationUsesLocalPrefix() {
+        XCTAssertTrue(PersonalLicenseCode.generate().hasPrefix("VIDDL-LOCAL-"))
+    }
 }

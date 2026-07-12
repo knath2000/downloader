@@ -1,6 +1,9 @@
 # VidDL Changelog
 
 ## Unreleased
+- Added a persistent macOS menu-bar download monitor with transfer progress, pause/resume, quick-open, and quit controls
+- Added concurrent Google Drive and Seedbox transfers from a single extracted result
+- Added local rotating-code activation for personal Pro use
 - Polished Feed spacing, card density, and the top filter toolbar layout
 - Gated Feed, Favorites, and Profile behind VidDL Pro
 - Simplified Settings Cloud Destinations into one selector-driven setup section

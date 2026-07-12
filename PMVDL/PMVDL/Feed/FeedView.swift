@@ -62,6 +62,18 @@ struct DownloadedFeedIndex: Equatable {
         return urlMatches[Self.normalizedURL(item.url)]
     }
 
+    var javascriptPayload: String {
+        let payload: [String: [String]] = [
+            "urls": Array(urlMatches.keys),
+            "viewkeys": Array(pornHubViewkeyMatches.keys)
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: payload),
+              let value = String(data: data, encoding: .utf8) else {
+            return "{\"urls\":[],\"viewkeys\":[]}"
+        }
+        return value
+    }
+
     static func normalizedURL(_ raw: String) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
@@ -258,6 +270,7 @@ struct FeedView: View {
             PornHubBrowserWebView(
                 browser: feedBrowser,
                 initialURL: feedBrowser.homeURL(feedModel: model),
+                downloadedItems: library.items,
                 isSelected: { item in selectionStore.isSelected(item) },
                 toggleSelection: { item in toggleSelection(item) },
                 onNavigationFinished: {
