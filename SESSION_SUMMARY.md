@@ -1,4 +1,8 @@
-# Latest Session - 2026-07-12 Security, Seedbox Connections, and Self-Signed WebDAV
+# Latest Session - 2026-07-12 Modular Refactor and WebDAV Folder Picker
+
+See `docs/SESSION_2026_07_12_MODULAR_REFACTOR_WEBDAV_PICKER.md` for the provider/job/UI modularization, WebDAV folder picker, successful external-Xcode Debug build, and follow-up boundary for Pro/license work.
+
+# Previous Session - 2026-07-12 Security, Seedbox Connections, and Self-Signed WebDAV
 
 See `docs/SESSION_2026_07_12_SECURITY_SEEDBOX_WEBDAV.md` for the Seedbox WebDAV/SFTP settings flow, the self-signed WebDAV ATS finding and narrow endpoint exception, current security-hardening work, and validation.
 
