@@ -136,7 +136,16 @@ final class DownloadJobRunner {
                 retryPayload: buildRetryPayload(for: resolution, target: target, context: context)
             )
         }
-        return DownloadQueue.shared.addQueued(items)
+        let queueIDs = DownloadQueue.shared.addQueued(items)
+        for (queueID, item) in zip(queueIDs, items) {
+            guard let payload = item.retryPayload else { continue }
+            enqueueExisting(
+                queueId: queueID,
+                payload: payload,
+                seedboxWebdavPassword: context.seedboxWebdavPassword
+            )
+        }
+        return queueIDs
     }
 
     @discardableResult
@@ -154,13 +163,19 @@ final class DownloadJobRunner {
             target: target,
             context: context.retryContext
         )
-        return DownloadQueue.shared.add(
+        let queueID = DownloadQueue.shared.add(
             url: sourcePageURL,
             quality: preferredQualityLabel ?? "Video",
             targetCloud: target,
             displayTitle: title,
             retryPayload: payload
         )
+        enqueueExisting(
+            queueId: queueID,
+            payload: payload,
+            seedboxWebdavPassword: ""
+        )
+        return queueID
     }
 
     func run(resolution: DownloadResolution, target: CloudTarget, context: DownloadJobContext) async -> Bool {
@@ -237,6 +252,7 @@ final class DownloadJobRunner {
     }
 
     func processNextIfNeeded() {
+        rehydratePendingRuns()
         let limit = min(DownloadQueue.shared.concurrentLimit, 5)
         guard inFlightCount < limit else { return }
         let queueItems = DownloadQueue.shared.queue
@@ -248,6 +264,21 @@ final class DownloadJobRunner {
                 continue
             }
             startQueued(queueId: item.id)
+        }
+    }
+
+    private func rehydratePendingRuns() {
+        let seedboxWebdavPassword = SecureStore.string(forKey: "seedboxWebdavPassword") ?? ""
+        for item in DownloadQueue.shared.queue where item.status == .pending {
+            guard queuedRuns[item.id] == nil,
+                  !startingQueueIDs.contains(item.id),
+                  runningTasks[item.id] == nil,
+                  let payload = item.retryPayload else { continue }
+            queuedRuns[item.id] = QueuedRun(
+                payload: payload,
+                seedboxWebdavPassword: seedboxWebdavPassword,
+                refreshSource: true
+            )
         }
     }
 

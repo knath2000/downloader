@@ -69,8 +69,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.setActivationPolicy(.regular)
         MegaManager.cleanupTempFiles()
         NotificationManager.shared.requestAuthorization()
-        Task { await LicenseManager.shared.bootstrap() }
         Task {
+            await MainActor.run {
+                _ = LicenseManager.shared
+            }
+            await LicenseManager.shared.bootstrap()
             await SeedboxManager.reconnectConfiguredWebDAV()
         }
         Task { @MainActor in

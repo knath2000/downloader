@@ -23,3 +23,12 @@
 ## Validation
 
 The PMVDL Debug target built successfully with the external Xcode toolchain. The resulting app was launched for manual verification, and the provider extraction fix was confirmed working.
+
+## Startup reliability
+
+- Pending retryable queue rows are rehydrated into the scheduler on launch, and newly queued batch/source-page jobs are registered immediately so available download slots are filled.
+- WebDAV startup reconnect waits for credential/license initialization, migrates legacy password storage, and falls back to the legacy value when necessary. A configured WebDAV seedbox therefore does not require opening Settings and re-running Test Connection after launch.
+
+## Release artifact
+
+Version 2.2.6 is packaged as a local unsigned, unnotarized DMG for personal use with `scripts/build-dmg.sh`.

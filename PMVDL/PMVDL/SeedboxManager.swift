@@ -44,12 +44,14 @@ final class SeedboxManager {
 
     static func reconnectConfiguredWebDAV() async {
         let defaults = UserDefaults.standard
+        SecureStore.migrateLegacyString("seedboxWebdavPassword", to: "seedboxWebdavPassword")
         guard defaults.string(forKey: "seedboxTransferMode") == "webdav",
               let urlString = defaults.string(forKey: "seedboxWebdavURL"),
               let baseURL = URLTrustPolicy.validated(urlString),
               baseURL.scheme?.lowercased() == "https",
               let user = defaults.string(forKey: "seedboxWebdavUser"),
-              let password = SecureStore.string(forKey: "seedboxWebdavPassword") else { return }
+              let password = SecureStore.string(forKey: "seedboxWebdavPassword") ?? defaults.string(forKey: "seedboxWebdavPassword"),
+              !password.isEmpty else { return }
 
         let remotePath = defaults.string(forKey: "seedboxRemotePath") ?? "/"
         let allowSelfSigned = defaults.bool(forKey: "seedboxWebdavAllowSelfSigned")

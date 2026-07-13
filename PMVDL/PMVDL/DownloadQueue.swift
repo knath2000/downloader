@@ -509,8 +509,7 @@ class DownloadQueue: ObservableObject {
     func resumeInterruptedOnLaunch(seedboxWebdavPassword: String = "") {
         let resumable = queue.filter { item in
             item.status == .pending &&
-            item.retryPayload != nil &&
-            (item.statusMessage == restartMessage || item.statusMessage == retryMessage)
+            item.retryPayload != nil
         }
         guard !resumable.isEmpty else { return }
         for item in resumable {
