@@ -7,7 +7,7 @@ class AppStateManager: ObservableObject {
 
     @Published var selectedDestination: NavDestination = .home
     @Published var isMainWindowVisible: Bool = true
-    @Published var windowSize: CGSize = CGSize(width: 900, height: 650)
+    @Published var windowSize: CGSize = CGSize(width: 1200, height: 800)
     @Published var pendingExtractURL: String?
     @Published var pendingExtractShouldStart = false
     @Published var pendingExtractThumbnailURL: String?

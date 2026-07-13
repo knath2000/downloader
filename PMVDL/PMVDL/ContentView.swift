@@ -748,8 +748,10 @@ private struct WindowConfigurator: NSViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject, NSWindowDelegate {
+        private static let savedSizeKey = "mainWindowSize"
         private weak var trackedWindow: NSWindow?
         private var resizeObserver: NSObjectProtocol?
+        private var restoredWindow = false
 
         deinit {
             if let resizeObserver {
@@ -769,6 +771,7 @@ private struct WindowConfigurator: NSViewRepresentable {
 
             trackedWindow = window
             window.delegate = self
+            restoreWindowSize(window)
             updateWindowSize(window)
             resizeObserver = NotificationCenter.default.addObserver(
                 forName: NSWindow.didResizeNotification,
@@ -793,6 +796,31 @@ private struct WindowConfigurator: NSViewRepresentable {
             if AppStateManager.shared.windowSize != size {
                 AppStateManager.shared.windowSize = size
             }
+            guard size.width >= 900, size.height >= 650 else { return }
+            UserDefaults.standard.set([size.width, size.height], forKey: Self.savedSizeKey)
+        }
+
+        private func restoreWindowSize(_ window: NSWindow) {
+            guard !restoredWindow else { return }
+            restoredWindow = true
+            guard let saved = UserDefaults.standard.array(forKey: Self.savedSizeKey),
+                  saved.count == 2,
+                  let width = (saved[0] as? NSNumber)?.doubleValue,
+                  let height = (saved[1] as? NSNumber)?.doubleValue else { return }
+            let size = CGSize(width: width, height: height)
+            guard size.width >= 900, size.height >= 650 else { return }
+            let visibleFrame = (window.screen ?? NSScreen.main)?.visibleFrame
+            let clampedSize = CGSize(
+                width: min(size.width, visibleFrame?.width ?? size.width),
+                height: min(size.height, visibleFrame?.height ?? size.height)
+            )
+            var frame = window.frame
+            frame.size = clampedSize
+            if let visibleFrame {
+                frame.origin.x = max(visibleFrame.minX, min(frame.origin.x, visibleFrame.maxX - clampedSize.width))
+                frame.origin.y = max(visibleFrame.minY, min(frame.origin.y, visibleFrame.maxY - clampedSize.height))
+            }
+            window.setFrame(frame, display: false)
         }
     }
 }

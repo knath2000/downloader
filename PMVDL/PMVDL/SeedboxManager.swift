@@ -555,7 +555,25 @@ final class SeedboxManager {
         } catch {
             streams.output.close()
             uploadTask.cancel()
-            throw error
+            let streamError: Error
+            do {
+                try await delegate.waitForCompletion()
+                streamError = error
+            } catch let uploadError {
+                streamError = SeedboxError.transferFailed("WebDAV streamed upload failed: \(uploadError.localizedDescription). Source stream error: \(error.localizedDescription)")
+            }
+            NSLog("VidDL WebDAV streamed upload failed for %@: %@; retrying with a temporary local file.", sourceURL.absoluteString, streamError.localizedDescription)
+            return try await uploadUnknownLengthSourceViaWebDAV(
+                sourceURL: sourceURL,
+                webdavBase: webdavBase,
+                remotePath: remotePath,
+                filename: filename,
+                user: user,
+                password: password,
+                headers: headers,
+                allowSelfSigned: allowSelfSigned,
+                progressHandler: progressHandler
+            )
         }
 
         try await delegate.waitForCompletion()

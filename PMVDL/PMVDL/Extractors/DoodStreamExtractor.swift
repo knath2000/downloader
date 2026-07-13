@@ -239,9 +239,9 @@ struct DoodStreamExtractor: VideoSiteExtractor {
   }
 
   private static func isPlaymogoHost(_ host: String) -> Bool {
-    host == "playmogo.com" ||
+    host == "playmogo.com" || host == "ds2play.com" ||
     host == "www.playmogo.com" ||
-    host.hasSuffix(".playmogo.com")
+    host.hasSuffix(".playmogo.com") || host.hasSuffix(".ds2play.com")
   }
 
   private static func findPlaymogoVideoUrl(

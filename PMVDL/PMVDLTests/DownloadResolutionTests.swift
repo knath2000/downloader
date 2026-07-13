@@ -917,7 +917,7 @@ final class ProviderLinkExtractorResolutionTests: XCTestCase {
         XCTAssertFalse(qualities.contains { $0.url.contains("doodstream.com/d/") })
     }
 
-    func testFailedResolvedProviderStillGetsProviderPageFallback() async throws {
+    func testFailedResolvedProviderIsRemoved() async throws {
         let candidates = [
             ProviderLinkExtractor.ProviderCandidateForTesting(providerName: "STREAMTAPE", url: "https://streamtape.com/e/d3yv4qm2B4hkYq3"),
             ProviderLinkExtractor.ProviderCandidateForTesting(providerName: "DOODSTREAM", url: "https://doodstream.com/e/ta6jhp0sh9jd")
@@ -941,9 +941,8 @@ final class ProviderLinkExtractorResolutionTests: XCTestCase {
             )
         })
 
-        XCTAssertEqual(qualities.map(\.label), ["STREAMTAPE · Video", "DOODSTREAM · provider page"])
-        XCTAssertEqual(qualities.map(\.kind), [.direct, .pageUrl])
-        XCTAssertEqual(qualities[1].url, "https://doodstream.com/e/ta6jhp0sh9jd")
+        XCTAssertEqual(qualities.map(\.label), ["STREAMTAPE · Video"])
+        XCTAssertEqual(qualities.map(\.kind), [.direct])
     }
 
     func testVidaraProviderCandidateResolvesInsteadOfFallingBackToPage() async throws {

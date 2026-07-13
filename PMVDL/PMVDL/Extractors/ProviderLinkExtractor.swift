@@ -20,7 +20,7 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
         }
 
         let candidates = providerCandidates(from: entries, pageURL: url)
-        let qualities = await resolveProviderCandidates(candidates, pageURL: url)
+        let qualities = await resolveProviderCandidates(candidates)
 
         guard !qualities.isEmpty else {
             throw VideoExtractorError.noVideoSources
@@ -39,9 +39,11 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
 
     private static func parseVideoUrls(from html: String) -> [ProviderEntry] {
         var entries: [ProviderEntry] = []
+        var decodedPayloads: [String] = []
 
         for payload in extractNextFPushStrings(from: html) {
             let decoded = decodeEscapedJsonString(payload)
+            decodedPayloads.append(decoded)
 
             // Find "video_urls":{ in the decoded string
             guard let vuRange = decoded.range(of: "\"video_urls\":") else {
@@ -182,8 +184,7 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
                 sourcePageUrl: $0.url
             )
         }
-        let pageURL = URL(string: "https://allpornstream.com/post/test")!
-        return await resolveProviderCandidates(internalCandidates, pageURL: pageURL, resolver: resolver)
+        return await resolveProviderCandidates(internalCandidates, resolver: resolver)
     }
 
     private static func parseVideoUrlsObject(_ object: String) -> [ProviderEntry] {
@@ -237,10 +238,6 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
             return nil
         }
 
-        if let statusCode = findJsonNumberValue(for: "status_code", in: item), statusCode != 200 {
-            return nil
-        }
-
         let fileCode = findJsonStringValue(for: "file_code", in: item)
 
         return ProviderEntry(providerName: provider, url: url, isIframeFallback: true, sourcePageUrl: nil, fileCode: fileCode)
@@ -288,7 +285,6 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
 
     private static func resolveProviderCandidates(
         _ candidates: [ProviderCandidate],
-        pageURL: URL,
         resolver: @escaping ProviderResolver = { try await ScraperEngine.extract(from: $0) }
     ) async -> [VideoSource.Quality] {
         await withTaskGroup(of: (Int, [VideoSource.Quality]).self) { group in
@@ -309,10 +305,7 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
             }
 
             return candidates.indices.flatMap { index in
-                if let qualities = byIndex[index], !qualities.isEmpty {
-                    return qualities
-                }
-                return [makeFallbackPageQuality(from: candidates[index], pageURL: pageURL)]
+                byIndex[index] ?? []
             }
         }
     }
@@ -344,15 +337,6 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
         }
 
         return result
-    }
-
-    private static func makeFallbackPageQuality(from candidate: ProviderCandidate, pageURL: URL) -> VideoSource.Quality {
-        VideoSource.Quality(
-            label: "\(candidate.providerName) · provider page",
-            url: candidate.selectedUrl,
-            kind: .pageUrl,
-            sourcePageUrl: candidate.sourcePageUrl.isEmpty ? pageURL.absoluteString : candidate.sourcePageUrl
-        )
     }
 
     private static func groupingKey(for entry: ProviderEntry) -> String {
@@ -398,6 +382,7 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
             || host == "mixdrop.sx" || host.hasSuffix(".mixdrop.sx")
             || host == "mixdrop.pw" || host.hasSuffix(".mixdrop.pw")
             || host == "mixdrop.top" || host.hasSuffix(".mixdrop.top")
+            || host == "mxdrop.to" || host.hasSuffix(".mxdrop.to")
             || host == "m1xdrop.click" || host.hasSuffix(".m1xdrop.click")
             || host == "miiixdrop.net" || host.hasSuffix(".miiixdrop.net")
             || host == "doodstream.com" || host.hasSuffix(".doodstream.com")
@@ -411,6 +396,7 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
             || host == "dood.la" || host.hasSuffix(".dood.la")
             || host == "dood.sh" || host.hasSuffix(".dood.sh")
             || host == "playmogo.com" || host.hasSuffix(".playmogo.com")
+            || host == "ds2play.com" || host.hasSuffix(".ds2play.com")
             || host == "vidara.so" || host.hasSuffix(".vidara.so")
     }
 

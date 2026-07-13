@@ -365,6 +365,17 @@ struct HomeCompactQueue: View {
 
                 if displayMode == .queuedModal {
                     copyURLsButton
+
+                    if counts.queued > 0 {
+                        Button {
+                            queue.pauseQueued()
+                        } label: {
+                            Label("Pause All", systemImage: "pause.fill")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .tint(Theme.warning)
+                    }
                 }
 
                 if !restartableItems.isEmpty {

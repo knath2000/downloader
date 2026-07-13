@@ -217,6 +217,7 @@ struct DownloadRetryContext: Codable, Equatable {
 struct DownloadRetryPayload: Codable, Equatable {
     let sourcePageURL: String
     let preferredQualityLabel: String?
+    let preferredQualityURL: String?
     let target: CloudTarget
     let context: DownloadRetryContext
     /// GDrive jobs need the Mega remote path that was resolved at first-attempt time so
@@ -236,6 +237,7 @@ struct DownloadRetryPayload: Codable, Equatable {
         self.preferredQualityLabel = resolution.source.hls.first(where: {
             $0.url == resolution.requestedUrl || $0.url == resolution.finalUrl
         })?.label
+        self.preferredQualityURL = resolution.requestedUrl
         self.target = target
         self.context = context
         self.gdriveMegaRemotePath = gdriveMegaRemotePath
@@ -251,6 +253,7 @@ struct DownloadRetryPayload: Codable, Equatable {
     ) {
         self.sourcePageURL = sourcePageURL
         self.preferredQualityLabel = preferredQualityLabel
+        self.preferredQualityURL = nil
         self.target = target
         self.context = context
         self.gdriveMegaRemotePath = nil
@@ -268,7 +271,7 @@ struct DownloadRetryPayload: Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case sourcePageURL, preferredQualityLabel, target, context, gdriveMegaRemotePath, resolution
+        case sourcePageURL, preferredQualityLabel, preferredQualityURL, target, context, gdriveMegaRemotePath, resolution
     }
 
     init(from decoder: Decoder) throws {
@@ -279,6 +282,7 @@ struct DownloadRetryPayload: Codable, Equatable {
         if let pageURL = try container.decodeIfPresent(String.self, forKey: .sourcePageURL) {
             sourcePageURL = pageURL
             preferredQualityLabel = try container.decodeIfPresent(String.self, forKey: .preferredQualityLabel)
+            preferredQualityURL = try container.decodeIfPresent(String.self, forKey: .preferredQualityURL)
             let source = VideoSource(mp4: nil, hls: [], title: nil, siteName: URL(string: pageURL)?.host ?? "Video")
             inMemoryResolution = DownloadResolution(
                 requestedUrl: pageURL,
@@ -296,6 +300,7 @@ struct DownloadRetryPayload: Codable, Equatable {
             preferredQualityLabel = legacyResolution.source.hls.first(where: {
                 $0.url == legacyResolution.requestedUrl || $0.url == legacyResolution.finalUrl
             })?.label
+            preferredQualityURL = legacyResolution.requestedUrl
             inMemoryResolution = legacyResolution
         }
     }
@@ -304,6 +309,7 @@ struct DownloadRetryPayload: Codable, Equatable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(sourcePageURL, forKey: .sourcePageURL)
         try container.encodeIfPresent(preferredQualityLabel, forKey: .preferredQualityLabel)
+        try container.encodeIfPresent(preferredQualityURL, forKey: .preferredQualityURL)
         try container.encode(target, forKey: .target)
         try container.encode(context, forKey: .context)
         try container.encodeIfPresent(gdriveMegaRemotePath, forKey: .gdriveMegaRemotePath)

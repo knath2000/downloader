@@ -12,6 +12,7 @@ struct VidDLApp: App {
                 .tint(Theme.coral)
                 .preferredColorScheme(.dark)
         }
+        .defaultSize(width: 1200, height: 800)
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .newItem) {}

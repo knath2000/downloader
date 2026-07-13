@@ -337,7 +337,7 @@ struct LibraryView: View {
                             favoritesStore: favorites,
                             onUpgradeRequired: onUpgradeRequired
                         )
-                        .task(id: entry.thumbnailIdentity) {
+                        .task(id: entry.thumbnailIdentity, priority: .utility) {
                             if case .video(let item) = entry {
                                 await thumbnailStore.load(item: item)
                             }
@@ -392,7 +392,7 @@ struct LibraryView: View {
                     pipelineStore: pipeline,
                     favoritesStore: favorites
                 )
-                .task(id: entry.thumbnailIdentity) {
+                .task(id: entry.thumbnailIdentity, priority: .utility) {
                     if case .video(let item) = entry {
                         await thumbnailStore.load(item: item)
                     }
@@ -939,8 +939,6 @@ private struct LibraryTimelineRow: View {
     let favoritesStore: FeedFavoritesStore
     let onUpgradeRequired: () -> Void
 
-    @State private var isHovering = false
-
     private var rowTint: Color {
         switch entry {
         case .video(let item):
@@ -970,9 +968,6 @@ private struct LibraryTimelineRow: View {
                 .lineLimit(1)
                 .frame(width: 58, alignment: .trailing)
 
-            actions
-                .opacity(isHovering || isPreviewSelected ? 1 : 0)
-                .allowsHitTesting(isHovering || isPreviewSelected)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -995,7 +990,6 @@ private struct LibraryTimelineRow: View {
                 .padding(.vertical, 9)
         }
         .contentShape(RoundedRectangle(cornerRadius: 10))
-        .onHover { isHovering = $0 }
         .onTapGesture { handleTap() }
         .help(entry.url)
         .appContextMenu(title: entry.title, subtitle: entry.url, accent: rowTint, actions: contextActions)
@@ -1260,8 +1254,6 @@ private struct LibraryThumbnailGridCard: View {
     let pipelineStore: LibraryPipelineStore
     let favoritesStore: FeedFavoritesStore
 
-    @State private var isHovering = false
-
     private var tint: Color {
         switch entry {
         case .video(let item):
@@ -1306,7 +1298,6 @@ private struct LibraryThumbnailGridCard: View {
         )
         .shadow(color: isSelected ? Theme.skyBlue.opacity(0.16) : .clear, radius: 12, x: 0, y: 8)
         .contentShape(RoundedRectangle(cornerRadius: 12))
-        .onHover { isHovering = $0 }
         .onTapGesture { handleTap() }
         .help(entry.url)
     }
@@ -1354,7 +1345,7 @@ private struct LibraryThumbnailGridCard: View {
                     .padding(7)
             }
 
-            if isHovering || isSelected {
+            if isSelected {
                 Image(systemName: "sidebar.right")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Theme.textPrimary)

@@ -104,6 +104,7 @@ class DownloadQueue: ObservableObject {
 
     private let userDefaultsKey = "downloadQueue"
     private let restartMessage = "Resuming after app restart…"
+    private let retryMessage = "Retrying…"
     private let progressPublishInterval: TimeInterval = 0.25
     private let progressPersistDelay: UInt64 = 1_000_000_000
     private var lastProgressUpdateAt: [UUID: Date] = [:]
@@ -369,6 +370,16 @@ class DownloadQueue: ObservableObject {
         save()
     }
 
+    func pauseQueued() {
+        for i in queue.indices where queue[i].status == .pending {
+            queue[i].status = .paused
+            queue[i].bytesPerSecond = nil
+            queue[i].statusMessage = "Paused"
+            DownloadJobRunner.shared.pause(queueId: queue[i].id)
+        }
+        save()
+    }
+
     func resumeAll() {
         // Only resume explicitly paused items. Failed items are retried via resetForRetry/Retry button.
         for i in queue.indices where queue[i].status == .paused {
@@ -499,7 +510,7 @@ class DownloadQueue: ObservableObject {
         let resumable = queue.filter { item in
             item.status == .pending &&
             item.retryPayload != nil &&
-            item.statusMessage == restartMessage
+            (item.statusMessage == restartMessage || item.statusMessage == retryMessage)
         }
         guard !resumable.isEmpty else { return }
         for item in resumable {

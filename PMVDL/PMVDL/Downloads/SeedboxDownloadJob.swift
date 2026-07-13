@@ -136,10 +136,13 @@ struct SeedboxDownloadJob: DownloadJob {
         if context.seedboxTransferMode == "webdav" {
             let trimmed = context.seedboxWebdavURL.trimmingCharacters(in: .whitespacesAndNewlines)
             guard let base = URLTrustPolicy.validated(trimmed), base.scheme?.lowercased() == "https" else { throw SeedboxError.notConfigured }
+            let password = context.seedboxWebdavPassword.isEmpty
+                ? (SecureStore.string(forKey: "seedboxWebdavPassword") ?? "")
+                : context.seedboxWebdavPassword
             return .webdav(
                 baseURL: base,
                 user: context.seedboxWebdavUser,
-                password: context.seedboxWebdavPassword,
+                password: password,
                 remotePath: context.seedboxRemotePath,
                 allowSelfSigned: UserDefaults.standard.bool(forKey: "seedboxWebdavAllowSelfSigned")
             )

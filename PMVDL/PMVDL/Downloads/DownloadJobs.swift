@@ -54,7 +54,10 @@ extension DownloadJobContext {
 extension DownloadRetryContext {
     /// Reconstruct a full DownloadJobContext by injecting the current credential at retry time.
     func materialize(seedboxWebdavPassword: String) -> DownloadJobContext {
-        DownloadJobContext(
+        let resolvedSeedboxWebdavPassword = seedboxWebdavPassword.isEmpty
+            ? (SecureStore.string(forKey: "seedboxWebdavPassword") ?? "")
+            : seedboxWebdavPassword
+        return DownloadJobContext(
             megaRemotePath: megaRemotePath,
             gdriveRemoteName: gdriveRemoteName,
             gdriveRemotePath: gdriveRemotePath,
@@ -63,7 +66,7 @@ extension DownloadRetryContext {
             seedboxRemotePath: seedboxRemotePath,
             seedboxWebdavURL: seedboxWebdavURL,
             seedboxWebdavUser: seedboxWebdavUser,
-            seedboxWebdavPassword: seedboxWebdavPassword
+            seedboxWebdavPassword: resolvedSeedboxWebdavPassword
         )
     }
 }
@@ -402,7 +405,8 @@ final class DownloadJobRunner {
             )
             resolution = try await DownloadResolver.resolve(
                 sourcePageURL: payload.sourcePageURL,
-                preferredQualityLabel: payload.preferredQualityLabel
+                preferredQualityLabel: payload.preferredQualityLabel,
+                preferredQualityURL: payload.preferredQualityURL
             )
             try validateProFeatures(for: resolution)
         } catch {

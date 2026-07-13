@@ -804,7 +804,7 @@ struct HomeView: View {
                         guard extractionGeneration == generation else { return }
                         if res.source == nil {
                             recordExtractionFailure(res)
-                            extractionSlots.removeAll { $0.id == slotID }
+                            extractionSlots = ExtractionSlotSupport.replacingSlot(id: slotID, in: extractionSlots, with: res)
                         } else {
                             extractionSlots = ExtractionSlotSupport.replacingSlot(id: slotID, in: extractionSlots, with: res)
                         }
@@ -825,7 +825,7 @@ struct HomeView: View {
                 NotificationManager.shared.notifyScrapeComplete(count: successCount)
                 isLoading = false
                 loadProgress = ""
-                showResultsSheet = !extractionSlots.isEmpty
+                showResultsSheet = true
             }
         }
     }
@@ -854,7 +854,7 @@ struct HomeView: View {
                 guard extractionGeneration == generation else { return }
                 if result.source == nil {
                     recordExtractionFailure(result)
-                    extractionSlots.removeAll { $0.id == slot.id }
+                    extractionSlots = ExtractionSlotSupport.replacingSlot(id: slot.id, in: extractionSlots, with: result)
                 } else {
                     extractionSlots = ExtractionSlotSupport.replacingSlot(id: slot.id, in: extractionSlots, with: result)
                 }
@@ -864,7 +864,7 @@ struct HomeView: View {
                 }
                 isLoading = false
                 loadProgress = ""
-                showResultsSheet = !extractionSlots.isEmpty
+                showResultsSheet = true
             }
         }
     }
