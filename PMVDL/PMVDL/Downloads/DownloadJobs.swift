@@ -136,6 +136,30 @@ final class DownloadJobRunner {
         return DownloadQueue.shared.addQueued(items)
     }
 
+    @discardableResult
+    func queue(
+        sourcePageURL: String,
+        preferredQualityLabel: String?,
+        title: String,
+        target: CloudTarget,
+        context: DownloadJobContext
+    ) -> UUID {
+        let payload = DownloadRetryPayload(
+            sourcePageURL: sourcePageURL,
+            preferredQualityLabel: preferredQualityLabel,
+            title: title,
+            target: target,
+            context: context.retryContext
+        )
+        return DownloadQueue.shared.add(
+            url: sourcePageURL,
+            quality: preferredQualityLabel ?? "Video",
+            targetCloud: target,
+            displayTitle: title,
+            retryPayload: payload
+        )
+    }
+
     func run(resolution: DownloadResolution, target: CloudTarget, context: DownloadJobContext) async -> Bool {
         let queueId = enqueue(resolution: resolution, target: target, context: context, waitsForResult: true)
         return await waitForResult(queueId: queueId)
@@ -370,23 +394,16 @@ final class DownloadJobRunner {
 
         do {
             try validate(target: target, context: context)
-            if refreshSource {
-                DownloadQueue.shared.update(
-                    id: queueId,
-                    status: .pending,
-                    progress: 0,
-                    message: "Refreshing video source..."
-                )
-                resolution = try await DownloadResolver.refreshForRetry(resolution)
-            } else if DownloadResolver.needsDownloadTimeRefresh(resolution) {
-                DownloadQueue.shared.update(
-                    id: queueId,
-                    status: .pending,
-                    progress: 0,
-                    message: "Refreshing PornHub source..."
-                )
-                resolution = try await DownloadResolver.refreshForDownloadIfNeeded(resolution)
-            }
+            DownloadQueue.shared.update(
+                id: queueId,
+                status: .pending,
+                progress: 0,
+                message: "Resolving video source..."
+            )
+            resolution = try await DownloadResolver.resolve(
+                sourcePageURL: payload.sourcePageURL,
+                preferredQualityLabel: payload.preferredQualityLabel
+            )
             try validateProFeatures(for: resolution)
         } catch {
             fail(queueId: queueId, title: resolution.title, error: error)

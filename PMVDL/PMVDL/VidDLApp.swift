@@ -69,6 +69,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         MegaManager.cleanupTempFiles()
         NotificationManager.shared.requestAuthorization()
         Task { await LicenseManager.shared.bootstrap() }
+        Task {
+            await SeedboxManager.reconnectConfiguredWebDAV()
+        }
         Task { @MainActor in
             await Task.yield()
             LibraryPipelineStore.shared.hydrateFromStores(

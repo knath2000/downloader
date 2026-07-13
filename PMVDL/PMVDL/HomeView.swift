@@ -166,6 +166,8 @@ struct HomeView: View {
 
     private struct BatchDownloadJob {
         let url: String
+        let sourcePageURL: String
+        let qualityLabel: String
         let title: String?
         let displayName: String
         let uploadFileName: String
@@ -210,6 +212,8 @@ struct HomeView: View {
             let title = source.title
             return BatchDownloadJob(
                 url: target.url,
+                sourcePageURL: result.url,
+                qualityLabel: target.label,
                 title: title,
                 displayName: title ?? fileName(of: target.url),
                 uploadFileName: VideoFileNaming.mp4FileName(title: title, fallback: fileName(of: target.url))
@@ -1006,7 +1010,6 @@ struct HomeView: View {
               let signature = currentBatchSignature,
               activeBatchSubmission?.signature != signature else { return }
         let selectedTarget = batchTarget
-        let currentResults = results
         activeBatchSubmission = BatchSubmission(
             signature: signature,
             progressText: "Queueing 0/\(jobs.count)..."
@@ -1022,32 +1025,19 @@ struct HomeView: View {
             }
 
             let context = downloadJobContext
-            var resolutions = [DownloadResolution]()
-            var failures = [String]()
             for (index, job) in jobs.enumerated() {
-                do {
-                    let resolution = try await DownloadResolver.resolve(requestedUrl: job.url, in: currentResults)
-                    if resolution.isAudio && !ProFeatureGate.canDownloadAudio {
-                        tracker.projectFailure(url: job.url, target: selectedTarget, message: ProFeatureError.audioRequiresPro.localizedDescription)
-                        continue
-                    }
-                    resolutions.append(resolution)
-                    await MainActor.run {
-                        if var submission = activeBatchSubmission, submission.signature == signature {
-                            submission.progressText = "Preparing \(index + 1)/\(jobs.count)"
-                            activeBatchSubmission = submission
-                        }
-                    }
-                } catch {
-                    tracker.projectFailure(url: job.url, target: selectedTarget, message: error.localizedDescription)
-                    NotificationManager.shared.notifyUploadFailed(filename: job.uploadFileName, reason: error.localizedDescription)
-                    failures.append("\(job.displayName): \(error.localizedDescription)")
-                }
-            }
-            DownloadJobRunner.shared.queue(resolutions: resolutions, target: selectedTarget, context: context)
-            if !failures.isEmpty {
+                DownloadJobRunner.shared.queue(
+                    sourcePageURL: job.sourcePageURL,
+                    preferredQualityLabel: job.qualityLabel,
+                    title: job.title ?? job.displayName,
+                    target: selectedTarget,
+                    context: context
+                )
                 await MainActor.run {
-                    queuePreparationFailure = "\(failures.count) of \(jobs.count) downloads could not be queued because VidDL could not prepare a reachable source. Re-extract those videos and try again.\n\n\(failures[0])"
+                    if var submission = activeBatchSubmission, submission.signature == signature {
+                        submission.progressText = "Queueing \(index + 1)/\(jobs.count)"
+                        activeBatchSubmission = submission
+                    }
                 }
             }
         }
@@ -1058,18 +1048,17 @@ struct HomeView: View {
     }
 
     private func queueDownload(url: String, target: CloudTarget) async {
-        do {
-            let resolution = try await DownloadResolver.resolve(requestedUrl: url, in: results)
-            if resolution.isAudio && !ProFeatureGate.canDownloadAudio {
-                onUpgradeRequired()
-                return
-            }
-            DownloadJobRunner.shared.queue(resolution: resolution, target: target, context: downloadJobContext)
-        } catch {
-            tracker.projectFailure(url: url, target: target, message: error.localizedDescription)
-            NotificationManager.shared.notifyUploadFailed(filename: uploadFileName(for: url), reason: error.localizedDescription)
-            queuePreparationFailure = "VidDL could not queue \(displayName(for: url)) because it could not prepare a reachable source. Re-extract the video and try again.\n\n\(error.localizedDescription)"
-        }
+        guard let result = results.first(where: {
+            $0.source?.mp4 == url || $0.source?.hls.contains(where: { $0.url == url }) == true
+        }), let source = result.source else { return }
+        let qualityLabel = source.hls.first(where: { $0.url == url })?.label ?? "Video"
+        DownloadJobRunner.shared.queue(
+            sourcePageURL: result.url,
+            preferredQualityLabel: qualityLabel,
+            title: source.title ?? displayName(for: url),
+            target: target,
+            context: downloadJobContext
+        )
     }
 
     private func startDownload(url: String, destinations: Set<CloudTarget>) async {

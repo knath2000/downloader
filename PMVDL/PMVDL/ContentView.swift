@@ -747,7 +747,7 @@ private struct WindowConfigurator: NSViewRepresentable {
     }
 
     @MainActor
-    final class Coordinator {
+    final class Coordinator: NSObject, NSWindowDelegate {
         private weak var trackedWindow: NSWindow?
         private var resizeObserver: NSObjectProtocol?
 
@@ -768,6 +768,7 @@ private struct WindowConfigurator: NSViewRepresentable {
             }
 
             trackedWindow = window
+            window.delegate = self
             updateWindowSize(window)
             resizeObserver = NotificationCenter.default.addObserver(
                 forName: NSWindow.didResizeNotification,
@@ -779,6 +780,12 @@ private struct WindowConfigurator: NSViewRepresentable {
                     self?.updateWindowSize(window)
                 }
             }
+        }
+
+        func windowShouldClose(_ sender: NSWindow) -> Bool {
+            AppStateManager.shared.isMainWindowVisible = false
+            sender.orderOut(nil)
+            return false
         }
 
         private func updateWindowSize(_ window: NSWindow) {

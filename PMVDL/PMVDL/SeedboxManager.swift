@@ -42,6 +42,30 @@ final class SeedboxManager {
         findRclone() != nil
     }
 
+    static func reconnectConfiguredWebDAV() async {
+        let defaults = UserDefaults.standard
+        guard defaults.string(forKey: "seedboxTransferMode") == "webdav",
+              let urlString = defaults.string(forKey: "seedboxWebdavURL"),
+              let baseURL = URLTrustPolicy.validated(urlString),
+              baseURL.scheme?.lowercased() == "https",
+              let user = defaults.string(forKey: "seedboxWebdavUser"),
+              let password = SecureStore.string(forKey: "seedboxWebdavPassword") else { return }
+
+        let remotePath = defaults.string(forKey: "seedboxRemotePath") ?? "/"
+        let allowSelfSigned = defaults.bool(forKey: "seedboxWebdavAllowSelfSigned")
+        do {
+            try await SeedboxManager(mode: .webdav(
+                baseURL: baseURL,
+                user: user,
+                password: password,
+                remotePath: remotePath,
+                allowSelfSigned: allowSelfSigned
+            )).testConnection()
+        } catch {
+            NSLog("VidDL WebDAV startup check failed: %@", error.localizedDescription)
+        }
+    }
+
     static func isRcloneConfigured(remoteName: String) -> Bool {
         let trimmed = remoteName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let rclone = findRclone() else { return false }

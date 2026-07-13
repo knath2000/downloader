@@ -38,5 +38,10 @@
 ## Extraction queueing
 
 - The extraction modal has both `Download All` and `Queue All`, plus a per-result `Queue` action for the selected destination. Queue operations always create new queue entries, including repeat URLs.
-- Queue All resolves the entire batch first and persists all prepared queue rows in one operation. It is independent of existing completed or paused rows; automatic transfers are capped at five, while `Start Now` remains an explicit override.
-- If a source cannot be prepared for queueing, the extraction modal now presents a clear alert with the affected item count and the underlying reason. Successfully prepared items still queue.
+- Queue All and per-result Queue persist only each original video page URL plus the selected quality label and destination context. They do not resolve or store a final media URL until the task actually starts, so expired CDN URLs and extraction failures cannot prevent queue insertion. Queue operations always create new rows, including repeat URLs; automatic transfers are capped at five, while `Start Now` remains an explicit override.
+- When a queued task starts, retries, or resumes, it re-scrapes the stored original page and calculates a fresh media URL on demand. Source preparation errors therefore appear when the task runs and are retained with the failed queued item.
+
+## Startup WebDAV and resident app shell
+
+- When WebDAV is the saved seedbox mode and its HTTPS URL and Keychain password are present, app launch runs the same authenticated directory/write probe used by “Test WebDAV.” This happens without opening Settings and logs a non-blocking failure if the server is unavailable.
+- Closing the main window with the macOS traffic lights orders out only the app shell. The process, menu-bar extra, download queue, state, and active transfers remain alive. The menu-bar “Open VidDL” and “Open Downloads” actions restore the existing main window; the explicit menu-bar Quit action is still the path that terminates the app.

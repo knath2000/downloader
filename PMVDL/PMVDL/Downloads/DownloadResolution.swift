@@ -116,6 +116,23 @@ enum DownloadResolver {
         )
     }
 
+    static func resolve(
+        sourcePageURL: String,
+        preferredQualityLabel: String?,
+        extractor: @escaping SourceExtractor = ScraperEngine.extract
+    ) async throws -> DownloadResolution {
+        let source = try await extractor(sourcePageURL)
+        let result = ExtractResult(url: sourcePageURL, source: source, error: nil)
+        let candidates = source.hls.filter { $0.kind != .pageUrl }
+        let selectedURL = candidates.first(where: {
+            $0.label.caseInsensitiveCompare(preferredQualityLabel ?? "") == .orderedSame
+        })?.url ?? source.mp4 ?? candidates.first?.url ?? source.hls.first?.url
+        guard let selectedURL else {
+            throw DownloadResolutionError.sourceNotFound(sourcePageURL)
+        }
+        return try await resolve(requestedUrl: selectedURL, in: [result], extractor: extractor)
+    }
+
     static func refreshForDownloadIfNeeded(
         _ resolution: DownloadResolution,
         extractor: @escaping SourceExtractor = ScraperEngine.extract

@@ -215,12 +215,99 @@ struct DownloadRetryContext: Codable, Equatable {
 
 /// Full payload needed to re-run a download job without HomeView extraction state.
 struct DownloadRetryPayload: Codable, Equatable {
-    let resolution: DownloadResolution
+    let sourcePageURL: String
+    let preferredQualityLabel: String?
     let target: CloudTarget
     let context: DownloadRetryContext
     /// GDrive jobs need the Mega remote path that was resolved at first-attempt time so
     /// retry doesn't accidentally delete a different Mega file discovered later.
     let gdriveMegaRemotePath: String?
+    private let inMemoryResolution: DownloadResolution
+
+    var resolution: DownloadResolution { inMemoryResolution }
+
+    init(
+        resolution: DownloadResolution,
+        target: CloudTarget,
+        context: DownloadRetryContext,
+        gdriveMegaRemotePath: String?
+    ) {
+        self.sourcePageURL = resolution.result.url
+        self.preferredQualityLabel = resolution.source.hls.first(where: {
+            $0.url == resolution.requestedUrl || $0.url == resolution.finalUrl
+        })?.label
+        self.target = target
+        self.context = context
+        self.gdriveMegaRemotePath = gdriveMegaRemotePath
+        self.inMemoryResolution = resolution
+    }
+
+    init(
+        sourcePageURL: String,
+        preferredQualityLabel: String?,
+        title: String,
+        target: CloudTarget,
+        context: DownloadRetryContext
+    ) {
+        self.sourcePageURL = sourcePageURL
+        self.preferredQualityLabel = preferredQualityLabel
+        self.target = target
+        self.context = context
+        self.gdriveMegaRemotePath = nil
+        let source = VideoSource(mp4: nil, hls: [], title: title, siteName: URL(string: sourcePageURL)?.host ?? "Video")
+        self.inMemoryResolution = DownloadResolution(
+            requestedUrl: sourcePageURL,
+            finalUrl: sourcePageURL,
+            result: ExtractResult(url: sourcePageURL, source: source, error: nil),
+            source: source,
+            title: title,
+            mediaKind: .direct,
+            headers: nil,
+            sourcePageUrl: sourcePageURL
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case sourcePageURL, preferredQualityLabel, target, context, gdriveMegaRemotePath, resolution
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        target = try container.decode(CloudTarget.self, forKey: .target)
+        context = try container.decode(DownloadRetryContext.self, forKey: .context)
+        gdriveMegaRemotePath = try container.decodeIfPresent(String.self, forKey: .gdriveMegaRemotePath)
+        if let pageURL = try container.decodeIfPresent(String.self, forKey: .sourcePageURL) {
+            sourcePageURL = pageURL
+            preferredQualityLabel = try container.decodeIfPresent(String.self, forKey: .preferredQualityLabel)
+            let source = VideoSource(mp4: nil, hls: [], title: nil, siteName: URL(string: pageURL)?.host ?? "Video")
+            inMemoryResolution = DownloadResolution(
+                requestedUrl: pageURL,
+                finalUrl: pageURL,
+                result: ExtractResult(url: pageURL, source: source, error: nil),
+                source: source,
+                title: pageURL,
+                mediaKind: .direct,
+                headers: nil,
+                sourcePageUrl: pageURL
+            )
+        } else {
+            let legacyResolution = try container.decode(DownloadResolution.self, forKey: .resolution)
+            sourcePageURL = legacyResolution.result.url
+            preferredQualityLabel = legacyResolution.source.hls.first(where: {
+                $0.url == legacyResolution.requestedUrl || $0.url == legacyResolution.finalUrl
+            })?.label
+            inMemoryResolution = legacyResolution
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sourcePageURL, forKey: .sourcePageURL)
+        try container.encodeIfPresent(preferredQualityLabel, forKey: .preferredQualityLabel)
+        try container.encode(target, forKey: .target)
+        try container.encode(context, forKey: .context)
+        try container.encodeIfPresent(gdriveMegaRemotePath, forKey: .gdriveMegaRemotePath)
+    }
 }
 
 enum QueueStatus: Codable, Equatable {
