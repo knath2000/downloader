@@ -240,6 +240,7 @@ enum DownloadResumeStrategy: String, Codable, Equatable {
 
 enum DownloadQueueItemKind: String, Codable, Equatable {
     case processing
+    case extraction
 }
 
 struct DownloadTransferMetrics: Codable, Equatable {
@@ -319,6 +320,13 @@ struct DownloadQueueItem: Identifiable, Codable, Equatable {
 
     var isProcessingJob: Bool {
         itemKind == .processing || status == .processing
+    }
+
+    var sourcePageURL: String? {
+        if itemKind == .extraction {
+            return url
+        }
+        return retryPayload?.resolution.result.url ?? retryPayload?.resolution.sourcePageUrl
     }
 
     var isVisibleInDownloads: Bool {

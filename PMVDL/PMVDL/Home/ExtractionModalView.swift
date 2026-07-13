@@ -12,6 +12,7 @@ struct ExtractionModalView: View {
     let batchQueuedCount: Int
     let isBatchSubmitting: Bool
     let batchProgressText: String
+    let queueAllWhenReady: Bool
     let canRetryFailed: Bool
     let isYtDlpReady: Bool
     let localState: (String) -> UploadState?
@@ -26,7 +27,9 @@ struct ExtractionModalView: View {
     let onGDrive: (String) -> Void
     let onSeedbox: (String) -> Void
     let onMultiple: (String, Set<CloudTarget>) -> Void
+    let onQueue: (String, CloudTarget) -> Void
     let onBatchDownload: () -> Void
+    let onBatchQueue: () -> Void
 
     @FocusState private var isAddURLFocused: Bool
 
@@ -144,7 +147,8 @@ struct ExtractionModalView: View {
                                     onMega: onMega,
                                     onGDrive: onGDrive,
                                     onSeedbox: onSeedbox,
-                                    onMultiple: onMultiple
+                                    onMultiple: onMultiple,
+                                    onQueue: onQueue
                                 )
                             } else {
                                 ExtractionLoadingRow(subtitle: loadingSubtitle(for: row.url))
@@ -205,6 +209,26 @@ struct ExtractionModalView: View {
                 .tint(Theme.skyBlue)
                 .disabled(isBatchSubmitting)
                 .help(isBatchSubmitting ? batchProgressText : batchTarget.homeBatchButtonTitle)
+
+                Button {
+                    onBatchQueue()
+                } label: {
+                    if queueAllWhenReady {
+                        Label("Will Queue All", systemImage: "clock.badge.checkmark")
+                    } else if isBatchSubmitting {
+                        ProgressView()
+                            .controlSize(.small)
+                            .scaleEffect(0.7)
+                        Text("Queueing")
+                    } else {
+                        Label("Queue All", systemImage: "clock.badge.plus")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(Theme.warning)
+                .disabled(isBatchSubmitting)
+                .help(queueAllWhenReady ? "Queueing all downloads after extraction finishes" : "Queue all downloads for \(batchTarget.homeDisplayName)")
             }
 
         }
@@ -389,6 +413,7 @@ private struct ExtractionResultRow: View {
     let onGDrive: (String) -> Void
     let onSeedbox: (String) -> Void
     let onMultiple: (String, Set<CloudTarget>) -> Void
+    let onQueue: (String, CloudTarget) -> Void
 
     @State private var selectedQualityID: String?
     @State private var selectedTarget: CloudTarget = .local
@@ -546,6 +571,7 @@ private struct ExtractionResultRow: View {
                 Spacer(minLength: 8)
                 multipleDestinationButton
                 primaryAction
+                queueAction
                 copyButton
             }
             VStack(alignment: .leading, spacing: 10) {
@@ -556,6 +582,7 @@ private struct ExtractionResultRow: View {
                 HStack(spacing: 10) {
                     multipleDestinationButton
                     primaryAction
+                    queueAction
                     copyButton
                 }
             }
@@ -607,6 +634,20 @@ private struct ExtractionResultRow: View {
         }
         .buttonStyle(MobilePrimaryButtonStyle(tint: tint))
         .disabled(selectedQuality == nil)
+    }
+
+    private var queueAction: some View {
+        Button {
+            guard let url = selectedQuality?.url else { return }
+            onQueue(url, selectedTarget)
+        } label: {
+            Label("Queue", systemImage: "clock.badge.plus")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
+        .tint(Theme.warning)
+        .disabled(selectedQuality == nil)
+        .help("Add this download to the queue")
     }
 
     private var multipleDestinationButton: some View {

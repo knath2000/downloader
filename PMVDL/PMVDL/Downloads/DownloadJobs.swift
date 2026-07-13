@@ -95,6 +95,7 @@ final class DownloadJobRunner {
     private struct QueuedRun {
         let payload: DownloadRetryPayload
         let seedboxWebdavPassword: String
+        let refreshSource: Bool
     }
 
     private var queuedRuns: [UUID: QueuedRun] = [:]
@@ -114,6 +115,25 @@ final class DownloadJobRunner {
     @discardableResult
     func start(resolution: DownloadResolution, target: CloudTarget, context: DownloadJobContext) -> UUID {
         enqueue(resolution: resolution, target: target, context: context)
+    }
+
+    @discardableResult
+    func queue(resolution: DownloadResolution, target: CloudTarget, context: DownloadJobContext) -> UUID {
+        queue(resolutions: [resolution], target: target, context: context)[0]
+    }
+
+    @discardableResult
+    func queue(resolutions: [DownloadResolution], target: CloudTarget, context: DownloadJobContext) -> [UUID] {
+        let items = resolutions.map { resolution in
+            DownloadQueueItem(
+                url: resolution.requestedUrl,
+                quality: queueQuality(for: resolution, target: target),
+                targetCloud: target,
+                displayTitle: resolution.title,
+                retryPayload: buildRetryPayload(for: resolution, target: target, context: context)
+            )
+        }
+        return DownloadQueue.shared.addQueued(items)
     }
 
     func run(resolution: DownloadResolution, target: CloudTarget, context: DownloadJobContext) async -> Bool {
@@ -143,8 +163,13 @@ final class DownloadJobRunner {
               DownloadQueueManualStartPolicy.canStartNow(item, isPro: ProFeatureGate.isPro) else { return }
         pausedQueueIDs.remove(queueId)
         cancelledQueueIDs.remove(queueId)
-        queuedRuns[queueId] = QueuedRun(payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
+        queuedRuns[queueId] = QueuedRun(payload: payload, seedboxWebdavPassword: seedboxWebdavPassword, refreshSource: true)
         startQueued(queueId: queueId)
+    }
+
+    func startQueuedWithFreshSource(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) {
+        guard DownloadQueue.shared.item(id: queueId)?.status == .pending else { return }
+        enqueueExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword, refreshSource: true)
     }
 
     func pause(queueId: UUID) {
@@ -172,7 +197,7 @@ final class DownloadJobRunner {
     func retry(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) async -> Bool {
         guard DownloadQueue.shared.resetForRetry(id: queueId) else { return false }
         awaitedResultIDs.insert(queueId)
-        enqueueExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
+        enqueueExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword, refreshSource: true)
         return await waitForResult(queueId: queueId)
     }
 
@@ -180,12 +205,12 @@ final class DownloadJobRunner {
     func resume(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) async -> Bool {
         guard DownloadQueue.shared.resetForResume(id: queueId) else { return false }
         awaitedResultIDs.insert(queueId)
-        enqueueExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
+        enqueueExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword, refreshSource: true)
         return await waitForResult(queueId: queueId)
     }
 
     func processNextIfNeeded() {
-        let limit = DownloadQueue.shared.concurrentLimit
+        let limit = min(DownloadQueue.shared.concurrentLimit, 5)
         guard inFlightCount < limit else { return }
         let queueItems = DownloadQueue.shared.queue
         for item in queueItems where inFlightCount < limit {
@@ -224,10 +249,19 @@ final class DownloadJobRunner {
         return queueId
     }
 
-    private func enqueueExisting(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) {
+    private func enqueueExisting(
+        queueId: UUID,
+        payload: DownloadRetryPayload,
+        seedboxWebdavPassword: String,
+        refreshSource: Bool = false
+    ) {
         pausedQueueIDs.remove(queueId)
         cancelledQueueIDs.remove(queueId)
-        queuedRuns[queueId] = QueuedRun(payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
+        queuedRuns[queueId] = QueuedRun(
+            payload: payload,
+            seedboxWebdavPassword: seedboxWebdavPassword,
+            refreshSource: refreshSource
+        )
         processNextIfNeeded()
     }
 
@@ -238,7 +272,8 @@ final class DownloadJobRunner {
             _ = await self.runRegistered(
                 queueId: queueId,
                 payload: queuedRun.payload,
-                seedboxWebdavPassword: queuedRun.seedboxWebdavPassword
+                seedboxWebdavPassword: queuedRun.seedboxWebdavPassword,
+                refreshSource: queuedRun.refreshSource
             )
         }
     }
@@ -265,7 +300,8 @@ final class DownloadJobRunner {
     private func runRegistered(
         queueId: UUID,
         payload: DownloadRetryPayload,
-        seedboxWebdavPassword: String
+        seedboxWebdavPassword: String,
+        refreshSource: Bool
     ) async -> Bool {
         startingQueueIDs.remove(queueId)
 
@@ -274,7 +310,8 @@ final class DownloadJobRunner {
             await self.runExisting(
                 queueId: queueId,
                 payload: payload,
-                seedboxWebdavPassword: seedboxWebdavPassword
+                seedboxWebdavPassword: seedboxWebdavPassword,
+                refreshSource: refreshSource
             )
         }
         runningTokens[queueId] = token
@@ -312,7 +349,8 @@ final class DownloadJobRunner {
     private func runExisting(
         queueId: UUID,
         payload: DownloadRetryPayload,
-        seedboxWebdavPassword: String
+        seedboxWebdavPassword: String,
+        refreshSource: Bool
     ) async -> Bool {
         guard !shouldStop(queueId: queueId) else { return false }
 
@@ -332,7 +370,15 @@ final class DownloadJobRunner {
 
         do {
             try validate(target: target, context: context)
-            if DownloadResolver.needsDownloadTimeRefresh(resolution) {
+            if refreshSource {
+                DownloadQueue.shared.update(
+                    id: queueId,
+                    status: .pending,
+                    progress: 0,
+                    message: "Refreshing video source..."
+                )
+                resolution = try await DownloadResolver.refreshForRetry(resolution)
+            } else if DownloadResolver.needsDownloadTimeRefresh(resolution) {
                 DownloadQueue.shared.update(
                     id: queueId,
                     status: .pending,

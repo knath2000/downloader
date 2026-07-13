@@ -84,10 +84,13 @@ struct HomeView: View {
     @State private var isLoading = false
     @State private var loadProgress = ""
     @State private var activeBatchSubmission: BatchSubmission?
+    @State private var queueAllWhenExtractionCompletes = false
+    @State private var queuePreparationFailure: String?
     @State private var retryingResultIndices: Set<Int> = []
     @State private var extractionGeneration = UUID()
     @State private var showResultsSheet = false
     @State private var showActiveDownloadsSheet = false
+    @State private var showQueuedDownloadsSheet = false
     @State private var showCompletedDownloadsSheet = false
     @State private var showCompletionBanner = false
     @State private var hadActiveDownloads = false
@@ -115,7 +118,7 @@ struct HomeView: View {
     }
 
     var batchTargetLinks: [String] {
-        batchTargetJobs.map(\.url)
+        batchQueueJobs.map(\.url)
     }
 
     private var inputModel: HomeURLInputModel {
@@ -135,8 +138,21 @@ struct HomeView: View {
     }
 
     private var activeDownloadItems: [DownloadQueueItem] {
-        visibleDownloadItems.filter { $0.status != .completed }
+        visibleDownloadItems.filter { HomeQueueCounts.isActive($0.status) }
     }
+
+    private var queuedDownloadItems: [DownloadQueueItem] {
+        visibleDownloadItems.filter {
+            switch $0.status {
+            case .pending, .paused, .failed:
+                return true
+            case .downloading, .verifying, .uploading, .processing, .completed:
+                return false
+            }
+        }
+    }
+
+    private var hasQueuedDownloads: Bool { !queuedDownloadItems.isEmpty }
 
     private var completedDownloadItems: [DownloadQueueItem] {
         visibleDownloadItems.filter { $0.status == .completed }
@@ -172,21 +188,23 @@ struct HomeView: View {
         return source.hls.first { $0.kind != .pageUrl }
     }
 
-    private var batchTargetJobs: [BatchDownloadJob] {
+    private func batchJobs(excludingExistingQueueItems: Bool) -> [BatchDownloadJob] {
         results.compactMap { result in
             guard let source = result.source,
                   let target = preferredBatchTarget(for: source) else {
                 return nil
             }
-            if hasExistingQueueItem(for: target.url, target: batchTarget) {
-                return nil
-            }
-            if let state = state(for: target.url, target: batchTarget) {
-                switch state {
-                case .uploading, .done:
+            if excludingExistingQueueItems {
+                if hasExistingQueueItem(for: target.url, target: batchTarget) {
                     return nil
-                case .failed:
-                    break
+                }
+                if let state = state(for: target.url, target: batchTarget) {
+                    switch state {
+                    case .uploading, .done:
+                        return nil
+                    case .failed:
+                        break
+                    }
                 }
             }
             let title = source.title
@@ -197,6 +215,14 @@ struct HomeView: View {
                 uploadFileName: VideoFileNaming.mp4FileName(title: title, fallback: fileName(of: target.url))
             )
         }
+    }
+
+    private var batchTargetJobs: [BatchDownloadJob] {
+        batchJobs(excludingExistingQueueItems: true)
+    }
+
+    private var batchQueueJobs: [BatchDownloadJob] {
+        batchJobs(excludingExistingQueueItems: false)
     }
 
     private var currentBatchSignature: BatchSignature? {
@@ -275,6 +301,18 @@ struct HomeView: View {
                 .zIndex(21)
             }
 
+            if showQueuedDownloadsSheet {
+                AppModalOverlay(dismiss: { showQueuedDownloadsSheet = false }) {
+                    HomeCompactQueue(
+                        displayMode: .queuedModal,
+                        seedboxWebdavPassword: seedboxWebdavPassword,
+                        onUpgradeRequired: onUpgradeRequired,
+                        onClose: { showQueuedDownloadsSheet = false }
+                    )
+                }
+                .zIndex(22)
+            }
+
             if showCompletedDownloadsSheet {
                 AppModalOverlay(dismiss: { showCompletedDownloadsSheet = false }) {
                     HomeCompactQueue(
@@ -284,7 +322,7 @@ struct HomeView: View {
                         onClose: { showCompletedDownloadsSheet = false }
                     )
                 }
-                .zIndex(22)
+                .zIndex(23)
             }
         }
         .onAppear {
@@ -315,6 +353,27 @@ struct HomeView: View {
                 showCompletionBanner = false
                 showCompletedDownloadsSheet = false
             }
+        }
+        .onChange(of: queuedDownloadItems.count) { _, newValue in
+            if newValue == 0 {
+                showQueuedDownloadsSheet = false
+            }
+        }
+        .onChange(of: isLoading) { oldValue, newValue in
+            guard oldValue, !newValue, queueAllWhenExtractionCompletes else { return }
+            queueAllWhenExtractionCompletes = false
+            batchQueueAll()
+        }
+        .alert(
+            "Could Not Queue Download",
+            isPresented: Binding(
+                get: { queuePreparationFailure != nil },
+                set: { if !$0 { queuePreparationFailure = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(queuePreparationFailure ?? "")
         }
     }
 
@@ -370,24 +429,37 @@ struct HomeView: View {
 
     @ViewBuilder
     private var queueStatusEntrypoints: some View {
-        if hasActiveDownloads || hasCompletedDownloads || showCompletionBanner {
+        if hasActiveDownloads || hasQueuedDownloads || hasCompletedDownloads || showCompletionBanner {
             VStack(alignment: .leading, spacing: 10) {
                 if showCompletionBanner && hasCompletedDownloads {
                     completionBanner
                 }
 
-                if hasActiveDownloads || hasCompletedDownloads {
+                if hasActiveDownloads || hasQueuedDownloads || hasCompletedDownloads {
                     HStack(spacing: 10) {
                         if hasActiveDownloads {
                             queueEntrypointButton(
                                 title: "Active Downloads",
-                                subtitle: queueCounts.summaryText,
+                                subtitle: activeDownloadItems.count == 1 ? "1 transfer in progress" : "\(activeDownloadItems.count) transfers in progress",
                                 systemImage: "arrow.down.circle.fill",
                                 tint: Theme.skyBlue,
-                                count: queueCounts.activeEntry,
-                                progress: queueCounts.aggregateProgress
+                                count: queueCounts.active,
+                                progress: queueCounts.activeProgress
                             ) {
                                 showActiveDownloadsSheet = true
+                            }
+                        }
+
+                        if hasQueuedDownloads {
+                            queueEntrypointButton(
+                                title: "Queued Downloads",
+                                subtitle: queueCounts.queuedSummaryText,
+                                systemImage: "clock.fill",
+                                tint: Theme.warning,
+                                count: queuedDownloadItems.count,
+                                progress: 0
+                            ) {
+                                showQueuedDownloadsSheet = true
                             }
                         }
 
@@ -603,6 +675,7 @@ struct HomeView: View {
             batchQueuedCount: batchTargetLinks.count,
             isBatchSubmitting: isCurrentBatchSubmitting,
             batchProgressText: currentBatchProgressText,
+            queueAllWhenReady: queueAllWhenExtractionCompletes,
             canRetryFailed: !retryableFailedResultIndices.isEmpty,
             isYtDlpReady: ScraperEngine.isYTDLPAvailable,
             localState: { tracker.localDownloads[$0] },
@@ -617,7 +690,9 @@ struct HomeView: View {
             onGDrive: { url in Task { await startDownload(url: url, cloud: .gdrive) } },
             onSeedbox: { url in Task { await startDownload(url: url, cloud: .seedbox) } },
             onMultiple: { url, destinations in Task { await startDownload(url: url, destinations: destinations) } },
-            onBatchDownload: batchDownloadAll
+            onQueue: { url, target in Task { await queueDownload(url: url, target: target) } },
+            onBatchDownload: batchDownloadAll,
+            onBatchQueue: requestBatchQueueAll
         )
     }
 
@@ -723,7 +798,12 @@ struct HomeView: View {
                     completed += 1
                     await MainActor.run {
                         guard extractionGeneration == generation else { return }
-                        extractionSlots = ExtractionSlotSupport.replacingSlot(id: slotID, in: extractionSlots, with: res)
+                        if res.source == nil {
+                            recordExtractionFailure(res)
+                            extractionSlots.removeAll { $0.id == slotID }
+                        } else {
+                            extractionSlots = ExtractionSlotSupport.replacingSlot(id: slotID, in: extractionSlots, with: res)
+                        }
                         results = ExtractionSlotSupport.completedResults(in: extractionSlots)
                         loadProgress = "Extracting… \(completed)/\(urls.count)"
                         if res.source != nil {
@@ -768,14 +848,19 @@ struct HomeView: View {
             let result = await extractResult(for: url)
             await MainActor.run {
                 guard extractionGeneration == generation else { return }
-                extractionSlots = ExtractionSlotSupport.replacingSlot(id: slot.id, in: extractionSlots, with: result)
+                if result.source == nil {
+                    recordExtractionFailure(result)
+                    extractionSlots.removeAll { $0.id == slot.id }
+                } else {
+                    extractionSlots = ExtractionSlotSupport.replacingSlot(id: slot.id, in: extractionSlots, with: result)
+                }
                 results = ExtractionSlotSupport.completedResults(in: extractionSlots)
                 if result.source != nil {
                     persistSuccessfulExtraction(result, feedThumbnailURL: nil)
                 }
                 isLoading = false
                 loadProgress = ""
-                showResultsSheet = true
+                showResultsSheet = !extractionSlots.isEmpty
             }
         }
     }
@@ -797,6 +882,18 @@ struct HomeView: View {
             )
         )
         HistoryManager.shared.record(url: result.url, source: src)
+    }
+
+    @MainActor
+    private func recordExtractionFailure(_ result: ExtractResult) {
+        let title = URL(string: result.url)?.host ?? result.url
+        DownloadQueue.shared.addFailed(
+            url: result.url,
+            quality: "Extraction",
+            displayTitle: title,
+            message: result.error ?? "Could not extract downloadable sources.",
+            itemKind: .extraction
+        )
     }
 
     private func extractResult(for url: String) async -> ExtractResult {
@@ -895,8 +992,84 @@ struct HomeView: View {
         }
     }
 
+    private func requestBatchQueueAll() {
+        if isLoading {
+            queueAllWhenExtractionCompletes = true
+            return
+        }
+        batchQueueAll()
+    }
+
+    private func batchQueueAll() {
+        let jobs = batchQueueJobs
+        guard !jobs.isEmpty,
+              let signature = currentBatchSignature,
+              activeBatchSubmission?.signature != signature else { return }
+        let selectedTarget = batchTarget
+        let currentResults = results
+        activeBatchSubmission = BatchSubmission(
+            signature: signature,
+            progressText: "Queueing 0/\(jobs.count)..."
+        )
+
+        Task {
+            defer {
+                Task { @MainActor in
+                    if activeBatchSubmission?.signature == signature {
+                        activeBatchSubmission = nil
+                    }
+                }
+            }
+
+            let context = downloadJobContext
+            var resolutions = [DownloadResolution]()
+            var failures = [String]()
+            for (index, job) in jobs.enumerated() {
+                do {
+                    let resolution = try await DownloadResolver.resolve(requestedUrl: job.url, in: currentResults)
+                    if resolution.isAudio && !ProFeatureGate.canDownloadAudio {
+                        tracker.projectFailure(url: job.url, target: selectedTarget, message: ProFeatureError.audioRequiresPro.localizedDescription)
+                        continue
+                    }
+                    resolutions.append(resolution)
+                    await MainActor.run {
+                        if var submission = activeBatchSubmission, submission.signature == signature {
+                            submission.progressText = "Preparing \(index + 1)/\(jobs.count)"
+                            activeBatchSubmission = submission
+                        }
+                    }
+                } catch {
+                    tracker.projectFailure(url: job.url, target: selectedTarget, message: error.localizedDescription)
+                    NotificationManager.shared.notifyUploadFailed(filename: job.uploadFileName, reason: error.localizedDescription)
+                    failures.append("\(job.displayName): \(error.localizedDescription)")
+                }
+            }
+            DownloadJobRunner.shared.queue(resolutions: resolutions, target: selectedTarget, context: context)
+            if !failures.isEmpty {
+                await MainActor.run {
+                    queuePreparationFailure = "\(failures.count) of \(jobs.count) downloads could not be queued because VidDL could not prepare a reachable source. Re-extract those videos and try again.\n\n\(failures[0])"
+                }
+            }
+        }
+    }
+
     private func startDownload(url: String, cloud: CloudTarget) async {
         await startDownload(url: url, destinations: [cloud])
+    }
+
+    private func queueDownload(url: String, target: CloudTarget) async {
+        do {
+            let resolution = try await DownloadResolver.resolve(requestedUrl: url, in: results)
+            if resolution.isAudio && !ProFeatureGate.canDownloadAudio {
+                onUpgradeRequired()
+                return
+            }
+            DownloadJobRunner.shared.queue(resolution: resolution, target: target, context: downloadJobContext)
+        } catch {
+            tracker.projectFailure(url: url, target: target, message: error.localizedDescription)
+            NotificationManager.shared.notifyUploadFailed(filename: uploadFileName(for: url), reason: error.localizedDescription)
+            queuePreparationFailure = "VidDL could not queue \(displayName(for: url)) because it could not prepare a reachable source. Re-extract the video and try again.\n\n\(error.localizedDescription)"
+        }
     }
 
     private func startDownload(url: String, destinations: Set<CloudTarget>) async {

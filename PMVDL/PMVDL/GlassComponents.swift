@@ -708,7 +708,12 @@ private final class AppContextMenuPresenter {
         self.panel = panel
         panel.orderFront(nil)
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) { [weak self] event in
-            self?.dismiss()
+            guard let self else { return event }
+            guard event.type != .keyDown,
+                  event.window === self.panel else {
+                self.dismiss()
+                return event
+            }
             return event
         }
     }

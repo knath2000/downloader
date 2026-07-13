@@ -480,7 +480,19 @@ final class SeedboxManager {
         progressHandler: @escaping (Double) -> Void
     ) async throws -> String {
         let contentLength = await fetchContentLength(url: sourceURL, headers: headers)
-        guard contentLength > 0 else { throw SeedboxError.headRequestFailed }
+        guard contentLength > 0 else {
+            return try await uploadUnknownLengthSourceViaWebDAV(
+                sourceURL: sourceURL,
+                webdavBase: webdavBase,
+                remotePath: remotePath,
+                filename: filename,
+                user: user,
+                password: password,
+                headers: headers,
+                allowSelfSigned: allowSelfSigned,
+                progressHandler: progressHandler
+            )
+        }
 
         let destinationURL = Self.webDAVFileURL(baseURL: webdavBase, remotePath: remotePath, filename: filename)
         try await ensureWebDAVDirectory(baseURL: webdavBase, remotePath: remotePath, user: user, password: password, allowSelfSigned: allowSelfSigned)
@@ -522,6 +534,56 @@ final class SeedboxManager {
             throw error
         }
 
+        try await delegate.waitForCompletion()
+        progressHandler(1.0)
+        return destinationURL.absoluteString
+    }
+
+    private func uploadUnknownLengthSourceViaWebDAV(
+        sourceURL: URL,
+        webdavBase: URL,
+        remotePath: String,
+        filename: String,
+        user: String,
+        password: String,
+        headers: [String: String]?,
+        allowSelfSigned: Bool,
+        progressHandler: @escaping (Double) -> Void
+    ) async throws -> String {
+        let stagedFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("viddl_webdav_\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: stagedFile) }
+
+        let (downloadURL, response) = try await URLSession.shared.download(for: sourceRequest(url: sourceURL, headers: headers))
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else {
+            throw SeedboxError.transferFailed("Source download failed before WebDAV upload.")
+        }
+        try FileManager.default.moveItem(at: downloadURL, to: stagedFile)
+
+        progressHandler(0.05)
+        let destinationURL = Self.webDAVFileURL(baseURL: webdavBase, remotePath: remotePath, filename: filename)
+        try await ensureWebDAVDirectory(baseURL: webdavBase, remotePath: remotePath, user: user, password: password, allowSelfSigned: allowSelfSigned)
+
+        var putRequest = URLRequest(url: destinationURL)
+        putRequest.httpMethod = "PUT"
+        putRequest.timeoutInterval = 7200
+        putRequest.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        setBasicAuth(user: user, password: password, request: &putRequest)
+
+        let fileSize = (try? stagedFile.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { Int64($0) } ?? -1
+        guard fileSize > 0 else {
+            throw SeedboxError.transferFailed("Source download produced an empty file.")
+        }
+        putRequest.setValue(String(fileSize), forHTTPHeaderField: "Content-Length")
+
+        let delegate = WebDAVUploadDelegate(contentLength: fileSize, allowedHost: webdavBase.host, allowSelfSigned: allowSelfSigned) { progress in
+            progressHandler(0.05 + progress * 0.95)
+        }
+        let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+
+        session.uploadTask(with: putRequest, fromFile: stagedFile).resume()
         try await delegate.waitForCompletion()
         progressHandler(1.0)
         return destinationURL.absoluteString

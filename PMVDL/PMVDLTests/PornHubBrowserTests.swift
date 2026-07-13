@@ -42,6 +42,60 @@ final class PornHubBrowserTests: XCTestCase {
         XCTAssertEqual(request.site, .allPornStream)
     }
 
+    func testQueueItemSourcePageURLUsesOriginalPage() {
+        let quality = VideoSource.Quality(label: "Video", url: "https://cdn.example.test/video.mp4", kind: .direct)
+        let source = VideoSource(mp4: quality.url, hls: [], title: "Fixture", siteName: "Example")
+        let resolution = DownloadResolution(
+            requestedUrl: quality.url,
+            finalUrl: quality.url,
+            result: ExtractResult(url: "https://www.pornhub.com/view_video.php?viewkey=fixture", source: source, error: nil),
+            source: source,
+            title: "Fixture",
+            mediaKind: .direct,
+            headers: nil,
+            sourcePageUrl: nil
+        )
+        let payload = DownloadRetryPayload(
+            resolution: resolution,
+            target: .local,
+            context: DownloadJobContext(
+                megaRemotePath: "/",
+                gdriveRemoteName: "gdrive",
+                gdriveRemotePath: "VidDL/"
+            ).retryContext,
+            gdriveMegaRemotePath: nil
+        )
+        let item = DownloadQueueItem(url: quality.url, quality: "Video", retryPayload: payload)
+
+        XCTAssertEqual(item.sourcePageURL, resolution.result.url)
+    }
+
+    func testRetryRefreshesStoredSourcePage() async throws {
+        let originalQuality = VideoSource.Quality(label: "1080p", url: "https://cdn.example.test/expired.m3u8", kind: .hlsManifest)
+        let originalSource = VideoSource(mp4: nil, hls: [originalQuality], title: "Fixture", siteName: "Example")
+        let resolution = DownloadResolution(
+            requestedUrl: originalQuality.url,
+            finalUrl: originalQuality.url,
+            result: ExtractResult(url: "https://www.pornhub.com/view_video.php?viewkey=fixture", source: originalSource, error: nil),
+            source: originalSource,
+            title: "Fixture",
+            mediaKind: .hls,
+            headers: nil,
+            sourcePageUrl: nil
+        )
+        let refreshedQuality = VideoSource.Quality(label: "1080p", url: "https://cdn.example.test/fresh.m3u8", kind: .hlsManifest)
+        let refreshedSource = VideoSource(mp4: nil, hls: [refreshedQuality], title: "Fresh Fixture", siteName: "Example")
+
+        let refreshed = try await DownloadResolver.refreshForRetry(resolution) { pageURL in
+            XCTAssertEqual(pageURL, resolution.result.url)
+            return refreshedSource
+        }
+
+        XCTAssertEqual(refreshed.requestedUrl, originalQuality.url)
+        XCTAssertEqual(refreshed.finalUrl, refreshedQuality.url)
+        XCTAssertEqual(refreshed.result.url, resolution.result.url)
+    }
+
     func testFeedSourceNavigationRejectsUnsupportedOriginalPage() {
         let quality = VideoSource.Quality(
             label: "Video",
@@ -77,6 +131,18 @@ final class PornHubBrowserTests: XCTestCase {
                 FeedSourceNavigationError.unsupportedSource.localizedDescription
             )
         }
+    }
+
+    func testFeedSourceNavigationUsesExtractionFailurePage() throws {
+        var item = DownloadQueueItem(
+            url: "https://www.pornhub.com/view_video.php?viewkey=fixture",
+            quality: "Extraction"
+        )
+        item.itemKind = .extraction
+
+        let request = try FeedSourceNavigation.request(for: item)
+        XCTAssertEqual(request.url.absoluteString, item.url)
+        XCTAssertEqual(request.site, .pornHub)
     }
 
     @MainActor

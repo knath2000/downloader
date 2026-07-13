@@ -136,7 +136,27 @@ enum DownloadResolver {
             throw DownloadResolutionError.pornHubSourceRefreshFailed
         }
 
-        return refreshedPornHubResolution(
+        return refreshedResolution(
+            from: resolution,
+            refreshedSource: refreshedSource,
+            pageURL: pageURL
+        )
+    }
+
+    static func refreshForRetry(
+        _ resolution: DownloadResolution,
+        extractor: @escaping SourceExtractor = ScraperEngine.extract
+    ) async throws -> DownloadResolution {
+        guard let pageURL = sourcePageURL(for: resolution) else {
+            return resolution
+        }
+
+        let refreshedSource = try await extractor(pageURL)
+        guard refreshedSource.mp4 != nil || !refreshedSource.hls.isEmpty else {
+            throw DownloadResolutionError.sourceNotFound(pageURL)
+        }
+
+        return refreshedResolution(
             from: resolution,
             refreshedSource: refreshedSource,
             pageURL: pageURL
@@ -164,7 +184,7 @@ enum DownloadResolver {
         url.split(separator: "/").last.map(String.init) ?? url
     }
 
-    private static func refreshedPornHubResolution(
+    private static func refreshedResolution(
         from resolution: DownloadResolution,
         refreshedSource: VideoSource,
         pageURL: String
@@ -255,6 +275,16 @@ enum DownloadResolver {
             resolution.requestedUrl,
             resolution.finalUrl
         ]).first(where: isPornHubPageURL)
+    }
+
+    private static func sourcePageURL(for resolution: DownloadResolution) -> String? {
+        uniqueCandidates([
+            resolution.result.url,
+            resolution.sourcePageUrl
+        ] + resolution.source.hls.compactMap(\.sourcePageUrl)).first { value in
+            guard let url = URL(string: value) else { return false }
+            return !isMediaURL(url)
+        }
     }
 
     private static func isPornHubPageURL(_ value: String) -> Bool {

@@ -66,7 +66,8 @@ enum FeedSourceNavigationError: LocalizedError {
 
 enum FeedSourceNavigation {
     static func request(for item: DownloadQueueItem) throws -> FeedNavigationRequest {
-        guard let rawURL = item.retryPayload?.resolution.result.url,
+        let rawURL = item.sourcePageURL
+        guard let rawURL,
               let url = URL(string: rawURL.trimmingCharacters(in: .whitespacesAndNewlines)),
               let scheme = url.scheme?.lowercased(),
               ["http", "https"].contains(scheme) else {

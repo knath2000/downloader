@@ -197,6 +197,37 @@ class DownloadQueue: ObservableObject {
         return item.id
     }
 
+    @discardableResult
+    func addQueued(_ items: [DownloadQueueItem]) -> [UUID] {
+        guard !items.isEmpty else { return [] }
+        queue.append(contentsOf: items)
+        save()
+        return items.map(\.id)
+    }
+
+    @discardableResult
+    func addFailed(
+        url: String,
+        quality: String,
+        targetCloud: CloudTarget = .local,
+        displayTitle: String? = nil,
+        message: String,
+        itemKind: DownloadQueueItemKind? = nil
+    ) -> UUID {
+        var item = DownloadQueueItem(
+            url: url,
+            quality: quality,
+            targetCloud: targetCloud,
+            displayTitle: displayTitle
+        )
+        item.status = .failed(message)
+        item.statusMessage = message
+        item.itemKind = itemKind
+        queue.append(item)
+        save()
+        return item.id
+    }
+
     func addProcessing(
         url: String,
         quality: String,

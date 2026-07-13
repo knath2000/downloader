@@ -25,13 +25,16 @@ struct HomeCompletedQueueRow: View {
     }
 
     private var contextActions: [AppContextMenuAction] {
-        [
+        var actions = [
             AppContextMenuAction("Open in Library", systemImage: "books.vertical.fill", action: openLibrary),
             AppContextMenuAction("Show in Finder", systemImage: "folder", action: showInFinder),
             AppContextMenuAction("Show Source", systemImage: "safari", action: showSource),
-            AppContextMenuAction("Copy Source Link", systemImage: "doc.on.doc", action: { ClipboardManager.copy(item.retryPayload?.resolution.result.url ?? item.url) }),
             AppContextMenuAction("Remove", systemImage: "trash", role: .destructive, action: remove)
         ]
+        if let sourcePageURL = item.sourcePageURL {
+            actions.insert(AppContextMenuAction("Copy Source URL", systemImage: "doc.on.doc", action: { ClipboardManager.copy(sourcePageURL) }), at: 3)
+        }
+        return actions
     }
 
     var body: some View {
@@ -134,6 +137,10 @@ struct HomeCompactQueueRow: View, Equatable {
 
     private var canStartNow: Bool {
         DownloadQueueManualStartPolicy.canStartNow(item, isPro: ProFeatureGate.isPro)
+    }
+
+    private var canRetry: Bool {
+        item.canRetry || item.itemKind == .extraction
     }
 
     private var rowCornerRadius: CGFloat {
@@ -244,7 +251,7 @@ struct HomeCompactQueueRow: View, Equatable {
                 systemName: "arrow.clockwise",
                 tint: Theme.error,
                 help: "Retry",
-                isDisabled: item.retryPayload == nil,
+                isDisabled: !canRetry,
                 size: isModalPresentation ? 30 : 24,
                 action: retry
             )
@@ -273,13 +280,16 @@ struct HomeCompactQueueRow: View, Equatable {
 
     private var contextActions: [AppContextMenuAction] {
         var actions = [AppContextMenuAction]()
-        if item.canRetry {
-            actions.append(AppContextMenuAction("Retry", systemImage: "arrow.clockwise", isEnabled: item.retryPayload != nil, action: retry))
+        if canRetry {
+            actions.append(AppContextMenuAction("Retry", systemImage: "arrow.clockwise", action: retry))
         }
         if canStartNow {
             actions.append(AppContextMenuAction("Start Now", systemImage: "bolt.fill", action: startNow))
         }
         actions.append(AppContextMenuAction("Show Source", systemImage: "safari", action: showSource))
+        if let sourcePageURL = item.sourcePageURL {
+            actions.append(AppContextMenuAction("Copy Source URL", systemImage: "doc.on.doc", action: { ClipboardManager.copy(sourcePageURL) }))
+        }
         actions.append(AppContextMenuAction("Show in Finder", systemImage: "folder", action: showInFinder))
         if !item.status.isTerminal && item.status != .processing {
             actions.append(AppContextMenuAction("Move to Front", systemImage: "forward.fill", action: moveToFront))

@@ -11,6 +11,7 @@ struct HomeQueueCounts: Equatable {
     let failed: Int
     let activeEntry: Int
     let aggregateProgress: Double
+    let activeProgress: Double
 
     init(items: [DownloadQueueItem]) {
         total = items.count
@@ -30,6 +31,12 @@ struct HomeQueueCounts: Equatable {
         } else {
             aggregateProgress = unfinished.map { min(max($0.progress / 100, 0), 1) }.reduce(0, +) / Double(unfinished.count)
         }
+        let activeItems = items.filter { Self.isActive($0.status) }
+        if activeItems.isEmpty {
+            activeProgress = 0
+        } else {
+            activeProgress = activeItems.map { min(max($0.progress / 100, 0), 1) }.reduce(0, +) / Double(activeItems.count)
+        }
     }
 
     var summaryText: String {
@@ -46,7 +53,18 @@ struct HomeQueueCounts: Equatable {
         return pieces.joined(separator: " · ")
     }
 
-    private static func isActive(_ status: QueueStatus) -> Bool {
+    var queuedSummaryText: String {
+        var pieces = [Self.countText(queued, singular: "queued", plural: "queued")]
+        if paused > 0 {
+            pieces.append(Self.countText(paused, singular: "paused", plural: "paused"))
+        }
+        if failed > 0 {
+            pieces.append(Self.countText(failed, singular: "failed", plural: "failed"))
+        }
+        return pieces.joined(separator: " · ")
+    }
+
+    static func isActive(_ status: QueueStatus) -> Bool {
         switch status {
         case .downloading, .verifying, .uploading, .processing:
             return true
@@ -62,6 +80,7 @@ struct HomeQueueCounts: Equatable {
 
 enum HomeCompactQueueDisplayMode: Equatable {
     case activeQueue
+    case queuedModal
     case completedSummary
     case activeModal
     case completedModal
@@ -73,6 +92,7 @@ struct HomeCompactQueue: View {
     @State private var isExpanded = true
     @State private var showCompletedDetails = false
     @State private var showAllActive = false
+    @State private var copiedSourceURLs = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -88,7 +108,18 @@ struct HomeCompactQueue: View {
     }
 
     private var activeItems: [DownloadQueueItem] {
-        items.filter { $0.status != .completed }
+        items.filter { HomeQueueCounts.isActive($0.status) }
+    }
+
+    private var queuedItems: [DownloadQueueItem] {
+        items.filter {
+            switch $0.status {
+            case .pending, .paused, .failed:
+                return true
+            case .downloading, .verifying, .uploading, .processing, .completed:
+                return false
+            }
+        }
     }
 
     private var visibleActiveItems: [DownloadQueueItem] {
@@ -99,8 +130,17 @@ struct HomeCompactQueue: View {
         items.filter { $0.status == .completed }
     }
 
-    private var resumableItems: [DownloadQueueItem] {
-        activeItems.filter { $0.status == .paused && $0.retryPayload != nil }
+    private var modalSourceURLs: [String] {
+        let modalItems = displayMode == .completedModal ? completedItems : queuedItems
+        return modalItems.compactMap(\.sourcePageURL).reduce(into: [String]()) { urls, url in
+            if !urls.contains(url) {
+                urls.append(url)
+            }
+        }
+    }
+
+    private var restartableItems: [DownloadQueueItem] {
+        queuedItems.filter { $0.retryPayload != nil }
     }
 
     private var counts: HomeQueueCounts {
@@ -108,7 +148,7 @@ struct HomeCompactQueue: View {
     }
 
     private var isModal: Bool {
-        displayMode == .activeModal || displayMode == .completedModal
+        displayMode == .activeModal || displayMode == .queuedModal || displayMode == .completedModal
     }
 
     var body: some View {
@@ -164,23 +204,40 @@ struct HomeCompactQueue: View {
     }
 
     private var modalTitle: String {
-        displayMode == .completedModal ? "Completed Downloads" : "Active Downloads"
+        switch displayMode {
+        case .completedModal:
+            return "Completed Downloads"
+        case .queuedModal:
+            return "Queued Downloads"
+        case .activeQueue, .completedSummary, .activeModal:
+            return "Active Downloads"
+        }
     }
 
     private var modalSubtitle: String {
         if displayMode == .completedModal {
             return completedItems.count == 1 ? "1 completed item ready for review." : "\(completedItems.count) completed items ready for review."
         }
-        return counts.summaryText
+        if displayMode == .queuedModal {
+            return counts.queuedSummaryText
+        }
+        return activeItems.count == 1 ? "1 transfer in progress." : "\(activeItems.count) transfers in progress."
     }
 
     private var modalTint: Color {
-        displayMode == .completedModal ? Theme.success : Theme.skyBlue
+        switch displayMode {
+        case .completedModal:
+            return Theme.success
+        case .queuedModal:
+            return Theme.warning
+        case .activeQueue, .completedSummary, .activeModal:
+            return Theme.skyBlue
+        }
     }
 
     private var modalHeader: some View {
         HStack(spacing: 12) {
-            Image(systemName: displayMode == .completedModal ? "checkmark.circle.fill" : "arrow.down.circle.fill")
+            Image(systemName: displayMode == .completedModal ? "checkmark.circle.fill" : displayMode == .queuedModal ? "clock.fill" : "arrow.down.circle.fill")
                 .font(.system(size: 20, weight: .bold))
                 .foregroundStyle(modalTint)
                 .frame(width: 42, height: 42)
@@ -200,6 +257,7 @@ struct HomeCompactQueue: View {
 
             if displayMode == .activeModal {
                 queueMetric(title: "Active", value: counts.active, tint: Theme.electricLime)
+            } else if displayMode == .queuedModal {
                 queueMetric(title: "Queued", value: counts.queued, tint: Theme.skyBlue)
                 queueMetric(title: "Paused", value: counts.paused, tint: Theme.warning)
                 if counts.failed > 0 {
@@ -225,6 +283,14 @@ struct HomeCompactQueue: View {
                     } else {
                         ForEach(completedItems) { item in
                             queueRow(item, isHistory: true)
+                        }
+                    }
+                } else if displayMode == .queuedModal {
+                    if queuedItems.isEmpty {
+                        modalEmptyState(title: "No queued downloads", icon: "clock")
+                    } else {
+                        ForEach(queuedItems) { item in
+                            queueRow(item)
                         }
                     }
                 } else if activeItems.isEmpty {
@@ -279,6 +345,8 @@ struct HomeCompactQueue: View {
 
                 Spacer(minLength: 8)
 
+                copyURLsButton
+
                 Button("Clear All") {
                     clearCompleted()
                 }
@@ -286,16 +354,20 @@ struct HomeCompactQueue: View {
                 .controlSize(.small)
                 .disabled(completedItems.isEmpty)
             } else {
-                HomeQueueProgressBar(progress: counts.aggregateProgress, tint: Theme.electricLime, height: 7)
+                HomeQueueProgressBar(progress: displayMode == .queuedModal ? 0 : counts.activeProgress, tint: modalTint, height: 7)
                     .frame(maxWidth: 320)
 
-                Text(counts.summaryText)
+                Text(displayMode == .queuedModal ? counts.queuedSummaryText : modalSubtitle)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.textSecondary)
 
                 Spacer(minLength: 8)
 
-                if counts.paused > 0 {
+                if displayMode == .queuedModal {
+                    copyURLsButton
+                }
+
+                if !restartableItems.isEmpty {
                     Button {
                         resumeAll()
                     } label: {
@@ -303,8 +375,7 @@ struct HomeCompactQueue: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .tint(Theme.electricLime)
-                    .disabled(resumableItems.isEmpty)
+                    .tint(modalTint)
                 }
             }
         }
@@ -315,6 +386,22 @@ struct HomeCompactQueue: View {
             RoundedRectangle(cornerRadius: 13)
                 .stroke(Theme.borderSubtle, lineWidth: 1)
         )
+    }
+
+    private var copyURLsButton: some View {
+        Button {
+            ClipboardManager.copy(modalSourceURLs.joined(separator: "\n"))
+            copiedSourceURLs = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                copiedSourceURLs = false
+            }
+        } label: {
+            Label(copiedSourceURLs ? "Copied" : "Copy URLs", systemImage: copiedSourceURLs ? "checkmark" : "doc.on.doc")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .disabled(modalSourceURLs.isEmpty)
+        .help("Copy original video page URLs")
     }
 
     private func closeModal() {
@@ -339,13 +426,6 @@ struct HomeCompactQueue: View {
                         activeOverflowButton
                     }
 
-                    if !completedItems.isEmpty {
-                        completedHeader
-
-                        ForEach(completedItems) { item in
-                            queueRow(item)
-                        }
-                    }
                 }
                 .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
             }
@@ -486,7 +566,7 @@ struct HomeCompactQueue: View {
                                     .font(.subheadline.weight(.bold))
                                     .foregroundStyle(Theme.textPrimary)
 
-                                Text("\(items.count)")
+                                Text("\(activeItems.count)")
                                     .font(.system(size: 10, weight: .heavy))
                                     .foregroundStyle(Theme.surface0)
                                     .padding(.horizontal, 6)
@@ -495,7 +575,7 @@ struct HomeCompactQueue: View {
                                     .contentTransition(.numericText())
                             }
 
-                            Text(counts.summaryText)
+                            Text(activeItems.count == 1 ? "1 transfer in progress" : "\(activeItems.count) transfers in progress")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(Theme.textSecondary)
                                 .lineLimit(1)
@@ -510,25 +590,6 @@ struct HomeCompactQueue: View {
                 Spacer(minLength: 8)
 
                 queueMetric(title: "Active", value: counts.active, tint: Theme.electricLime)
-                queueMetric(title: "Queued", value: counts.queued, tint: Theme.skyBlue)
-                if counts.failed > 0 {
-                    queueMetric(title: "Failed", value: counts.failed, tint: Theme.error)
-                }
-
-                if counts.paused > 0 {
-                    Button {
-                        resumeAll()
-                    } label: {
-                        Label("Resume All", systemImage: "play.fill")
-                            .font(.caption.weight(.bold))
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .tint(Theme.electricLime)
-                    .disabled(resumableItems.isEmpty)
-                    .help(resumableItems.isEmpty ? "Paused downloads cannot be resumed" : "Resume all paused downloads")
-                }
-
                 Button {
                     toggleExpanded()
                 } label: {
@@ -542,7 +603,7 @@ struct HomeCompactQueue: View {
                 .accessibilityLabel(Text(isExpanded ? "Collapse downloads" : "Expand downloads"))
             }
 
-            HomeQueueProgressBar(progress: counts.aggregateProgress, tint: Theme.electricLime, height: 5)
+            HomeQueueProgressBar(progress: counts.activeProgress, tint: Theme.electricLime, height: 5)
                 .accessibilityLabel(Text("Overall download progress"))
         }
     }
@@ -606,17 +667,34 @@ struct HomeCompactQueue: View {
 
     private func resumeAll() {
         var blockedByPro = false
-        for item in resumableItems {
+        for item in restartableItems {
             guard let payload = item.retryPayload else { continue }
             guard ProFeatureGate.canDownloadAudio || !payload.resolution.isAudio else {
                 blockedByPro = true
                 continue
             }
-            DownloadJobRunner.shared.startResume(
-                queueId: item.id,
-                payload: payload,
-                seedboxWebdavPassword: seedboxWebdavPassword
-            )
+            switch item.status {
+            case .failed:
+                DownloadJobRunner.shared.startRetry(
+                    queueId: item.id,
+                    payload: payload,
+                    seedboxWebdavPassword: seedboxWebdavPassword
+                )
+            case .paused:
+                DownloadJobRunner.shared.startResume(
+                    queueId: item.id,
+                    payload: payload,
+                    seedboxWebdavPassword: seedboxWebdavPassword
+                )
+            case .pending:
+                DownloadJobRunner.shared.startQueuedWithFreshSource(
+                    queueId: item.id,
+                    payload: payload,
+                    seedboxWebdavPassword: seedboxWebdavPassword
+                )
+            case .downloading, .verifying, .uploading, .processing, .completed:
+                continue
+            }
         }
         if blockedByPro {
             onUpgradeRequired()
@@ -630,6 +708,14 @@ struct HomeCompactQueue: View {
     }
 
     private func retry(_ item: DownloadQueueItem) {
+        if item.itemKind == .extraction {
+            appState.pendingExtractShouldStart = true
+            appState.pendingExtractURL = item.url
+            appState.select(.home)
+            queue.remove(item)
+            closeModal()
+            return
+        }
         guard case .failed = item.status,
               let payload = item.retryPayload else { return }
         Task { @MainActor in
@@ -672,6 +758,9 @@ struct HomeCompactQueue: View {
 
     private func showSource(_ item: DownloadQueueItem) {
         appState.openFeedSource(for: item)
+        if appState.pendingFeedNavigation != nil {
+            closeModal()
+        }
     }
 
     private func copyError(_ item: DownloadQueueItem) {
