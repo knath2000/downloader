@@ -962,6 +962,37 @@ struct PornHubBrowserWebView: NSViewRepresentable {
     })();
     """
 
+    fileprivate static let rentryLayoutScript = """
+    (() => {
+      const host = window.location.hostname.toLowerCase();
+      if (host !== "rentry.co" && !host.endsWith(".rentry.co")) return;
+      const selectors = [
+        "html",
+        "body",
+        ".body",
+        ".sub-body",
+        ".container-smooth",
+        ".long-words",
+        ".entry-text-container",
+        ".entry-text",
+        ".entry-text article",
+        ".ntable-wrapper"
+      ];
+      selectors.forEach(selector => {
+        document.querySelectorAll(selector).forEach(element => {
+          element.style.height = "auto";
+          element.style.minHeight = "0";
+          element.style.maxHeight = "none";
+          element.style.overflow = "visible";
+          element.style.overflowY = "visible";
+        });
+      });
+      document.documentElement.style.overflowY = "auto";
+      document.body.style.overflowY = "auto";
+      window.dispatchEvent(new Event("resize"));
+    })();
+    """
+
     private static let contextMenuScript = """
     (() => {
       if (window.__viddlContextMenuInstalled) return;
@@ -1102,6 +1133,7 @@ struct PornHubBrowserWebView: NSViewRepresentable {
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             browser?.updateState(from: webView)
+            webView.evaluateJavaScript(PornHubBrowserWebView.rentryLayoutScript)
             updateDownloadedIndicators(in: webView, items: downloadedItems)
             onNavigationFinished()
         }

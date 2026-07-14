@@ -17,7 +17,7 @@ struct HomeQueueCounts: Equatable {
         total = items.count
         activeEntry = items.filter { $0.status != .completed }.count
         active = items.filter { Self.isActive($0.status) }.count
-        queued = items.filter { $0.status == .pending }.count
+        queued = items.filter { $0.status == .pending || $0.status == .waiting }.count
         paused = items.filter { $0.status == .paused }.count
         completed = items.filter { $0.status == .completed }.count
         failed = items.filter {
@@ -68,7 +68,7 @@ struct HomeQueueCounts: Equatable {
         switch status {
         case .downloading, .verifying, .uploading, .processing:
             return true
-        case .pending, .completed, .paused, .failed:
+        case .pending, .waiting, .completed, .paused, .failed:
             return false
         }
     }
@@ -114,7 +114,7 @@ struct HomeCompactQueue: View {
     private var queuedItems: [DownloadQueueItem] {
         items.filter {
             switch $0.status {
-            case .pending, .paused, .failed:
+            case .pending, .waiting, .paused, .failed:
                 return true
             case .downloading, .verifying, .uploading, .processing, .completed:
                 return false
@@ -382,7 +382,7 @@ struct HomeCompactQueue: View {
                     Button {
                         resumeAll()
                     } label: {
-                        Label("Resume All", systemImage: "play.fill")
+                        Label("Start All", systemImage: "play.fill")
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -703,7 +703,7 @@ struct HomeCompactQueue: View {
                     payload: payload,
                     seedboxWebdavPassword: seedboxWebdavPassword
                 )
-            case .downloading, .verifying, .uploading, .processing, .completed:
+            case .waiting, .downloading, .verifying, .uploading, .processing, .completed:
                 continue
             }
         }

@@ -215,9 +215,18 @@ struct DownloadQueueViewNew: View {
     }
 
     private func resumeAll() {
-        visibleItems
-            .filter { $0.status == .paused }
-            .forEach { resume($0) }
+        visibleItems.forEach { item in
+            switch item.status {
+            case .pending:
+                _ = queue.startNow(item, seedboxWebdavPassword: seedboxWebdavPassword)
+            case .paused:
+                resume(item)
+            case .failed:
+                if item.canRetry { retry(item) }
+            default:
+                break
+            }
+        }
     }
 
     private func retryAllFailed() {
@@ -243,7 +252,7 @@ struct DownloadQueueViewNew: View {
 
     private func canPause(_ item: DownloadQueueItem) -> Bool {
         switch item.status {
-        case .pending, .downloading, .verifying, .uploading:
+        case .pending, .waiting, .downloading, .verifying, .uploading:
             return true
         case .processing, .paused, .completed, .failed:
             return false
@@ -445,7 +454,7 @@ private struct DownloadsToolbar: View {
     private var actionMenu: some View {
         Menu {
             Button("Pause All", action: pauseAll)
-            Button("Resume All", action: resumeAll)
+            Button("Start All", action: resumeAll)
             Divider()
             Button("Retry All Failed", action: retryAllFailed)
             Divider()
@@ -696,6 +705,9 @@ private struct DownloadQueueRow: View {
                     DownloadRowButton("Move Front", systemImage: "forward.fill", tint: Theme.lavender, action: onMoveToFront)
                 }
                 DownloadRowButton("Cancel", systemImage: "xmark", tint: Theme.textSecondary, action: onRemove)
+            case .waiting:
+                DownloadRowButton("Pause", systemImage: "pause.fill", tint: Theme.textSecondary, action: onPause)
+                DownloadRowButton("Cancel", systemImage: "xmark", tint: Theme.textSecondary, action: onRemove)
             case .downloading, .verifying, .uploading:
                 DownloadRowButton("Pause", systemImage: "pause.fill", tint: Theme.textSecondary, action: onPause)
                 DownloadRowButton("Open Folder", systemImage: "folder", tint: Theme.textSecondary, action: onShowInFinder)
@@ -793,6 +805,8 @@ private struct DownloadPrimaryMetric: View {
             return "Paused"
         case .pending:
             return queueIndex.map { "#\($0) of \(queueCount)" } ?? "Queued"
+        case .waiting:
+            return queueIndex.map { "Waiting · #\($0) of \(queueCount)" } ?? "Waiting"
         }
     }
 }
@@ -909,7 +923,7 @@ private struct DownloadPipelineBar: View {
         switch item.status {
         case .processing:
             return .process
-        case .downloading, .pending, .paused:
+        case .downloading, .pending, .waiting, .paused:
             return .download
         case .verifying:
             return .verify
@@ -934,7 +948,7 @@ private struct DownloadPipelineBar: View {
             }
         }
         switch item.status {
-        case .pending:
+        case .pending, .waiting:
             return 0
         case .downloading:
             return phase == .download ? item.progress / 100 : 0
@@ -1312,6 +1326,7 @@ enum DownloadStatusFormatting {
         case .completed: return Theme.success
         case .paused: return Theme.textSecondary
         case .pending: return Theme.lavender
+        case .waiting: return Theme.electricLime
         case .failed: return Theme.error
         }
     }
@@ -1319,6 +1334,7 @@ enum DownloadStatusFormatting {
     static func statusIcon(_ item: DownloadQueueItem) -> String {
         switch item.status {
         case .pending: return "clock.fill"
+        case .waiting: return "hourglass"
         case .downloading: return "arrow.down.circle.fill"
         case .verifying: return "checkmark.shield.fill"
         case .uploading: return "arrow.up.circle.fill"
@@ -1332,6 +1348,7 @@ enum DownloadStatusFormatting {
     static func statusLabel(_ item: DownloadQueueItem) -> String {
         switch item.status {
         case .pending: return "Queued"
+        case .waiting: return "Waiting to start"
         case .downloading: return "Downloading"
         case .verifying: return "Verifying"
         case .uploading: return "Uploading"
@@ -1352,7 +1369,7 @@ enum DownloadStatusFormatting {
             }
         }
         switch item.status {
-        case .pending, .downloading, .paused:
+        case .pending, .waiting, .downloading, .paused:
             return "Download"
         case .verifying:
             return "Verify"

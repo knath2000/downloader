@@ -14,7 +14,7 @@ enum SleepPreventionPolicy {
         switch status {
         case .downloading, .verifying, .uploading, .processing:
             return true
-        case .pending, .completed, .paused, .failed:
+        case .pending, .waiting, .completed, .paused, .failed:
             return false
         }
     }
@@ -91,7 +91,7 @@ final class SleepPreventionManager {
 
 enum DownloadQueueManualStartPolicy {
     static func canStartNow(_ item: DownloadQueueItem, isPro: Bool) -> Bool {
-        isPro && item.status == .pending && item.retryPayload != nil
+        isPro && (item.status == .pending || item.status == .waiting) && item.retryPayload != nil
     }
 }
 
@@ -153,7 +153,7 @@ class DownloadQueue: ObservableObject {
             case .downloading, .verifying, .uploading:
                 let wasUploading = queue[i].status == .uploading
                 if queue[i].retryPayload != nil {
-                    queue[i].status = .pending
+                    queue[i].status = .waiting
                     queue[i].progress = 0
                     queue[i].bytesPerSecond = nil
                     queue[i].statusMessage = restartMessage
@@ -171,7 +171,7 @@ class DownloadQueue: ObservableObject {
                     queue[i].statusMessage = message
                 }
                 didChange = true
-            case .paused, .pending, .completed, .failed:
+            case .paused, .pending, .waiting, .completed, .failed:
                 break
             }
         }
@@ -257,7 +257,7 @@ class DownloadQueue: ObservableObject {
     func resetForRetry(id: UUID) -> Bool {
         guard let idx = queue.firstIndex(where: { $0.id == id }),
               queue[idx].canRetry else { return false }
-        queue[idx].status = .pending
+        queue[idx].status = .waiting
         queue[idx].progress = 0
         queue[idx].finalPath = nil
         queue[idx].uploadStarted = nil
@@ -276,7 +276,7 @@ class DownloadQueue: ObservableObject {
         guard let idx = queue.firstIndex(where: { $0.id == id }),
               queue[idx].status == .paused,
               queue[idx].retryPayload != nil else { return false }
-        queue[idx].status = .pending
+        queue[idx].status = .waiting
         queue[idx].progress = 0
         queue[idx].finalPath = nil
         queue[idx].uploadStarted = nil
@@ -314,7 +314,7 @@ class DownloadQueue: ObservableObject {
         guard let idx = queue.firstIndex(where: { $0.id == item.id }) else { return }
         var shouldPauseRunner = false
         switch queue[idx].status {
-        case .downloading, .verifying, .uploading, .pending:
+        case .pending, .waiting, .downloading, .verifying, .uploading:
             queue[idx].status = .paused
             queue[idx].bytesPerSecond = nil
             queue[idx].statusMessage = "Paused"
@@ -329,10 +329,12 @@ class DownloadQueue: ObservableObject {
 
     func resume(_ item: DownloadQueueItem) {
         guard let idx = queue.firstIndex(where: { $0.id == item.id }) else { return }
-        queue[idx].status = .pending
-        queue[idx].progress = 0
-        save()
-        processNextIfNeeded()
+        guard let payload = queue[idx].retryPayload else { return }
+        DownloadJobRunner.shared.startResume(
+            queueId: item.id,
+            payload: payload,
+            seedboxWebdavPassword: SecureStore.string(forKey: "seedboxWebdavPassword") ?? ""
+        )
     }
 
     @discardableResult
@@ -371,7 +373,7 @@ class DownloadQueue: ObservableObject {
     }
 
     func pauseQueued() {
-        for i in queue.indices where queue[i].status == .pending {
+        for i in queue.indices where queue[i].status == .pending || queue[i].status == .waiting {
             queue[i].status = .paused
             queue[i].bytesPerSecond = nil
             queue[i].statusMessage = "Paused"
@@ -383,7 +385,7 @@ class DownloadQueue: ObservableObject {
     func resumeAll() {
         // Only resume explicitly paused items. Failed items are retried via resetForRetry/Retry button.
         for i in queue.indices where queue[i].status == .paused {
-            queue[i].status = .pending
+            queue[i].status = .waiting
             queue[i].progress = 0
             queue[i].bytesDownloaded = nil
             queue[i].bytesPerSecond = nil
@@ -508,7 +510,7 @@ class DownloadQueue: ObservableObject {
 
     func resumeInterruptedOnLaunch(seedboxWebdavPassword: String = "") {
         let resumable = queue.filter { item in
-            item.status == .pending &&
+            item.status == .waiting &&
             item.retryPayload != nil
         }
         guard !resumable.isEmpty else { return }
@@ -535,6 +537,8 @@ class DownloadQueue: ObservableObject {
         switch item.status {
         case .pending:
             return .uploading(message ?? "Queued")
+        case .waiting:
+            return .uploading(message ?? "Waiting to start")
         case .downloading, .verifying, .uploading, .processing:
             return .uploading(message ?? statusLabel(for: item))
         case .completed:

@@ -264,7 +264,7 @@ struct HomeCompactQueueRow: View, Equatable {
                 size: isModalPresentation ? 30 : 24,
                 action: resume
             )
-        case .pending, .downloading, .verifying, .uploading:
+        case .pending, .waiting, .downloading, .verifying, .uploading:
             HomeCompactQueueIconButton(
                 systemName: "pause.fill",
                 tint: Theme.textSecondary,

@@ -114,7 +114,7 @@ final class LibraryPipelineStore: ObservableObject {
             let key = ensure(item.url)
             let destination = Self.destination(for: item.targetCloud.rawValue)
             switch item.status {
-            case .pending, .downloading, .verifying, .uploading:
+            case .pending, .waiting, .downloading, .verifying, .uploading:
                 records[key]?.stages[destination.rawValue] = .running
             case .completed:
                 let path = item.finalPath ?? item.statusMessage ?? destination.title

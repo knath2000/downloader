@@ -163,7 +163,7 @@ struct DownloadMenuBarView: View {
     }
 
     private var pendingCount: Int {
-        queue.queue.filter { $0.status == .pending }.count
+            queue.queue.filter { $0.status == .pending || $0.status == .waiting }.count
     }
 
     private var pausedCount: Int {

@@ -317,7 +317,7 @@ struct DownloadRetryPayload: Codable, Equatable {
 }
 
 enum QueueStatus: Codable, Equatable {
-    case pending, downloading, verifying, uploading, processing, completed, paused, failed(String)
+    case pending, waiting, downloading, verifying, uploading, processing, completed, paused, failed(String)
 
     var isTerminal: Bool {
         switch self { case .completed, .failed: return true; default: return false }

@@ -136,16 +136,7 @@ final class DownloadJobRunner {
                 retryPayload: buildRetryPayload(for: resolution, target: target, context: context)
             )
         }
-        let queueIDs = DownloadQueue.shared.addQueued(items)
-        for (queueID, item) in zip(queueIDs, items) {
-            guard let payload = item.retryPayload else { continue }
-            enqueueExisting(
-                queueId: queueID,
-                payload: payload,
-                seedboxWebdavPassword: context.seedboxWebdavPassword
-            )
-        }
-        return queueIDs
+        return DownloadQueue.shared.addQueued(items)
     }
 
     @discardableResult
@@ -169,11 +160,6 @@ final class DownloadJobRunner {
             targetCloud: target,
             displayTitle: title,
             retryPayload: payload
-        )
-        enqueueExisting(
-            queueId: queueID,
-            payload: payload,
-            seedboxWebdavPassword: ""
         )
         return queueID
     }
@@ -205,12 +191,16 @@ final class DownloadJobRunner {
               DownloadQueueManualStartPolicy.canStartNow(item, isPro: ProFeatureGate.isPro) else { return }
         pausedQueueIDs.remove(queueId)
         cancelledQueueIDs.remove(queueId)
+        DownloadQueue.shared.update(id: queueId, status: .waiting, progress: 0, message: "Waiting to start…")
         queuedRuns[queueId] = QueuedRun(payload: payload, seedboxWebdavPassword: seedboxWebdavPassword, refreshSource: true)
-        startQueued(queueId: queueId)
+        processNextIfNeeded()
     }
 
     func startQueuedWithFreshSource(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) {
-        guard DownloadQueue.shared.item(id: queueId)?.status == .pending else { return }
+        guard let item = DownloadQueue.shared.item(id: queueId), item.status == .pending || item.status == .waiting else { return }
+        if item.status == .pending {
+            DownloadQueue.shared.update(id: queueId, status: .waiting, progress: 0, message: "Waiting to start…")
+        }
         enqueueExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword, refreshSource: true)
     }
 
@@ -252,12 +242,12 @@ final class DownloadJobRunner {
     }
 
     func processNextIfNeeded() {
-        rehydratePendingRuns()
+        rehydrateWaitingRuns()
         let limit = min(DownloadQueue.shared.concurrentLimit, 5)
         guard inFlightCount < limit else { return }
         let queueItems = DownloadQueue.shared.queue
         for item in queueItems where inFlightCount < limit {
-            guard item.status == .pending,
+            guard item.status == .waiting,
                   queuedRuns[item.id] != nil,
                   !pausedQueueIDs.contains(item.id),
                   !cancelledQueueIDs.contains(item.id) else {
@@ -267,9 +257,9 @@ final class DownloadJobRunner {
         }
     }
 
-    private func rehydratePendingRuns() {
+    private func rehydrateWaitingRuns() {
         let seedboxWebdavPassword = SecureStore.string(forKey: "seedboxWebdavPassword") ?? ""
-        for item in DownloadQueue.shared.queue where item.status == .pending {
+        for item in DownloadQueue.shared.queue where item.status == .waiting {
             guard queuedRuns[item.id] == nil,
                   !startingQueueIDs.contains(item.id),
                   runningTasks[item.id] == nil,
@@ -299,6 +289,7 @@ final class DownloadJobRunner {
             displayTitle: resolution.title,
             retryPayload: payload
         )
+        DownloadQueue.shared.update(id: queueId, status: .waiting, progress: 0, message: "Waiting to start…")
         ActiveWorkTracker.shared.project(queueId: queueId)
         if waitsForResult {
             awaitedResultIDs.insert(queueId)
@@ -418,7 +409,7 @@ final class DownloadJobRunner {
 
         DownloadQueue.shared.update(
             id: queueId,
-            status: .pending,
+            status: .waiting,
             progress: 0,
             message: initialMessage(for: resolution, target: target)
         )
@@ -430,7 +421,7 @@ final class DownloadJobRunner {
             try validate(target: target, context: context)
             DownloadQueue.shared.update(
                 id: queueId,
-                status: .pending,
+                status: .waiting,
                 progress: 0,
                 message: "Resolving video source..."
             )

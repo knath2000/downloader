@@ -144,7 +144,7 @@ struct HomeView: View {
     private var queuedDownloadItems: [DownloadQueueItem] {
         visibleDownloadItems.filter {
             switch $0.status {
-            case .pending, .paused, .failed:
+            case .pending, .waiting, .paused, .failed:
                 return true
             case .downloading, .verifying, .uploading, .processing, .completed:
                 return false
