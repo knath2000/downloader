@@ -73,6 +73,8 @@ struct DownloadQueueViewNew: View {
                 clearFailed: clearFailed
             )
 
+            DownloadCapacityStrip(capacity: queue.capacity)
+
             content
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: downloadItems.isEmpty)
@@ -512,6 +514,36 @@ private struct DownloadFilterChip: View {
     }
 }
 
+private struct DownloadCapacityStrip: View {
+    let capacity: DownloadQueueCapacity
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Label("\(capacity.active) of \(capacity.limit) transfer slots active", systemImage: "arrow.triangle.2.circlepath")
+                .foregroundStyle(Theme.electricLime)
+            if capacity.waiting > 0 {
+                Text("\(capacity.waiting) preparing")
+            }
+            if capacity.ready > 0 {
+                Text("\(capacity.ready) ready to start")
+            }
+            if capacity.seedboxActive > 0, capacity.seedboxBytesPerSecond > 0 {
+                Text("Seedbox \(DownloadStatusFormatting.formatBytes(Int64(capacity.seedboxBytesPerSecond)))/s")
+                    .foregroundStyle(Theme.skyBlue)
+            }
+            Spacer()
+            Text(capacity.availableSlots > 0 ? "\(capacity.availableSlots) slot\(capacity.availableSlots == 1 ? "" : "s") available" : "All slots allocated")
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(Theme.accentDim.opacity(0.34), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.electricLime.opacity(0.16), lineWidth: 0.5))
+        .padding(.horizontal, 2)
+    }
+}
+
 private struct DownloadSectionHeader: View {
     let kind: DownloadSectionKind
     let count: Int
@@ -577,6 +609,7 @@ private struct DownloadQueueRow: View {
     let onToggleSelection: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isDetailsExpanded = false
 
     private var tint: Color {
         DownloadStatusFormatting.statusTint(item)
@@ -596,6 +629,9 @@ private struct DownloadQueueRow: View {
                 chips
                 DownloadPipelineBar(item: item)
                 metricsLine
+                if isDetailsExpanded {
+                    operationalDetails
+                }
                 if case .failed(let reason) = item.status {
                     failedMessage(reason)
                 }
@@ -732,8 +768,56 @@ private struct DownloadQueueRow: View {
             }
 
             Spacer()
+            DownloadRowButton(isDetailsExpanded ? "Hide Details" : "Details", systemImage: "list.bullet.rectangle", tint: Theme.skyBlue) {
+                isDetailsExpanded.toggle()
+            }
             DownloadRowButton("Remove", systemImage: "trash", tint: Theme.error, action: onRemove)
         }
+    }
+
+    private var operationalDetails: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            detailLine("Source", item.sourcePageURL ?? item.url)
+            detailLine("Destination", DownloadStatusFormatting.transferLocation(for: item))
+            if let expected = item.expectedTotalBytes, expected > 0 {
+                detailLine("Expected size", DownloadStatusFormatting.formatBytes(expected))
+            }
+            if !(item.activity ?? []).isEmpty {
+                Divider().overlay(.white.opacity(0.08))
+                Text("Activity")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.textSecondary)
+                ForEach((item.activity ?? []).suffix(5).reversed()) { event in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: DownloadStatusFormatting.statusIcon(for: event.status))
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(DownloadStatusFormatting.statusTint(for: event.status))
+                        Text(event.recordedAt, style: .time)
+                            .foregroundStyle(Theme.textSecondary)
+                        Text(event.message)
+                            .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(1)
+                    }
+                    .font(.system(size: 10))
+                }
+            }
+        }
+        .padding(9)
+        .background(Theme.surface0.opacity(0.72), in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(.white.opacity(0.07), lineWidth: 0.5))
+    }
+
+    private func detailLine(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(label)
+                .foregroundStyle(Theme.textSecondary)
+                .frame(width: 78, alignment: .leading)
+            Text(value)
+                .foregroundStyle(Theme.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .font(.system(size: 10))
     }
 
     private var borderColor: Color {
@@ -1275,7 +1359,7 @@ private enum DownloadSectionKind: String, CaseIterable, Identifiable {
                 return false
             }
         case .queued:
-            return item.status == .pending
+            return item.status == .pending || item.status == .waiting
         case .paused:
             return item.status == .paused
         case .failed:
@@ -1318,7 +1402,11 @@ enum DownloadStatusFormatting {
     }
 
     static func statusTint(_ item: DownloadQueueItem) -> Color {
-        switch item.status {
+        statusTint(for: item.status)
+    }
+
+    static func statusTint(for status: QueueStatus) -> Color {
+        switch status {
         case .downloading: return Theme.gold
         case .verifying: return Theme.skyBlue
         case .uploading: return Theme.electricLime
@@ -1332,7 +1420,11 @@ enum DownloadStatusFormatting {
     }
 
     static func statusIcon(_ item: DownloadQueueItem) -> String {
-        switch item.status {
+        statusIcon(for: item.status)
+    }
+
+    static func statusIcon(for status: QueueStatus) -> String {
+        switch status {
         case .pending: return "clock.fill"
         case .waiting: return "hourglass"
         case .downloading: return "arrow.down.circle.fill"
@@ -1347,8 +1439,8 @@ enum DownloadStatusFormatting {
 
     static func statusLabel(_ item: DownloadQueueItem) -> String {
         switch item.status {
-        case .pending: return "Queued"
-        case .waiting: return "Waiting to start"
+        case .pending: return "Ready"
+        case .waiting: return "Preparing"
         case .downloading: return "Downloading"
         case .verifying: return "Verifying"
         case .uploading: return "Uploading"
@@ -1498,10 +1590,20 @@ enum DownloadStatusFormatting {
             parts.append(eta)
         }
         parts.append(String(format: "%.1f%%", item.progress))
-        if let message = item.statusMessage, !message.isEmpty {
-            parts.append(message)
-        }
+        parts.append(operationalMessage(for: item))
         return parts.joined(separator: " · ")
+    }
+
+    static func operationalMessage(for item: DownloadQueueItem) -> String {
+        switch item.status {
+        case .pending:
+            return "Ready to start"
+        case .waiting:
+            let message = item.statusMessage?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return message.isEmpty || message == "Waiting to start…" ? "Preparing source" : message
+        default:
+            return item.statusMessage?.trimmingCharacters(in: .whitespacesAndNewlines) ?? statusLabel(item)
+        }
     }
 
     static func eta(for item: DownloadQueueItem) -> String? {

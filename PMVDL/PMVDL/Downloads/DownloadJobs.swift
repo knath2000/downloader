@@ -95,6 +95,11 @@ protocol DownloadJob {
 final class DownloadJobRunner {
     static let shared = DownloadJobRunner()
 
+    private enum RunOutcome {
+        case finished(Bool)
+        case retryScheduled
+    }
+
     private struct QueuedRun {
         let payload: DownloadRetryPayload
         let seedboxWebdavPassword: String
@@ -103,8 +108,9 @@ final class DownloadJobRunner {
 
     private var queuedRuns: [UUID: QueuedRun] = [:]
     private var startingQueueIDs: Set<UUID> = []
-    private var runningTasks: [UUID: Task<Bool, Never>] = [:]
+    private var runningTasks: [UUID: Task<RunOutcome, Never>] = [:]
     private var runningTokens: [UUID: UUID] = [:]
+    private var retryWakeTasks: [UUID: Task<Void, Never>] = [:]
     private var awaitedResultIDs: Set<UUID> = []
     private var resultWaiters: [UUID: [CheckedContinuation<Bool, Never>]] = [:]
     private var completedResults: [UUID: Bool] = [:]
@@ -189,8 +195,10 @@ final class DownloadJobRunner {
     func startQueuedNow(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) {
         guard let item = DownloadQueue.shared.item(id: queueId),
               DownloadQueueManualStartPolicy.canStartNow(item, isPro: ProFeatureGate.isPro) else { return }
+        cancelScheduledRetry(queueId: queueId)
         pausedQueueIDs.remove(queueId)
         cancelledQueueIDs.remove(queueId)
+        DownloadQueue.shared.clearAutomaticRetryDelay(id: queueId)
         DownloadQueue.shared.update(id: queueId, status: .waiting, progress: 0, message: "Waiting to start…")
         queuedRuns[queueId] = QueuedRun(payload: payload, seedboxWebdavPassword: seedboxWebdavPassword, refreshSource: true)
         processNextIfNeeded()
@@ -205,6 +213,7 @@ final class DownloadJobRunner {
     }
 
     func pause(queueId: UUID) {
+        cancelScheduledRetry(queueId: queueId)
         pausedQueueIDs.insert(queueId)
         cancelledQueueIDs.remove(queueId)
         if let task = runningTasks[queueId] {
@@ -215,6 +224,7 @@ final class DownloadJobRunner {
     }
 
     func cancel(queueId: UUID) {
+        cancelScheduledRetry(queueId: queueId)
         cancelledQueueIDs.insert(queueId)
         pausedQueueIDs.remove(queueId)
         if let task = runningTasks[queueId] {
@@ -243,14 +253,25 @@ final class DownloadJobRunner {
 
     func processNextIfNeeded() {
         rehydrateWaitingRuns()
-        let limit = min(DownloadQueue.shared.concurrentLimit, 5)
-        guard inFlightCount < limit else { return }
         let queueItems = DownloadQueue.shared.queue
-        for item in queueItems where inFlightCount < limit {
+        for item in queueItems {
+            let limit = item.targetCloud == .seedbox
+                ? DownloadQueue.shared.concurrentLimit
+                : ProFeatureGate.concurrentDownloadLimit
+            guard inFlightCount < limit else { continue }
             guard item.status == .waiting,
-                  queuedRuns[item.id] != nil,
+                  let queuedRun = queuedRuns[item.id],
                   !pausedQueueIDs.contains(item.id),
                   !cancelledQueueIDs.contains(item.id) else {
+                continue
+            }
+            if let delay = DownloadQueue.shared.automaticRetryDelay(for: item) {
+                scheduleRetryWake(
+                    queueId: item.id,
+                    payload: queuedRun.payload,
+                    seedboxWebdavPassword: queuedRun.seedboxWebdavPassword,
+                    delay: delay
+                )
                 continue
             }
             startQueued(queueId: item.id)
@@ -304,6 +325,7 @@ final class DownloadJobRunner {
         seedboxWebdavPassword: String,
         refreshSource: Bool = false
     ) {
+        cancelScheduledRetry(queueId: queueId)
         pausedQueueIDs.remove(queueId)
         cancelledQueueIDs.remove(queueId)
         queuedRuns[queueId] = QueuedRun(
@@ -346,6 +368,35 @@ final class DownloadJobRunner {
         processNextIfNeeded()
     }
 
+    private func cancelScheduledRetry(queueId: UUID) {
+        retryWakeTasks.removeValue(forKey: queueId)?.cancel()
+    }
+
+    private func scheduleRetryWake(
+        queueId: UUID,
+        payload: DownloadRetryPayload,
+        seedboxWebdavPassword: String,
+        delay: TimeInterval
+    ) {
+        guard retryWakeTasks[queueId] == nil else { return }
+        retryWakeTasks[queueId] = Task { @MainActor [weak self] in
+            let nanoseconds = UInt64(max(0, delay) * 1_000_000_000)
+            try? await Task.sleep(nanoseconds: nanoseconds)
+            guard !Task.isCancelled, let self else { return }
+            self.retryWakeTasks[queueId] = nil
+            guard let item = DownloadQueue.shared.item(id: queueId),
+                  item.status == .waiting,
+                  !self.pausedQueueIDs.contains(queueId),
+                  !self.cancelledQueueIDs.contains(queueId) else { return }
+            self.enqueueExisting(
+                queueId: queueId,
+                payload: payload,
+                seedboxWebdavPassword: seedboxWebdavPassword,
+                refreshSource: true
+            )
+        }
+    }
+
     private func runRegistered(
         queueId: UUID,
         payload: DownloadRetryPayload,
@@ -366,13 +417,20 @@ final class DownloadJobRunner {
         runningTokens[queueId] = token
         runningTasks[queueId] = task
 
-        let result = await task.value
+        let outcome = await task.value
         if runningTokens[queueId] == token {
             runningTokens[queueId] = nil
             runningTasks[queueId] = nil
             cancelledQueueIDs.remove(queueId)
         }
-        resolveWaiters(queueId: queueId, result: result)
+        let result: Bool
+        switch outcome {
+        case .finished(let didComplete):
+            result = didComplete
+            resolveWaiters(queueId: queueId, result: didComplete)
+        case .retryScheduled:
+            result = false
+        }
         processNextIfNeeded()
         return result
     }
@@ -400,8 +458,8 @@ final class DownloadJobRunner {
         payload: DownloadRetryPayload,
         seedboxWebdavPassword: String,
         refreshSource: Bool
-    ) async -> Bool {
-        guard !shouldStop(queueId: queueId) else { return false }
+    ) async -> RunOutcome {
+        guard !shouldStop(queueId: queueId) else { return .finished(false) }
 
         var resolution = payload.resolution
         let target = payload.target
@@ -415,7 +473,7 @@ final class DownloadJobRunner {
         )
         ActiveWorkTracker.shared.project(queueId: queueId)
 
-        guard !shouldStop(queueId: queueId) else { return false }
+        guard !shouldStop(queueId: queueId) else { return .finished(false) }
 
         do {
             try validate(target: target, context: context)
@@ -432,8 +490,13 @@ final class DownloadJobRunner {
             )
             try validateProFeatures(for: resolution)
         } catch {
-            fail(queueId: queueId, title: resolution.title, error: error)
-            return false
+            return handleFailure(
+                queueId: queueId,
+                title: resolution.title,
+                error: error,
+                payload: payload,
+                seedboxWebdavPassword: seedboxWebdavPassword
+            )
         }
 
         let runPayload = DownloadRetryPayload(
@@ -449,16 +512,49 @@ final class DownloadJobRunner {
                     self.apply(event, queueId: queueId)
                 }
             }
-            guard !shouldStop(queueId: queueId) else { return false }
+            guard !shouldStop(queueId: queueId) else { return .finished(false) }
             complete(queueId: queueId, resolution: resolution, completion: completion)
-            return true
+            return .finished(true)
         } catch {
             if isCancellation(error, queueId: queueId) {
-                return false
+                return .finished(false)
             }
-            fail(queueId: queueId, title: resolution.title, error: error)
-            return false
+            return handleFailure(
+                queueId: queueId,
+                title: resolution.title,
+                error: error,
+                payload: payload,
+                seedboxWebdavPassword: seedboxWebdavPassword
+            )
         }
+    }
+
+    private func handleFailure(
+        queueId: UUID,
+        title: String,
+        error: Error,
+        payload: DownloadRetryPayload,
+        seedboxWebdavPassword: String
+    ) -> RunOutcome {
+        let attempts = DownloadQueue.shared.item(id: queueId)?.automaticRetryCount ?? 0
+        guard DownloadAutomaticRetryPolicy.shouldRetry(error, after: attempts) else {
+            fail(queueId: queueId, title: title, error: error)
+            return .finished(false)
+        }
+
+        let nextAttempt = attempts + 1
+        let delay = DownloadAutomaticRetryPolicy.delay(forAttempt: nextAttempt)
+        guard DownloadQueue.shared.scheduleAutomaticRetry(id: queueId, attempt: nextAttempt, after: delay) else {
+            fail(queueId: queueId, title: title, error: error)
+            return .finished(false)
+        }
+        scheduleRetryWake(
+            queueId: queueId,
+            payload: payload,
+            seedboxWebdavPassword: seedboxWebdavPassword,
+            delay: delay
+        )
+        return .retryScheduled
     }
 
     private func validate(target: CloudTarget, context: DownloadJobContext) throws {

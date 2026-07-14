@@ -31,6 +31,20 @@ enum SeedboxTransferMode {
     case webdav(baseURL: URL, user: String, password: String, remotePath: String, allowSelfSigned: Bool = false)
 }
 
+private actor WebDAVDirectoryCache {
+    static let shared = WebDAVDirectoryCache()
+
+    private var confirmed: Set<String> = []
+
+    func contains(_ key: String) -> Bool {
+        confirmed.contains(key)
+    }
+
+    func insert(_ key: String) {
+        confirmed.insert(key)
+    }
+}
+
 final class SeedboxManager {
     private let mode: SeedboxTransferMode
 
@@ -84,7 +98,8 @@ final class SeedboxManager {
         sourceURL: URL,
         filename: String,
         headers: [String: String]? = nil,
-        progressHandler: @escaping (Double) -> Void
+        progressHandler: @escaping (Double) -> Void,
+        metricsHandler: @escaping (DownloadTransferMetrics) -> Void = { _ in }
     ) async throws -> String {
         switch mode {
         case .rclone(let remoteName, let remotePath):
@@ -106,7 +121,8 @@ final class SeedboxManager {
                 password: password,
                 headers: headers,
                 allowSelfSigned: allowSelfSigned,
-                progressHandler: progressHandler
+                progressHandler: progressHandler,
+                metricsHandler: metricsHandler
             )
         }
     }
@@ -343,6 +359,12 @@ final class SeedboxManager {
         }
     }
 
+    func verifyRemoteFile(filename: String) async throws {
+        guard let size = try await remoteSize(filename: filename), size > 0 else {
+            throw SeedboxError.transferFailed("Seedbox did not confirm the uploaded file. Retry the transfer after checking the remote path.")
+        }
+    }
+
     static func safeResumedFilename(filename: String, queueId: UUID) -> String {
         let ns = filename as NSString
         let ext = ns.pathExtension
@@ -503,7 +525,8 @@ final class SeedboxManager {
         password: String,
         headers: [String: String]?,
         allowSelfSigned: Bool,
-        progressHandler: @escaping (Double) -> Void
+        progressHandler: @escaping (Double) -> Void,
+        metricsHandler: @escaping (DownloadTransferMetrics) -> Void
     ) async throws -> String {
         let contentLength = await fetchContentLength(url: sourceURL, headers: headers)
         guard contentLength > 0 else {
@@ -530,11 +553,11 @@ final class SeedboxManager {
         putRequest.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         setBasicAuth(user: user, password: password, request: &putRequest)
 
-        guard let streams = Self.boundStreams(bufferSize: 256 * 1024) else {
+        guard let streams = Self.boundStreams(bufferSize: 1_024 * 1_024) else {
             throw SeedboxError.transferFailed("Could not create upload streams.")
         }
 
-        let delegate = WebDAVUploadDelegate(contentLength: contentLength, allowedHost: webdavBase.host, allowSelfSigned: allowSelfSigned, progressHandler: progressHandler)
+        let delegate = WebDAVUploadDelegate(contentLength: contentLength, allowedHost: webdavBase.host, allowSelfSigned: allowSelfSigned, progressHandler: progressHandler, metricsHandler: metricsHandler)
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
 
@@ -912,6 +935,8 @@ final class SeedboxManager {
     private func ensureWebDAVDirectory(baseURL: URL, remotePath: String, user: String, password: String, allowSelfSigned: Bool) async throws {
         let parts = remotePath.split(separator: "/").map(String.init).filter { !$0.isEmpty }
         guard !parts.isEmpty else { return }
+        let cacheKey = "\(baseURL.absoluteString)|\(user)|\(parts.joined(separator: "/"))"
+        if await WebDAVDirectoryCache.shared.contains(cacheKey) { return }
 
         var current = baseURL
         for part in parts {
@@ -926,6 +951,7 @@ final class SeedboxManager {
                 throw SeedboxError.transferFailed("WebDAV directory creation returned \(http.statusCode).")
             }
         }
+        await WebDAVDirectoryCache.shared.insert(cacheKey)
     }
 
     private func setBasicAuth(user: String, password: String, request: inout URLRequest) {
@@ -1173,18 +1199,21 @@ private enum SeedboxTLSTrust {
 private final class WebDAVUploadDelegate: NSObject, URLSessionTaskDelegate, URLSessionDataDelegate, @unchecked Sendable {
     private let contentLength: Int64
     private let progressHandler: (Double) -> Void
+    private let metricsHandler: (DownloadTransferMetrics) -> Void
     private let allowedHost: String?
     private let allowSelfSigned: Bool
     private let lock = NSLock()
     private var continuation: CheckedContinuation<Void, Error>?
     private var completedResult: Result<Void, Error>?
+    private let startedAt = Date()
     var bodyStream: InputStream?
 
-    init(contentLength: Int64, allowedHost: String? = nil, allowSelfSigned: Bool = false, progressHandler: @escaping (Double) -> Void) {
+    init(contentLength: Int64, allowedHost: String? = nil, allowSelfSigned: Bool = false, progressHandler: @escaping (Double) -> Void, metricsHandler: @escaping (DownloadTransferMetrics) -> Void = { _ in }) {
         self.contentLength = contentLength
         self.allowedHost = allowedHost?.lowercased()
         self.allowSelfSigned = allowSelfSigned
         self.progressHandler = progressHandler
+        self.metricsHandler = metricsHandler
     }
 
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
@@ -1201,6 +1230,12 @@ private final class WebDAVUploadDelegate: NSObject, URLSessionTaskDelegate, URLS
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
         let total = totalBytesExpectedToSend > 0 ? totalBytesExpectedToSend : contentLength
+        let elapsed = max(Date().timeIntervalSince(startedAt), 0.01)
+        metricsHandler(DownloadTransferMetrics(
+            bytesDownloaded: totalBytesSent,
+            totalBytes: total > 0 ? total : nil,
+            bytesPerSecond: Double(totalBytesSent) / elapsed
+        ))
         if total > 0 {
             progressHandler(min(0.99, Double(totalBytesSent) / Double(total)))
         }

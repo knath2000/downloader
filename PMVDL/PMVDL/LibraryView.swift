@@ -1,6 +1,33 @@
 import AppKit
 import SwiftUI
 
+private enum LibrarySmartScope: String, CaseIterable, Identifiable {
+    case all
+    case remoteCopies
+    case unfiled
+    case duplicates
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .all: return "All items"
+        case .remoteCopies: return "Remote copies"
+        case .unfiled: return "Unfiled"
+        case .duplicates: return "Possible duplicates"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .all: return "line.3.horizontal.decrease.circle"
+        case .remoteCopies: return "externaldrive.connected.to.line.below"
+        case .unfiled: return "tray"
+        case .duplicates: return "rectangle.on.rectangle"
+        }
+    }
+}
+
 @MainActor
 struct LibraryView: View {
     @StateObject private var appState = AppStateManager.shared
@@ -13,6 +40,7 @@ struct LibraryView: View {
 
     @State private var searchText = ""
     @State private var timelineFilter: LibraryTimelineFilter = .all
+    @State private var smartScope: LibrarySmartScope = .all
     @State private var viewMode: LibraryViewMode = .list
     @State private var selectedEntryID: String?
     @State private var selection: Set<UUID> = []
@@ -52,7 +80,16 @@ struct LibraryView: View {
             filter: timelineFilter,
             favoriteURLs: favoriteURLs,
             pipelineSearchTextByURL: pipelineSearchTextByURL
-        )
+        ).filter(matchesSmartScope)
+    }
+
+    private var duplicateIDs: Set<UUID> {
+        let grouped = Dictionary(grouping: library.items) { item in
+            LibraryDisplay.title(for: item)
+                .lowercased()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return Set(grouped.values.filter { $0.count > 1 }.flatMap { $0.map(\.id) })
     }
 
     private var dayBuckets: [LibraryTimelineDayBucket] {
@@ -193,6 +230,7 @@ struct LibraryView: View {
         LibraryCommandPanel(
             searchText: $searchText,
             timelineFilter: $timelineFilter,
+            smartScope: $smartScope,
             viewMode: $viewMode,
             visibleCount: filteredEntries.count,
             totalCount: timelineEntries.count,
@@ -434,6 +472,16 @@ struct LibraryView: View {
             openURL: openURLString,
             extractFavorite: extractFavorite,
             removeFavorite: { pendingFavoriteRemoval = $0 },
+            duplicateCount: { item in
+                guard duplicateIDs.contains(item.id) else { return 0 }
+                let title = LibraryDisplay.title(for: item).lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+                return library.items.filter {
+                    LibraryDisplay.title(for: $0).lowercased().trimmingCharacters(in: .whitespacesAndNewlines) == title
+                }.count
+            },
+            updateOrganization: { item, tags, collectionName in
+                library.updateOrganization(LibraryOrganizationUpdate(id: item.id, tags: tags, collectionName: collectionName))
+            },
             pipelineStore: pipeline,
             favoritesStore: favorites,
             onUpgradeRequired: onUpgradeRequired
@@ -451,6 +499,17 @@ struct LibraryView: View {
     private func clearFilters() {
         searchText = ""
         timelineFilter = .all
+        smartScope = .all
+    }
+
+    private func matchesSmartScope(_ entry: LibraryTimelineEntry) -> Bool {
+        guard case .video(let item) = entry else { return smartScope == .all }
+        switch smartScope {
+        case .all: return true
+        case .remoteCopies: return !item.remotePaths.isEmpty
+        case .unfiled: return item.collectionName?.isEmpty != false && (item.tags?.isEmpty != false)
+        case .duplicates: return duplicateIDs.contains(item.id)
+        }
     }
 
     private func thumbnail(for entry: LibraryTimelineEntry) -> NSImage? {
@@ -595,6 +654,7 @@ struct LibraryView: View {
 private struct LibraryCommandPanel<Content: View>: View {
     @Binding var searchText: String
     @Binding var timelineFilter: LibraryTimelineFilter
+    @Binding var smartScope: LibrarySmartScope
     @Binding var viewMode: LibraryViewMode
 
     let visibleCount: Int
@@ -631,6 +691,7 @@ private struct LibraryCommandPanel<Content: View>: View {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 10) {
                         LibrarySearchField(text: $searchText, searchFocused: searchFocused)
+                        smartScopePicker
                         LibraryViewModePicker(selection: $viewMode)
                         refreshButton
                     }
@@ -638,6 +699,7 @@ private struct LibraryCommandPanel<Content: View>: View {
                     VStack(alignment: .leading, spacing: 8) {
                         LibrarySearchField(text: $searchText, searchFocused: searchFocused)
                         HStack(spacing: 10) {
+                            smartScopePicker
                             LibraryViewModePicker(selection: $viewMode)
                             refreshButton
                         }
@@ -728,6 +790,28 @@ private struct LibraryCommandPanel<Content: View>: View {
         }
         .buttonStyle(.plain)
         .disabled(isRefreshing || !canRefreshThumbnails)
+    }
+
+    private var smartScopePicker: some View {
+        Menu {
+            ForEach(LibrarySmartScope.allCases) { scope in
+                Button {
+                    smartScope = scope
+                } label: {
+                    Label(scope.title, systemImage: scope.systemImage)
+                }
+            }
+        } label: {
+            Label(smartScope.title, systemImage: smartScope.systemImage)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.lavender)
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Theme.lavender.opacity(0.13), in: Capsule())
+                .overlay(Capsule().strokeBorder(Theme.lavender.opacity(0.28), lineWidth: 0.5))
+        }
+        .menuStyle(.borderlessButton)
     }
 }
 
@@ -1469,9 +1553,15 @@ private struct LibraryDetailPanel: View {
     let openURL: (String) -> Void
     let extractFavorite: (FeedFavoriteItem) -> Void
     let removeFavorite: (FeedFavoriteItem) -> Void
+    let duplicateCount: (LibraryItem) -> Int
+    let updateOrganization: (LibraryItem, [String], String?) -> Void
     let pipelineStore: LibraryPipelineStore
     let favoritesStore: FeedFavoritesStore
     let onUpgradeRequired: () -> Void
+    @State private var tagsText = ""
+    @State private var collectionText = ""
+    @State private var isVerifyingRemoteCopies = false
+    @State private var remoteVerificationMessage: String?
 
     private var tint: Color {
         switch entry {
@@ -1545,16 +1635,27 @@ private struct LibraryDetailPanel: View {
 
             pipelineSection(for: item.url)
 
+            organizationSection(for: item)
+
             metadataRows {
                 LibraryDetailMetadataRow(label: "Source", value: item.url, systemName: "link")
                 LibraryDetailMetadataRow(label: "Extracted", value: item.extractedAt.formatted(date: .abbreviated, time: .shortened), systemName: "calendar")
                 LibraryDetailMetadataRow(label: "Media", value: LibrarySourceKind.kind(for: item).label, systemName: "film")
+                if duplicateCount(item) > 1 {
+                    LibraryDetailMetadataRow(label: "Duplicates", value: "\(duplicateCount(item)) matching titles", systemName: "rectangle.on.rectangle")
+                }
             }
 
             actionGroup {
                 LibraryDetailActionButton(title: "Open Media", systemName: "play.fill", tint: Theme.skyBlue) { openMedia(item) }
                 LibraryDetailActionButton(title: "Open Source", systemName: "safari", tint: Theme.textSecondary) { openSource(item) }
                 LibraryDetailActionButton(title: "Re-extract", systemName: "arrow.clockwise", tint: Theme.lavender) { reExtractVideo(item) }
+                if !item.remotePaths.isEmpty {
+                    LibraryDetailActionButton(title: isVerifyingRemoteCopies ? "Verifying copies…" : "Verify Copies", systemName: "checkmark.icloud", tint: Theme.success) {
+                        verifyRemoteCopies(item)
+                    }
+                    .disabled(isVerifyingRemoteCopies)
+                }
                 LibraryDetailMenuButton(title: "Send", systemName: "arrow.up.circle", tint: Theme.success) {
                     Button("Local") { uploadVideo(item, .local) }
                     Button("Mega") { uploadVideo(item, .mega) }
@@ -1564,6 +1665,48 @@ private struct LibraryDetailPanel: View {
                 LibraryDetailActionButton(title: "Refresh Thumbnail", systemName: "photo", tint: Theme.skyBlue) { refreshThumbnail(item) }
                 LibraryDetailActionButton(title: "Delete", systemName: "trash", tint: Theme.error, role: .destructive) { requestDeleteVideo(item) }
             }
+
+            if let remoteVerificationMessage {
+                Text(remoteVerificationMessage)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(remoteVerificationMessage.hasPrefix("Confirmed") ? Theme.success : Theme.error)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .onAppear {
+            tagsText = item.tags?.joined(separator: ", ") ?? ""
+            collectionText = item.collectionName ?? ""
+        }
+    }
+
+    private func organizationSection(for item: LibraryItem) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Organize")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Theme.textSecondary)
+
+            TextField("Collection", text: $collectionText)
+                .textFieldStyle(.roundedBorder)
+            TextField("Tags, separated by commas", text: $tagsText)
+                .textFieldStyle(.roundedBorder)
+
+            Button("Save Organization") {
+                updateOrganization(item, tagsText.split(separator: ",").map(String.init), collectionText)
+            }
+            .buttonStyle(.bordered)
+            .tint(Theme.lavender)
+        }
+        .padding(10)
+        .background(Theme.surface0.opacity(0.34), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.lavender.opacity(0.18), lineWidth: 0.5))
+    }
+
+    private func verifyRemoteCopies(_ item: LibraryItem) {
+        isVerifyingRemoteCopies = true
+        remoteVerificationMessage = nil
+        Task {
+            remoteVerificationMessage = await LibraryRemoteVerifier.verify(item)
+            isVerifyingRemoteCopies = false
         }
     }
 

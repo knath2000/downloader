@@ -352,6 +352,32 @@ final class DownloadQueueProjectionTests: XCTestCase {
         XCTAssertTrue(SleepPreventionPolicy.shouldPreventSleep(isEnabled: true, items: runningItems))
     }
 
+    func testCapacitySeparatesReadyWaitingAndActiveWork() {
+        let capacity = DownloadQueueCapacity(
+            items: [
+                queueItem(status: .pending),
+                queueItem(status: .pending),
+                queueItem(status: .waiting),
+                queueItem(status: .downloading),
+                queueItem(status: .uploading)
+            ],
+            limit: 5
+        )
+
+        XCTAssertEqual(capacity.ready, 2)
+        XCTAssertEqual(capacity.waiting, 1)
+        XCTAssertEqual(capacity.active, 2)
+        XCTAssertEqual(capacity.availableSlots, 2)
+    }
+
+    func testPendingStateUsesReadyMessageInsteadOfStaleTransferMessage() {
+        var item = queueItem(status: .pending)
+        item.statusMessage = "Transferring to seedbox…"
+
+        XCTAssertEqual(DownloadStatusFormatting.statusLabel(item), "Ready")
+        XCTAssertEqual(DownloadStatusFormatting.operationalMessage(for: item), "Ready to start")
+    }
+
     @MainActor
     func testSeedboxHLSLocalMaterializationStaysActiveUntilFinalCompletion() {
         let queue = DownloadQueue.shared
@@ -425,6 +451,44 @@ final class DownloadQueueProjectionTests: XCTestCase {
         } else {
             XCTFail("Expected done projection")
         }
+    }
+
+    func testAutomaticRetryPolicyOnlyRetriesTransientFailures() {
+        XCTAssertTrue(DownloadAutomaticRetryPolicy.shouldRetry(URLError(.timedOut), after: 0))
+        XCTAssertTrue(DownloadAutomaticRetryPolicy.shouldRetry(URLError(.networkConnectionLost), after: 1))
+        XCTAssertTrue(DownloadAutomaticRetryPolicy.shouldRetry(NSError(domain: "test", code: 0, userInfo: [NSLocalizedDescriptionKey: "Source returned HTTP 503"]), after: 0))
+        XCTAssertFalse(DownloadAutomaticRetryPolicy.shouldRetry(URLError(.userAuthenticationRequired), after: 0))
+        XCTAssertFalse(DownloadAutomaticRetryPolicy.shouldRetry(URLError(.timedOut), after: DownloadAutomaticRetryPolicy.maximumAttempts))
+    }
+
+    @MainActor
+    func testAutomaticRetryKeepsItemWaitingUntilItsRetryTime() {
+        let queue = DownloadQueue.shared
+        let original = queue.queue
+        queue.queue = []
+        defer {
+            queue.queue = original
+            queue.save()
+        }
+
+        let id = queue.add(
+            url: "https://example.test/video.mp4",
+            quality: "Video",
+            targetCloud: .local,
+            retryPayload: DownloadRetryPayload(
+                resolution: makeRetryTestResolution(),
+                target: .local,
+                context: DownloadJobContext(megaRemotePath: "/", gdriveRemoteName: "gdrive", gdriveRemotePath: "/").retryContext,
+                gdriveMegaRemotePath: nil
+            )
+        )
+
+        XCTAssertTrue(queue.scheduleAutomaticRetry(id: id, attempt: 1, after: 5))
+        guard let item = queue.item(id: id) else { return XCTFail("Missing queue item") }
+        XCTAssertEqual(item.status, .waiting)
+        XCTAssertEqual(item.automaticRetryCount, 1)
+        XCTAssertNotNil(queue.automaticRetryDelay(for: item))
+        XCTAssertEqual(item.statusMessage, "Temporary connection issue. Retrying in 5s…")
     }
 
     @MainActor

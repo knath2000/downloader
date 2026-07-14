@@ -408,7 +408,7 @@ struct HomeView: View {
                 isPro: ProFeatureGate.isPro,
                 onPaste: pasteFromClipboard,
                 onClear: { urlText = "" },
-                onExtract: { extractAll() },
+                onExtract: extractFromPrimaryAction,
                 completedContent: {
                     queueStatusEntrypoints
                 },
@@ -714,17 +714,17 @@ struct HomeView: View {
                     .foregroundStyle(Theme.skyBlue)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Results Ready")
+                    Text("Review Downloads")
                         .font((isCompact ? Font.caption : Font.subheadline).weight(.semibold))
                         .foregroundStyle(Theme.textPrimary)
-                    Text("\(results.count) extracted URL\(results.count == 1 ? "" : "s")")
+                    Text("\(results.count) video\(results.count == 1 ? "" : "s") ready to download")
                         .font(isCompact ? .caption2 : .caption)
                         .foregroundStyle(Theme.textSecondary)
                 }
 
                 Spacer()
 
-                Image(systemName: "arrow.up.forward.square")
+                Image(systemName: "arrow.right.circle.fill")
                     .font(.system(size: isCompact ? 11 : 13, weight: .bold))
                     .foregroundStyle(Theme.textSecondary)
             }
@@ -754,6 +754,21 @@ struct HomeView: View {
         if let clip = ClipboardManager.currentURL {
             appendURLText(clip)
         }
+    }
+
+    private func extractFromPrimaryAction() {
+        guard !isLoading else { return }
+
+        if urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard let clip = ClipboardManager.currentURL else { return }
+            appendURLText(clip)
+            DispatchQueue.main.async {
+                extractAll()
+            }
+            return
+        }
+
+        extractAll()
     }
 
     private func appendURLText(_ value: String) {

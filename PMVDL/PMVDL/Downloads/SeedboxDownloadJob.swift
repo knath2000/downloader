@@ -39,6 +39,10 @@ struct SeedboxDownloadJob: DownloadJob {
                 progressHandler: { progress in
                     let pct = min(99, max(0, progress * 100))
                     onEvent(.progress(.uploading, pct, String(format: "Transferring to seedbox… %.0f%%", pct)))
+                },
+                metricsHandler: { metrics in
+                    let pct = metrics.totalBytes.map { min(99, max(0, Double(metrics.bytesDownloaded ?? 0) / Double($0) * 100)) } ?? 0
+                    onEvent(.progress(.uploading, pct, String(format: "Transferring to seedbox… %.0f%%", pct), metrics))
                 }
             )
         } else if resolution.mediaKind == .hls,
@@ -57,6 +61,9 @@ struct SeedboxDownloadJob: DownloadJob {
         } else {
             finalPath = try await runLocalFallback(filename: filename, manager: manager, onEvent: onEvent)
         }
+
+        onEvent(.progress(.verifying, 99, "Verifying seedbox file…"))
+        try await manager.verifyRemoteFile(filename: filename)
 
         return JobCompletion(
             finalPath: finalPath,

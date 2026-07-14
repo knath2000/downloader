@@ -8,6 +8,82 @@ struct LibraryItemMetadataUpdate {
     let thumbnailURL: String?
 }
 
+struct LibraryOrganizationUpdate {
+    let id: UUID
+    let tags: [String]
+    let collectionName: String?
+}
+
+enum LibraryRemoteVerifier {
+    static func verify(_ item: LibraryItem) async -> String {
+        var confirmed: [String] = []
+        var failures: [String] = []
+
+        for (destination, path) in item.remotePaths where !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            do {
+                switch destination {
+                case CloudTarget.local.rawValue:
+                    guard FileManager.default.fileExists(atPath: path) else { throw VerificationError.missing }
+                case CloudTarget.gdrive.rawValue:
+                    try await GDriveManager.verifyRemoteFile(destination: path, expectedSize: nil, allowUnknownSize: true)
+                case CloudTarget.mega.rawValue:
+                    let remoteURL = URL(fileURLWithPath: path)
+                    let files = try await MegaManager.listRemoteFiles(remotePath: remoteURL.deletingLastPathComponent().path)
+                    guard files.contains(remoteURL.lastPathComponent) else { throw VerificationError.missing }
+                case CloudTarget.seedbox.rawValue:
+                    try await verifySeedbox(path: path)
+                default:
+                    continue
+                }
+                confirmed.append(CloudTarget(rawValue: destination)?.displayName ?? destination)
+            } catch {
+                failures.append("\(CloudTarget(rawValue: destination)?.displayName ?? destination): \(error.localizedDescription)")
+            }
+        }
+
+        if confirmed.isEmpty, failures.isEmpty { return "No saved destination to verify." }
+        if failures.isEmpty { return "Confirmed \(confirmed.joined(separator: ", "))." }
+        if confirmed.isEmpty { return failures.joined(separator: " · ") }
+        return "Confirmed \(confirmed.joined(separator: ", ")) · \(failures.joined(separator: " · "))"
+    }
+
+    private static func verifySeedbox(path: String) async throws {
+        let defaults = UserDefaults.standard
+        let filename = URL(fileURLWithPath: path).lastPathComponent
+        if defaults.string(forKey: "seedboxTransferMode") == "webdav" {
+            guard let baseURL = defaults.string(forKey: "seedboxWebdavURL").flatMap(URLTrustPolicy.validated),
+                  let user = defaults.string(forKey: "seedboxWebdavUser"),
+                  let password = SecureStore.string(forKey: "seedboxWebdavPassword"), !password.isEmpty else {
+                throw VerificationError.notConfigured
+            }
+            try await SeedboxManager(mode: .webdav(
+                baseURL: baseURL,
+                user: user,
+                password: password,
+                remotePath: defaults.string(forKey: "seedboxRemotePath") ?? "/",
+                allowSelfSigned: defaults.bool(forKey: "seedboxWebdavAllowSelfSigned")
+            )).verifyRemoteFile(filename: filename)
+        } else {
+            try await SeedboxManager(mode: .rclone(
+                remoteName: defaults.string(forKey: "seedboxRemoteName") ?? "seedbox",
+                remotePath: defaults.string(forKey: "seedboxRemotePath") ?? "/"
+            )).verifyRemoteFile(filename: filename)
+        }
+    }
+
+    private enum VerificationError: LocalizedError {
+        case missing
+        case notConfigured
+
+        var errorDescription: String? {
+            switch self {
+            case .missing: return "file was not found"
+            case .notConfigured: return "destination is not configured"
+            }
+        }
+    }
+}
+
 @MainActor
 class VideoLibrary: ObservableObject {
     static let shared = VideoLibrary()
@@ -132,6 +208,16 @@ class VideoLibrary: ObservableObject {
 
         guard didChange else { return }
         items = copy
+        save()
+    }
+
+    func updateOrganization(_ update: LibraryOrganizationUpdate) {
+        guard let idx = items.firstIndex(where: { $0.id == update.id }) else { return }
+        let tags = Array(Set(update.tags.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })).sorted()
+        let collection = update.collectionName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard items[idx].tags != tags || items[idx].collectionName != (collection?.isEmpty == true ? nil : collection) else { return }
+        items[idx].tags = tags.isEmpty ? nil : tags
+        items[idx].collectionName = collection?.isEmpty == true ? nil : collection
         save()
     }
 }

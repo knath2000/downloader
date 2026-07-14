@@ -3,6 +3,7 @@ import Foundation
 
 enum AppPreferenceKeys {
     static let preventSleepWhileRunning = "preventSleepWhileRunning"
+    static let seedboxConcurrentTransferLimit = "seedboxConcurrentTransferLimit"
 }
 
 enum SleepPreventionPolicy {
@@ -95,12 +96,75 @@ enum DownloadQueueManualStartPolicy {
     }
 }
 
+enum DownloadAutomaticRetryPolicy {
+    static let maximumAttempts = 2
+
+    static func delay(forAttempt attempt: Int) -> TimeInterval {
+        switch attempt {
+        case 1: return 3
+        default: return 8
+        }
+    }
+
+    static func shouldRetry(_ error: Error, after attempts: Int) -> Bool {
+        guard attempts < maximumAttempts else { return false }
+
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut, .cannotFindHost, .cannotConnectToHost,
+                    .networkConnectionLost, .dnsLookupFailed,
+                    .notConnectedToInternet, .resourceUnavailable:
+                return true
+            default:
+                return false
+            }
+        }
+
+        return retryableHTTPStatus(in: error.localizedDescription)
+    }
+
+    private static func retryableHTTPStatus(in message: String) -> Bool {
+        guard let range = message.range(of: "HTTP ", options: .caseInsensitive) else { return false }
+        let suffix = message[range.upperBound...]
+        let digits = suffix.prefix { $0.isNumber }
+        guard let status = Int(digits) else { return false }
+        return status == 408 || status == 425 || status == 429 || (500...599).contains(status)
+    }
+}
+
+struct DownloadQueueCapacity: Equatable {
+    let active: Int
+    let waiting: Int
+    let ready: Int
+    let limit: Int
+    let seedboxActive: Int
+    let seedboxBytesPerSecond: Double
+
+    init(items: [DownloadQueueItem], limit: Int) {
+        active = items.filter { SleepPreventionPolicy.isRunningStatus($0.status) }.count
+        waiting = items.filter { $0.status == .waiting }.count
+        ready = items.filter { $0.status == .pending }.count
+        let seedboxItems = items.filter { $0.targetCloud == .seedbox && SleepPreventionPolicy.isRunningStatus($0.status) }
+        seedboxActive = seedboxItems.count
+        seedboxBytesPerSecond = seedboxItems.compactMap(\.bytesPerSecond).reduce(0, +)
+        self.limit = limit
+    }
+
+    var availableSlots: Int { max(0, limit - active - waiting) }
+}
+
 @MainActor
 class DownloadQueue: ObservableObject {
     static let shared = DownloadQueue()
 
     @Published var queue: [DownloadQueueItem] = []
     private var maxConcurrent: Int { ProFeatureGate.concurrentDownloadLimit }
+    private var seedboxConcurrentLimit: Int {
+        guard ProFeatureGate.isPro,
+              UserDefaults.standard.string(forKey: "seedboxTransferMode") == "webdav" else { return maxConcurrent }
+        let configured = UserDefaults.standard.integer(forKey: AppPreferenceKeys.seedboxConcurrentTransferLimit)
+        return min(max(configured == 0 ? maxConcurrent : configured, maxConcurrent), 8)
+    }
 
     private let userDefaultsKey = "downloadQueue"
     private let restartMessage = "Resuming after app restart…"
@@ -110,7 +174,11 @@ class DownloadQueue: ObservableObject {
     private var lastProgressUpdateAt: [UUID: Date] = [:]
     private var pendingProgressSaveTask: Task<Void, Never>?
 
-    var concurrentLimit: Int { maxConcurrent }
+    var concurrentLimit: Int { max(maxConcurrent, seedboxConcurrentLimit) }
+
+    var capacity: DownloadQueueCapacity {
+        DownloadQueueCapacity(items: queue, limit: concurrentLimit)
+    }
 
     private init() {
         load()
@@ -267,6 +335,9 @@ class DownloadQueue: ObservableObject {
         queue[idx].bytesPerSecond = nil
         queue[idx].expectedTotalBytes = nil
         queue[idx].megatag = nil
+        queue[idx].automaticRetryCount = 0
+        queue[idx].automaticRetryAfter = nil
+        appendActivity(id: id, status: .waiting, message: "Retry requested")
         save()
         return true
     }
@@ -286,6 +357,8 @@ class DownloadQueue: ObservableObject {
         queue[idx].bytesPerSecond = nil
         queue[idx].expectedTotalBytes = nil
         queue[idx].megatag = nil
+        queue[idx].automaticRetryAfter = nil
+        appendActivity(id: id, status: .waiting, message: "Resume requested")
         save()
         return true
     }
@@ -451,6 +524,9 @@ class DownloadQueue: ObservableObject {
         queue[idx].bytesDownloaded = nextBytesDownloaded
         queue[idx].totalBytes = nextTotalBytes
         queue[idx].bytesPerSecond = nextBytesPerSecond
+        if statusChanged || shouldRecordActivity(status: status, progress: progress, messageChanged: messageChanged) {
+            appendActivity(id: id, status: status, message: message ?? DownloadStatusFormatting.statusLabel(queue[idx]))
+        }
         if let totalBytes = nextTotalBytes {
             queue[idx].expectedTotalBytes = totalBytes
         }
@@ -471,6 +547,8 @@ class DownloadQueue: ObservableObject {
         queue[idx].statusMessage = message
         queue[idx].bytesPerSecond = nil
         queue[idx].finalPath = finalPath
+        queue[idx].automaticRetryAfter = nil
+        appendActivity(id: id, status: .completed, message: message)
         lastProgressUpdateAt[id] = nil
         save()
     }
@@ -485,6 +563,8 @@ class DownloadQueue: ObservableObject {
         queue[idx].progress = 0
         queue[idx].statusMessage = message
         queue[idx].bytesPerSecond = nil
+        queue[idx].automaticRetryAfter = nil
+        appendActivity(id: id, status: .failed(message), message: message)
         lastProgressUpdateAt[id] = nil
         save()
     }
@@ -522,6 +602,37 @@ class DownloadQueue: ObservableObject {
                 seedboxWebdavPassword: seedboxWebdavPassword
             )
         }
+    }
+
+    @discardableResult
+    func scheduleAutomaticRetry(id: UUID, attempt: Int, after delay: TimeInterval) -> Bool {
+        guard let idx = queue.firstIndex(where: { $0.id == id }),
+              queue[idx].retryPayload != nil,
+              !queue[idx].status.isTerminal else { return false }
+        let seconds = max(1, Int(delay.rounded(.up)))
+        let message = "Temporary connection issue. Retrying in \(seconds)s…"
+        queue[idx].status = .waiting
+        queue[idx].progress = 0
+        queue[idx].bytesDownloaded = nil
+        queue[idx].totalBytes = nil
+        queue[idx].bytesPerSecond = nil
+        queue[idx].statusMessage = message
+        queue[idx].automaticRetryCount = attempt
+        queue[idx].automaticRetryAfter = Date().addingTimeInterval(delay)
+        appendActivity(id: id, status: .waiting, message: message)
+        save()
+        return true
+    }
+
+    func automaticRetryDelay(for item: DownloadQueueItem, now: Date = Date()) -> TimeInterval? {
+        guard let retryAfter = item.automaticRetryAfter, retryAfter > now else { return nil }
+        return retryAfter.timeIntervalSince(now)
+    }
+
+    func clearAutomaticRetryDelay(id: UUID) {
+        guard let idx = queue.firstIndex(where: { $0.id == id }) else { return }
+        queue[idx].automaticRetryAfter = nil
+        save()
     }
 
     func latestFinalPath(for url: String, target: CloudTarget) -> String? {
@@ -584,6 +695,26 @@ class DownloadQueue: ObservableObject {
         } else {
             DownloadJobRunner.shared.cancel(queueId: id)
         }
+    }
+
+    private func shouldRecordActivity(status: QueueStatus, progress: Double, messageChanged: Bool) -> Bool {
+        guard messageChanged else { return false }
+        switch status {
+        case .waiting, .verifying, .completed, .failed, .pending, .paused:
+            return true
+        case .downloading, .uploading, .processing:
+            return progress == 0
+        }
+    }
+
+    private func appendActivity(id: UUID, status: QueueStatus, message: String) {
+        guard let idx = queue.firstIndex(where: { $0.id == id }) else { return }
+        var events = queue[idx].activity ?? []
+        if events.last?.status == status, events.last?.message == message {
+            return
+        }
+        events.append(DownloadActivityEvent(status: status, message: message))
+        queue[idx].activity = Array(events.suffix(18))
     }
 
     private func scheduleProgressSave() {

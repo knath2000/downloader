@@ -236,6 +236,14 @@ struct HomeStitchCommandPanel<CompletedContent: View, ResultsContent: View>: Vie
         !isLoading && !model.validURLs.isEmpty && model.invalidLines.isEmpty
     }
 
+    private var isPasteAndExtractAction: Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canRunPrimaryAction: Bool {
+        !isLoading && (canExtract || isPasteAndExtractAction)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
@@ -369,13 +377,13 @@ struct HomeStitchCommandPanel<CompletedContent: View, ResultsContent: View>: Vie
                     .scaleEffect(0.75)
                 Text("Extracting")
             } else {
-                Label("Extract", systemImage: "bolt.fill")
+                Label(isPasteAndExtractAction ? "Paste & Extract" : "Extract", systemImage: "bolt.fill")
             }
         }
         .buttonStyle(MobilePrimaryButtonStyle(tint: Theme.skyBlue))
         .keyboardShortcut(.return, modifiers: .command)
-        .disabled(!canExtract)
-        .help("Extract video sources from the URLs")
+        .disabled(!canRunPrimaryAction)
+        .help(isPasteAndExtractAction ? "Paste a URL from the clipboard and extract its video sources" : "Extract video sources from the URLs")
     }
 
     private var supportedPlatforms: some View {

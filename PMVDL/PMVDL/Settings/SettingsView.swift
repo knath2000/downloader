@@ -17,6 +17,7 @@ struct SettingsView: View {
     @AppStorage(AppPreferenceKeys.preventSleepWhileRunning) private var preventSleepWhileRunning = false
     @AppStorage(DownloadPaths.customDownloadDirectoryKey) private var customDownloadDirectory = ""
     @AppStorage("seedboxWebdavAllowSelfSigned") private var seedboxWebdavAllowSelfSigned = false
+    @AppStorage(AppPreferenceKeys.seedboxConcurrentTransferLimit) private var seedboxConcurrentTransferLimit = 5
 
     @StateObject private var license = LicenseManager.shared
     @StateObject private var dependencyStore = SettingsDependencyStore.shared
@@ -289,6 +290,12 @@ struct SettingsView: View {
                 .padding(.vertical, 8)
                 .background(Theme.accentDim.opacity(0.25), in: RoundedRectangle(cornerRadius: SettingsLayoutMetrics.controlCornerRadius))
             GlassTextField(label: "Remote path", placeholder: "/", text: $seedboxRemotePath, help: "Folder where completed files will be uploaded.")
+            Picker("Parallel transfers", selection: $seedboxConcurrentTransferLimit) {
+                ForEach(5...8, id: \.self) { limit in
+                    Text("\(limit) concurrent uploads").tag(limit)
+                }
+            }
+            .help("Higher values can improve total throughput, but may trigger seedbox throttling. Start at 5 and increase one step at a time.")
             Toggle("Allow this server's self-signed certificate", isOn: $seedboxWebdavAllowSelfSigned)
                 .toggleStyle(.switch)
                 .font(.caption.weight(.semibold))

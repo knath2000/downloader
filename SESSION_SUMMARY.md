@@ -1,4 +1,8 @@
-# Latest Session - 2026-07-12 Personal Pro License, Multi-Destination Transfers, and Menu Bar
+# Latest Session - 2026-07-14 Queue, Library, Feed, Home, and Reliability
+
+See `docs/SESSION_2026_07_14_QUEUE_LIBRARY_FEED_HOME_RELIABILITY.md` for queue transfer diagnostics, bounded transient retry recovery, WebDAV throughput improvements, Library organization and verification, the controlled-native Feed actions, faster Home extraction, validation, and the current Debug build path.
+
+# Previous Session - 2026-07-12 Personal Pro License, Multi-Destination Transfers, and Menu Bar
 
 See `docs/SESSION_2026_07_12_PERSONAL_LICENSE_TRANSFERS_MENU_BAR.md` for the local rotating Pro-code activation flow, Feed downloaded badges, concurrent Google Drive plus Seedbox transfers, persistent macOS menu-bar controls, version `2.2.4`, and validation.
 

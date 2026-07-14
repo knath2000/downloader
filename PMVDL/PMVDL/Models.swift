@@ -169,6 +169,8 @@ struct LibraryItem: Identifiable, Codable, Hashable {
     var uploaderURL: String?
     var sourceSiteName: String?
     var remotePaths: [String: String] // "mega": "/Cloud/...", "gdrive": "gdrive:VidDL/..."
+    var tags: [String]?
+    var collectionName: String?
 
     init(
         id: UUID = UUID(),
@@ -181,7 +183,9 @@ struct LibraryItem: Identifiable, Codable, Hashable {
         uploaderName: String? = nil,
         uploaderURL: String? = nil,
         sourceSiteName: String? = nil,
-        remotePaths: [String: String] = [:]
+        remotePaths: [String: String] = [:],
+        tags: [String]? = nil,
+        collectionName: String? = nil
     ) {
         self.id = id
         self.url = url
@@ -194,6 +198,8 @@ struct LibraryItem: Identifiable, Codable, Hashable {
         self.uploaderURL = uploaderURL
         self.sourceSiteName = sourceSiteName
         self.remotePaths = remotePaths
+        self.tags = tags
+        self.collectionName = collectionName
     }
 }
 
@@ -342,6 +348,20 @@ struct DownloadTransferMetrics: Codable, Equatable {
     var bytesPerSecond: Double?
 }
 
+struct DownloadActivityEvent: Identifiable, Codable, Equatable {
+    let id: UUID
+    let recordedAt: Date
+    let status: QueueStatus
+    let message: String
+
+    init(id: UUID = UUID(), recordedAt: Date = Date(), status: QueueStatus, message: String) {
+        self.id = id
+        self.recordedAt = recordedAt
+        self.status = status
+        self.message = message
+    }
+}
+
 struct DownloadQueueItem: Identifiable, Codable, Equatable {
     let id: UUID
     let url: String
@@ -367,6 +387,9 @@ struct DownloadQueueItem: Identifiable, Codable, Equatable {
     var supportsByteRange: Bool?
     var resumeStrategy: DownloadResumeStrategy?
     var itemKind: DownloadQueueItemKind?
+    var activity: [DownloadActivityEvent]?
+    var automaticRetryCount: Int?
+    var automaticRetryAfter: Date?
 
     init(
         id: UUID = UUID(),
@@ -396,6 +419,9 @@ struct DownloadQueueItem: Identifiable, Codable, Equatable {
         self.supportsByteRange = nil
         self.resumeStrategy = nil
         self.itemKind = nil
+        self.activity = [DownloadActivityEvent(status: .pending, message: "Ready to start")]
+        self.automaticRetryCount = 0
+        self.automaticRetryAfter = nil
     }
 
     var isPaused: Bool { status == .paused }

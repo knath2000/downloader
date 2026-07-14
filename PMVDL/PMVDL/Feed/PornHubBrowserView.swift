@@ -1202,18 +1202,19 @@ struct PornHubBrowserWebView: NSViewRepresentable {
             panel.isOpaque = false
             panel.level = NSWindow.Level.popUpMenu
             let accent = FeedSiteTheme.theme(for: browser?.site.host ?? PornHubFeedScraper.supportedHost).accent
+            var actions = [
+                AppContextMenuAction(isSelected(item) ? "Deselect" : "Select", systemImage: isSelected(item) ? "checkmark.circle.fill" : "circle", action: { [weak self] in self?.performToggleSelection(item) }),
+                AppContextMenuAction("Extract with VidDL", systemImage: "bolt.fill", action: { [weak self] in self?.performExtract(context) }),
+                AppContextMenuAction("Toggle Favorite", systemImage: "heart.fill", action: { [weak self] in self?.performToggleFavorite(context) })
+            ]
+            if DownloadedFeedIndex(items: VideoLibrary.shared.items).match(for: item) != nil {
+                actions.append(AppContextMenuAction("Open in Library", systemImage: "checkmark.circle.fill", action: { [weak self] in self?.performOpenLibrary(context) }))
+            }
             panel.contentView = NSHostingView(rootView: AppContextMenuView(
                 title: context.title,
                 subtitle: context.url.hostAndPathDisplay,
                 accent: accent,
-                actions: [
-                    AppContextMenuAction(isSelected(item) ? "Deselect" : "Select", systemImage: isSelected(item) ? "checkmark.circle.fill" : "circle", action: { [weak self] in self?.performToggleSelection(item) }),
-                    AppContextMenuAction("Extract with VidDL", systemImage: "bolt.fill", action: { [weak self] in self?.performExtract(context) }),
-                    AppContextMenuAction("Toggle Favorite", systemImage: "heart.fill", action: { [weak self] in self?.performToggleFavorite(context) }),
-                    AppContextMenuAction("Open in Library", systemImage: "checkmark.circle.fill", action: { [weak self] in self?.performOpenLibrary(context) }),
-                    AppContextMenuAction("Copy Link", systemImage: "doc.on.doc.fill", action: { [weak self] in self?.performCopy(context) }),
-                    AppContextMenuAction("Open Externally", systemImage: "safari.fill", action: { [weak self] in self?.performOpenExternally(context) })
-                ],
+                actions: actions,
                 dismiss: { [weak self] in self?.dismissContextMenu() }
             ))
             contextPanel = panel
@@ -1267,16 +1268,6 @@ struct PornHubBrowserWebView: NSViewRepresentable {
                 AppStateManager.shared.pendingLibraryItemID = match.libraryID
                 AppStateManager.shared.select(.library)
             }
-        }
-
-        private func performCopy(_ context: (url: URL, title: String)) {
-            dismissContextMenu()
-            ClipboardManager.copy(context.url.absoluteString)
-        }
-
-        private func performOpenExternally(_ context: (url: URL, title: String)) {
-            dismissContextMenu()
-            NSWorkspace.shared.open(context.url)
         }
 
         private func performToggleSelection(_ item: FeedItem) {
