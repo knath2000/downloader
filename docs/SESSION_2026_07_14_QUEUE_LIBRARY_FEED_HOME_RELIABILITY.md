@@ -29,6 +29,7 @@
 - An empty Home command panel now offers **Paste & Extract**, which pulls a clipboard URL and starts extraction in one action.
 - When URLs are already entered, the action remains **Extract**.
 - Successful extraction now leads users to **Review Downloads**, while destination choices remain in the existing extraction modal.
+- Multi-URL extraction is capped at three concurrent sources. The extractor completes URLs 1-3 before starting 4-6, and reports the active batch plus the completed total without changing result order or per-row error handling.
 
 ### Reliability hardening
 
@@ -52,3 +53,14 @@
 The resulting Debug app is at `/tmp/viddl-reliability-0714/Build/Products/Debug/VidDL.app`.
 
 The broad XCTest run remains outside this session's validation baseline because the existing ProfileNarrativeFormatter test-source issue prevents the test target from compiling.
+
+## Version and local package
+
+- `PMVDL/PMVDL/Info.plist` now targets version `2.2.7`, build `5`.
+- The unsigned local package was built from the fresh Debug bundle and verified with `hdiutil verify`:
+
+  ```text
+  VidDL-2.2.7-build5-unsigned.dmg
+  ```
+
+- The current extraction-batching Debug bundle is `/tmp/viddl-extraction-batches-0714/Build/Products/Debug/VidDL.app`.

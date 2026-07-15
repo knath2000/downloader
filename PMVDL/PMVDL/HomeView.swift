@@ -20,6 +20,17 @@ enum ExtractionRetrySupport {
     }
 }
 
+enum ExtractionBatchPolicy {
+    static let maximumConcurrentExtractions = 3
+
+    static func ranges(forCount count: Int) -> [Range<Int>] {
+        guard count > 0 else { return [] }
+        return stride(from: 0, to: count, by: maximumConcurrentExtractions).map {
+            $0..<min($0 + maximumConcurrentExtractions, count)
+        }
+    }
+}
+
 struct ExtractionSlot: Identifiable, Equatable {
     let id: UUID
     let url: String
@@ -796,38 +807,48 @@ struct HomeView: View {
         tracker.clear(except: Set(tracker.megaUploads.keys)
             .union(tracker.gdriveUploads.keys)
             .union(tracker.seedboxUploads.keys))
-        loadProgress = "Extracting \(urls.count) URL(s)…"
+        let batchRanges = ExtractionBatchPolicy.ranges(forCount: urls.count)
+        loadProgress = "Extracting batch 1 of \(batchRanges.count)…"
 
         Task {
             var completed = 0
             var successCount = 0
             let slots = extractionSlots
 
-            await withTaskGroup(of: (UUID, ExtractResult).self) { group in
-                for (i, url) in urls.enumerated() {
-                    let slotID = slots[i].id
-                    group.addTask {
-                        var src: VideoSource?; var err: String?
-                        do { src = try await ScraperEngine.extract(from: url) }
-                        catch { err = error.localizedDescription }
-                        return (slotID, ExtractResult(url: url, source: src, error: err))
-                    }
+            for (batchIndex, range) in batchRanges.enumerated() {
+                await MainActor.run {
+                    guard extractionGeneration == generation else { return }
+                    loadProgress = "Extracting batch \(batchIndex + 1) of \(batchRanges.count)… \(completed)/\(urls.count)"
                 }
-                for await (slotID, res) in group {
-                    completed += 1
-                    await MainActor.run {
-                        guard extractionGeneration == generation else { return }
-                        if res.source == nil {
-                            recordExtractionFailure(res)
-                            extractionSlots = ExtractionSlotSupport.replacingSlot(id: slotID, in: extractionSlots, with: res)
-                        } else {
-                            extractionSlots = ExtractionSlotSupport.replacingSlot(id: slotID, in: extractionSlots, with: res)
+
+                await withTaskGroup(of: (UUID, ExtractResult).self) { group in
+                    for i in range {
+                        let url = urls[i]
+                        let slotID = slots[i].id
+                        group.addTask {
+                            var src: VideoSource?; var err: String?
+                            do { src = try await ScraperEngine.extract(from: url) }
+                            catch { err = error.localizedDescription }
+                            return (slotID, ExtractResult(url: url, source: src, error: err))
                         }
-                        results = ExtractionSlotSupport.completedResults(in: extractionSlots)
-                        loadProgress = "Extracting… \(completed)/\(urls.count)"
-                        if res.source != nil {
-                            successCount += 1
-                            persistSuccessfulExtraction(res, feedThumbnailURL: feedThumbnailURL)
+                    }
+
+                    for await (slotID, res) in group {
+                        completed += 1
+                        await MainActor.run {
+                            guard extractionGeneration == generation else { return }
+                            if res.source == nil {
+                                recordExtractionFailure(res)
+                                extractionSlots = ExtractionSlotSupport.replacingSlot(id: slotID, in: extractionSlots, with: res)
+                            } else {
+                                extractionSlots = ExtractionSlotSupport.replacingSlot(id: slotID, in: extractionSlots, with: res)
+                            }
+                            results = ExtractionSlotSupport.completedResults(in: extractionSlots)
+                            loadProgress = "Extracting batch \(batchIndex + 1) of \(batchRanges.count)… \(completed)/\(urls.count)"
+                            if res.source != nil {
+                                successCount += 1
+                                persistSuccessfulExtraction(res, feedThumbnailURL: feedThumbnailURL)
+                            }
                         }
                     }
                 }

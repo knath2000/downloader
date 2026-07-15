@@ -89,6 +89,13 @@ final class VideoResultPresentationTests: XCTestCase {
         XCTAssertEqual(updated[2], results[2])
     }
 
+    func testExtractionBatchPolicyGroupsURLsInThrees() {
+        XCTAssertEqual(ExtractionBatchPolicy.maximumConcurrentExtractions, 3)
+        XCTAssertEqual(ExtractionBatchPolicy.ranges(forCount: 8), [0..<3, 3..<6, 6..<8])
+        XCTAssertEqual(ExtractionBatchPolicy.ranges(forCount: 3), [0..<3])
+        XCTAssertTrue(ExtractionBatchPolicy.ranges(forCount: 0).isEmpty)
+    }
+
     func testExtractionSlotsStartOnePendingRowPerURL() {
         let slots = ExtractionSlotSupport.startingSlots(for: [
             "https://example.test/one",
