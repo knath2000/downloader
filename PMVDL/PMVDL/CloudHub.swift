@@ -56,7 +56,7 @@ private enum CloudHubError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .multiCloudRequiresPro:
-            return "Multi-cloud upload requires VidDL Pro."
+            return "Multi-cloud upload requires LustreStudio Pro."
         }
     }
 }

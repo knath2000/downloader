@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct VidDLApp: App {
+struct LustreStudioApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var appState = AppStateManager.shared
 
@@ -26,7 +26,7 @@ struct VidDLApp: App {
                 Button("Extract New") { appState.select(.home) }.keyboardShortcut("N", modifiers: .command)
             }
             CommandGroup(replacing: .appInfo) {
-                Button("About VidDL") { showAboutWindow() }
+                Button("About LustreStudio") { showAboutWindow() }
             }
         }
 
@@ -144,7 +144,7 @@ struct DownloadMenuBarIcon: View {
 
     var body: some View {
         Image(systemName: isActive ? "arrow.down.circle.fill" : "arrow.down.circle")
-            .accessibilityLabel(isActive ? "VidDL downloads active" : "VidDL")
+            .accessibilityLabel(isActive ? "LustreStudio downloads active" : "LustreStudio")
     }
 }
 
@@ -218,19 +218,19 @@ struct DownloadMenuBarView: View {
 
         Divider()
 
-        Button("Open VidDL", action: openApp)
+        Button("Open LustreStudio", action: openApp)
         Button("Open Downloads", action: openDownloads)
 
         Divider()
 
-        Button("Quit VidDL") {
+        Button("Quit LustreStudio") {
             NSApp.terminate(nil)
         }
         .keyboardShortcut("q", modifiers: .command)
     }
 
     private var summaryTitle: String {
-        guard !activeItems.isEmpty else { return "VidDL" }
+        guard !activeItems.isEmpty else { return "LustreStudio" }
         return "\(activeItems.count) Active Transfer\(activeItems.count == 1 ? "" : "s")"
     }
 

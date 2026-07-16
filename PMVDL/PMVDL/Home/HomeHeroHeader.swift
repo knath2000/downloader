@@ -17,7 +17,7 @@ struct HomeHeroHeader: View {
                 .shadow(color: Theme.skyBlue.opacity(0.18), radius: 8, y: 4)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text("VidDL")
+                Text("LustreStudio")
                     .font(.system(.title2, design: .rounded).weight(.black))
                     .foregroundStyle(Theme.textPrimary)
 

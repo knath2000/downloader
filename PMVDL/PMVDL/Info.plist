@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>VidDL</string>
+	<string>LustreStudio</string>
 	<key>CFBundleIdentifier</key>
 	<string>com.pmvdl.app</string>
 	<key>CFBundleVersion</key>
@@ -13,7 +13,7 @@
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
 	<key>NSUserNotificationUsageDescription</key>
-	<string>VidDL uses notifications to inform you about download and upload status</string>
+	<string>LustreStudio uses notifications to inform you about download and upload status</string>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>

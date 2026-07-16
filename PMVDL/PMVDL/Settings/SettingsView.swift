@@ -146,7 +146,7 @@ struct SettingsView: View {
         case .pro:
             return ProFeatureGate.isPro ? "Activated for \(license.activationEmail.isEmpty ? "this Mac" : license.activationEmail)" : "\(license.freeDownloadsRemaining) free downloads remaining"
         case .about:
-            return "VidDL \(currentVersion)"
+            return "LustreStudio \(currentVersion)"
         }
     }
 
@@ -204,7 +204,7 @@ struct SettingsView: View {
     private func browseForDownloadLocation() {
         let panel = NSOpenPanel()
         panel.title = "Choose Download Location"
-        panel.message = "Choose where VidDL should save local downloads."
+        panel.message = "Choose where LustreStudio should save local downloads."
         panel.prompt = "Choose"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -300,7 +300,7 @@ struct SettingsView: View {
                 .toggleStyle(.switch)
                 .font(.caption.weight(.semibold))
             if seedboxWebdavAllowSelfSigned {
-                SettingsInlineAlert(text: "Only enable this for a server you control. VidDL will trust an unverified certificate only for this WebDAV host.", tint: Theme.warning)
+                SettingsInlineAlert(text: "Only enable this for a server you control. LustreStudio will trust an unverified certificate only for this WebDAV host.", tint: Theme.warning)
             }
 
             HStack(spacing: 8) {
@@ -334,7 +334,7 @@ struct SettingsView: View {
 
     private var sftpSetupFields: some View {
         VStack(alignment: .leading, spacing: 10) {
-            GlassTextField(label: "rclone remote name", placeholder: "seedbox", text: $seedboxRemoteName, help: "The local rclone name used by VidDL.")
+            GlassTextField(label: "rclone remote name", placeholder: "seedbox", text: $seedboxRemoteName, help: "The local rclone name used by LustreStudio.")
             HStack(spacing: 8) {
                 GlassTextField(label: "Host", placeholder: "sftp.example.com", text: $seedboxSFTPHost, help: "Seedbox hostname or IP.")
                 GlassTextField(label: "Port", placeholder: "22", text: $seedboxSFTPPort, help: "SSH/SFTP port, usually 22.")
@@ -597,7 +597,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
                 SettingsCardTitle(
                     title: "Notifications",
-                    subtitle: "Choose which VidDL events should notify you.",
+                    subtitle: "Choose which LustreStudio events should notify you.",
                     systemImage: "bell.badge.fill",
                     tint: Theme.amber
                 )
@@ -726,7 +726,7 @@ struct SettingsView: View {
                             }
 
                             HStack(spacing: 8) {
-                                Text(DownloadPaths.hasCustomDownloadDir ? "Custom folder selected." : "Using the default VidDL folder.")
+                                Text(DownloadPaths.hasCustomDownloadDir ? "Custom folder selected." : "Using the default downloads folder.")
                                     .font(.caption2)
                                     .foregroundStyle(Theme.textSecondary)
 
@@ -752,7 +752,7 @@ struct SettingsView: View {
                             Text("Required CLI Tools")
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(Theme.textPrimary)
-                            Text("VidDL uses these helpers for broad extraction, HLS, audio, and verification.")
+                            Text("LustreStudio uses these helpers for broad extraction, HLS, audio, and verification.")
                                 .font(.caption2)
                                 .foregroundStyle(Theme.textSecondary)
                         }
@@ -794,7 +794,7 @@ struct SettingsView: View {
         SettingsCard(tint: Theme.success) {
             VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
                 SettingsCardTitle(
-                    title: "VidDL Pro",
+                    title: "LustreStudio Pro",
                     subtitle: "Activated for this Mac with a personal license",
                     systemImage: "crown.fill",
                     tint: Theme.success,
@@ -827,14 +827,14 @@ struct SettingsView: View {
         SettingsCard(tint: Theme.coral) {
             VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
                 SettingsCardTitle(
-                    title: "Activate VidDL Pro",
+                    title: "Activate LustreStudio Pro",
                     subtitle: "Use your personal recovery code for offline activation.",
                     systemImage: "crown.fill",
                     tint: Theme.coral
                 )
 
                 HStack(spacing: 9) {
-                    Text("Personal VidDL Pro")
+                    Text("Personal LustreStudio Pro")
                         .font(.subheadline.weight(.black))
                         .foregroundStyle(Theme.textPrimary)
                     Text("Offline activation")
@@ -960,7 +960,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: SettingsLayoutMetrics.rowSpacing) {
                 SettingsCardTitle(
                     title: "Info",
-                    subtitle: "Version and about VidDL.",
+                    subtitle: "Version and about LustreStudio.",
                     systemImage: "info.circle.fill",
                     tint: Theme.skyBlue
                 )
@@ -976,7 +976,7 @@ struct SettingsView: View {
 
                 HStack {
                     Spacer()
-                    Button("About VidDL") {
+                    Button("About LustreStudio") {
                         showAboutWindow()
                     }
                     .buttonStyle(.bordered)

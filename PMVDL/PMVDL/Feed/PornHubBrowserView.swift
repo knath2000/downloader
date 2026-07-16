@@ -944,7 +944,7 @@ struct PornHubBrowserWebView: NSViewRepresentable {
           const badge = document.createElement("span");
           badge.className = "viddl-downloaded-badge";
           badge.textContent = "✓";
-          badge.title = "Already downloaded in VidDL";
+          badge.title = "Already downloaded in LustreStudio";
           card.appendChild(badge);
         });
         observer?.observe(document.body, { childList: true, subtree: true });
@@ -1204,7 +1204,7 @@ struct PornHubBrowserWebView: NSViewRepresentable {
             let accent = FeedSiteTheme.theme(for: browser?.site.host ?? PornHubFeedScraper.supportedHost).accent
             var actions = [
                 AppContextMenuAction(isSelected(item) ? "Deselect" : "Select", systemImage: isSelected(item) ? "checkmark.circle.fill" : "circle", action: { [weak self] in self?.performToggleSelection(item) }),
-                AppContextMenuAction("Extract with VidDL", systemImage: "bolt.fill", action: { [weak self] in self?.performExtract(context) }),
+                AppContextMenuAction("Extract with LustreStudio", systemImage: "bolt.fill", action: { [weak self] in self?.performExtract(context) }),
                 AppContextMenuAction("Toggle Favorite", systemImage: "heart.fill", action: { [weak self] in self?.performToggleFavorite(context) })
             ]
             if DownloadedFeedIndex(items: VideoLibrary.shared.items).match(for: item) != nil {

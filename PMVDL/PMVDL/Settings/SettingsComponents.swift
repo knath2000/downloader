@@ -28,7 +28,7 @@ enum SettingsPanel: String, CaseIterable, Identifiable {
         case .cloud: return "Cloud Destination"
         case .notifications: return "Notifications"
         case .downloads: return "Downloads & Helpers"
-        case .pro: return "VidDL Pro"
+        case .pro: return "LustreStudio Pro"
         case .about: return "About"
         }
     }
@@ -46,9 +46,9 @@ enum SettingsPanel: String, CaseIterable, Identifiable {
     var modalSubtitle: String {
         switch self {
         case .cloud: return "Configure Google Drive plus WebDAV HTTPS or SFTP seedbox uploads used after downloads finish."
-        case .notifications: return "Choose which VidDL events can notify you."
+        case .notifications: return "Choose which LustreStudio events can notify you."
         case .downloads: return "Fine-tune downloads, subtitles, sleep prevention, and helper tools."
-        case .pro: return "Manage your VidDL Pro purchase and activation."
+        case .pro: return "Manage your LustreStudio Pro purchase and activation."
         case .about: return "Check the installed version and open the system About panel."
         }
     }

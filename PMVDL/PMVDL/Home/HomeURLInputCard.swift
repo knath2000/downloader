@@ -259,28 +259,12 @@ struct HomeStitchCommandPanel<CompletedContent: View, ResultsContent: View>: Vie
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center, spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Theme.skyBlue.opacity(0.16))
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 22, weight: .heavy))
-                        .foregroundStyle(Theme.skyBlue)
-                }
-                .frame(width: 54, height: 54)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Quick Extract")
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text("Paste one link or a batch, then choose where each video goes.")
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.textSecondary)
-                }
-
-                Spacer(minLength: 12)
-            }
+        VStack(spacing: 12) {
+            Image("LustreStudioLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 340, height: 98)
+                .accessibilityLabel("LustreStudio")
 
             HStack(spacing: 8) {
                 MobilePill(
@@ -292,9 +276,9 @@ struct HomeStitchCommandPanel<CompletedContent: View, ResultsContent: View>: Vie
                 if isPro {
                     MobilePill(label: "Pro", systemImage: "crown.fill", tint: Theme.gold)
                 }
-                Spacer(minLength: 0)
             }
         }
+        .frame(maxWidth: .infinity)
     }
 
     private var editorBlock: some View {

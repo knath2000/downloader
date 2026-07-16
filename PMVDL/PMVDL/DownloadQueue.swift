@@ -79,7 +79,7 @@ final class SleepPreventionManager {
                 .automaticTerminationDisabled,
                 .suddenTerminationDisabled
             ],
-            reason: "VidDL downloads are running"
+            reason: "LustreStudio downloads are running"
         )
     }
 

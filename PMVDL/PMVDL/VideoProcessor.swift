@@ -489,9 +489,9 @@ enum ProFeatureError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .audioRequiresPro: return "Audio-only downloads require VidDL Pro."
-        case .subtitlesRequirePro: return "Subtitle downloads require VidDL Pro."
-        case .videoProcessingRequiresPro: return "This tool requires VidDL Pro."
+        case .audioRequiresPro: return "Audio-only downloads require LustreStudio Pro."
+        case .subtitlesRequirePro: return "Subtitle downloads require LustreStudio Pro."
+        case .videoProcessingRequiresPro: return "This tool requires LustreStudio Pro."
         case .localFileRequired: return "Download this item locally before using this tool."
         }
     }

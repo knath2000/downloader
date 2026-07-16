@@ -273,7 +273,7 @@
 	A20083 /* YtDlpRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YtDlpRunner.swift; sourceTree = "<group>"; };
 	A20084 /* HLSDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HLSDownloader.swift; sourceTree = "<group>"; };
 	A20085 /* EncryptedHLSDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncryptedHLSDecoder.swift; sourceTree = "<group>"; };
-	A30001 /* VidDL.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VidDL.app; sourceTree = BUILT_PRODUCTS_DIR; };
+	A30001 /* LustreStudio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LustreStudio.app; sourceTree = BUILT_PRODUCTS_DIR; };
 	T20001 /* SubprocessRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubprocessRunnerTests.swift; sourceTree = "<group>"; };
 	T20002 /* DownloadResolutionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadResolutionTests.swift; sourceTree = "<group>"; };
 	T20003 /* DownloadQueueProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadQueueProjectionTests.swift; sourceTree = "<group>"; };
@@ -522,7 +522,7 @@
 	A50003 /* Products */ = {
 		isa = PBXGroup;
 		children = (
-			A30001 /* VidDL.app */,
+			A30001 /* LustreStudio.app */,
 			T30001 /* VidDLTests.xctest */,
 		);
 		name = Products;
@@ -609,8 +609,8 @@
 		name = PMVDL;
 		packageProductDependencies = (
 		);
-		productName = VidDL;
-		productReference = A30001 /* VidDL.app */;
+		productName = LustreStudio;
+		productReference = A30001 /* LustreStudio.app */;
 		productType = "com.apple.product-type.application";
 	};
 	T60001 /* VidDLTests */ = {
@@ -887,7 +887,7 @@
 			ENABLE_TESTABILITY = YES;
 			GCC_OPTIMIZATION_LEVEL = 0;
 			INFOPLIST_FILE = PMVDL/Info.plist;
-			PRODUCT_NAME = VidDL;
+			PRODUCT_NAME = LustreStudio;
 			INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 			LD_RUNPATH_SEARCH_PATHS = (
 				"$(inherited)",
@@ -912,7 +912,7 @@
 			DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 			ENABLE_HARDENED_RUNTIME = YES;
 			INFOPLIST_FILE = PMVDL/Info.plist;
-			PRODUCT_NAME = VidDL;
+			PRODUCT_NAME = LustreStudio;
 			INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 			LD_RUNPATH_SEARCH_PATHS = (
 				"$(inherited)",
@@ -976,7 +976,7 @@
 			SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG";
 			SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			SWIFT_VERSION = 5.0;
-			TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VidDL.app/Contents/MacOS/VidDL";
+			TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LustreStudio.app/Contents/MacOS/LustreStudio";
 		};
 		name = Debug;
 	};
@@ -995,7 +995,7 @@
 			SWIFT_COMPILATION_MODE = wholemodule;
 			SWIFT_OPTIMIZATION_LEVEL = "-O";
 			SWIFT_VERSION = 5.0;
-			TEST_HOST = "$(BUILT_PRODUCTS_DIR)/VidDL.app/Contents/MacOS/VidDL";
+			TEST_HOST = "$(BUILT_PRODUCTS_DIR)/LustreStudio.app/Contents/MacOS/LustreStudio";
 		};
 		name = Release;
 	};

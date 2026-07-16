@@ -305,7 +305,7 @@ final class RcloneRemoteSetupViewModel: ObservableObject {
                     self.progressMessage = "Remote server \(name) is ready. Choose an upload folder."
                     onConfigured(name, "/")
                 } else {
-                    self.phase = .failed("rclone saved \(name), but VidDL could not list the server root. Check the user permissions or choose a user with SFTP directory access.")
+                    self.phase = .failed("rclone saved \(name), but LustreStudio could not list the server root. Check the user permissions or choose a user with SFTP directory access.")
                     self.progressMessage = "Verification failed."
                 }
             } catch is CancellationError {
@@ -433,7 +433,7 @@ final class RcloneRemoteSetupViewModel: ObservableObject {
                     self.progressMessage = "Google Drive remote \(name) is ready."
                     onConfigured(name)
                 } else {
-                    self.phase = .failed("rclone finished setup, but VidDL could not verify \(name).")
+                    self.phase = .failed("rclone finished setup, but LustreStudio could not verify \(name).")
                     self.progressMessage = "Verification failed."
                 }
             } catch is CancellationError {

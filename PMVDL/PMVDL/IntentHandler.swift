@@ -95,7 +95,7 @@ enum IntentError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noMp4Found: return "No MP4 video found on page."
-        case .proRequired: return "VidDL Pro is required after \(LicenseManager.freeDownloadLimit) free downloads."
+        case .proRequired: return "LustreStudio Pro is required after \(LicenseManager.freeDownloadLimit) free downloads."
         }
     }
 }

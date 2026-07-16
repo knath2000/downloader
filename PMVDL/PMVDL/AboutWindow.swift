@@ -25,7 +25,7 @@ final class AboutWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "About VidDL"
+        window.title = "About LustreStudio"
         window.contentView = NSHostingView(rootView: contentView)
         window.center()
         window.isReleasedWhenClosed = false
@@ -51,7 +51,7 @@ struct AboutView: View {
                 .frame(width: 64, height: 64)
                 .padding(.top, 16)
 
-            Text("VidDL").font(.title.bold())
+            Text("LustreStudio").font(.title.bold())
             Text("Version \(version) (\(build))")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -95,7 +95,7 @@ struct AboutView: View {
 
             Spacer()
 
-            Text("VidDL sends a per-Mac hardware identifier to enforce the free download limit and Pro license redemption.")
+            Text("LustreStudio sends a per-Mac hardware identifier to enforce the free download limit and Pro license redemption.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

@@ -40,7 +40,7 @@ struct UpgradeOverlay: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
 
-                Text("VidDL Pro — $0.99 one-time")
+                Text("LustreStudio Pro — $0.99 one-time")
                     .font(.caption2).foregroundStyle(Theme.textSecondary.opacity(0.6))
 
                 Button("Not now", action: onDismiss)
