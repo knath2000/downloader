@@ -153,6 +153,10 @@ final class MixDropExtractorTests: XCTestCase {
 }
 
 final class DoodStreamExtractorTests: XCTestCase {
+    func testSupportsVide0DoodAlias() {
+        XCTAssertTrue(DoodStreamExtractor.supports(URL(string: "https://vide0.net/e/hxptj42uoxb0")!))
+    }
+
     func testPlaymogoPassMd5BuildsCloudAtaDirectUrl() async throws {
         let pageURL = URL(string: "https://playmogo.com/e/ta6jhp0sh9jd")!
 
@@ -850,6 +854,26 @@ final class ProviderLinkExtractorResolutionTests: XCTestCase {
             "https://miiixdrop.net/e/4dvjklq6u3w8md",
             "https://doodstream.com/e/bzcfvq3l93ze"
         ])
+    }
+
+    func testAllPornStreamDoodProviderResolvesUnknownAlias() async throws {
+        let candidates = [
+            ProviderLinkExtractor.ProviderCandidateForTesting(
+                providerName: "DOODSTREAM",
+                url: "https://rotating-dood-provider.example/e/hxptj42uoxb0"
+            )
+        ]
+
+        let qualities = await ProviderLinkExtractor.resolveProviderCandidatesForTesting(candidates, resolver: { url in
+            XCTAssertEqual(url, "https://rotating-dood-provider.example/e/hxptj42uoxb0")
+            return VideoSource(
+                mp4: "https://dood.video/e2/stream?token=test&expiry=999",
+                siteName: "DoodStream"
+            )
+        })
+
+        XCTAssertEqual(qualities.map(\.label), ["DOODSTREAM · Video"])
+        XCTAssertEqual(qualities.first?.url, "https://dood.video/e2/stream?token=test&expiry=999")
     }
 
     func testAllPornStreamResolutionFlattensProviderSources() async throws {

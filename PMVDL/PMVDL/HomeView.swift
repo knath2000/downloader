@@ -89,6 +89,7 @@ struct HomeView: View {
     @ObservedObject var appState: AppStateManager
     @ObservedObject private var tracker = ActiveWorkTracker.shared
     @ObservedObject private var downloadQueue = DownloadQueue.shared
+    @ObservedObject private var verificationCoordinator = ExtractionVerificationCoordinator.shared
     @State private var urlText: String = ""
     @State private var results: [ExtractResult] = []
     @State private var extractionSlots: [ExtractionSlot] = []
@@ -338,6 +339,24 @@ struct HomeView: View {
                     )
                 }
                 .zIndex(23)
+            }
+
+            if let request = verificationCoordinator.request {
+                AppModalOverlay(dismiss: {
+                    verificationCoordinator.finishVerification()
+                }) {
+                    ExtractionVerificationPane(
+                        request: request,
+                        onCompleted: {
+                            verificationCoordinator.finishVerification()
+                            retryFailedResults()
+                        },
+                        onCancel: {
+                            verificationCoordinator.finishVerification()
+                        }
+                    )
+                }
+                .zIndex(30)
             }
         }
         .onAppear {

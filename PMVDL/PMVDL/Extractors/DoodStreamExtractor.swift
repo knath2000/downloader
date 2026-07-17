@@ -1,6 +1,6 @@
 import Foundation
 
-/// Extracts video sources from doodstream.com / dood.wf / doodstream.org.
+/// Extracts video sources from DoodStream and its rotating provider domains.
 /// DoodStream exposes a direct MP4 URL via a JavaScript player on the page.
 /// The video URL can be found via a p.a.c.k.e.r unpack or by direct JS config patterns.
 struct DoodStreamExtractor: VideoSiteExtractor {
@@ -15,11 +15,11 @@ struct DoodStreamExtractor: VideoSiteExtractor {
     guard let host = url.host()?.lowercased() else { return false }
     return host == "doodstream.com" || host == "doodstream.org" || host == "dood.wf" || host == "dood.pm"
       || host == "dood.to" || host == "dood.ws" || host == "dood.one" || host == "dood.watch" || host == "dood.la"
-      || host == "dood.sh" || host == "playmogo.com"
+      || host == "dood.sh" || host == "vide0.net" || host == "playmogo.com"
       || host.hasSuffix(".doodstream.com") || host.hasSuffix(".doodstream.org") || host.hasSuffix(".dood.wf")
       || host.hasSuffix(".dood.pm") || host.hasSuffix(".dood.to") || host.hasSuffix(".dood.ws")
       || host.hasSuffix(".dood.one") || host.hasSuffix(".dood.watch") || host.hasSuffix(".dood.la")
-      || host.hasSuffix(".dood.sh") || isPlaymogoHost(host)
+      || host.hasSuffix(".dood.sh") || host.hasSuffix(".vide0.net") || isPlaymogoHost(host)
   }
 
   static func extract(fromHTML html: String, url: URL) async throws -> VideoSource {
@@ -49,16 +49,26 @@ struct DoodStreamExtractor: VideoSiteExtractor {
         targetUrl = newUrl
       }
     }
-    let startsAsPlaymogo = isPlaymogoHost(targetUrl.host()?.lowercased() ?? "")
-
+    if let alternateURL = alternatePlaymogoURL(for: targetUrl) {
+      targetUrl = alternateURL
+    }
     let fetched: PageFetchResult
     if html.isEmpty {
       do {
         fetched = try await fetchPageResult(url: targetUrl)
       } catch {
-        guard startsAsPlaymogo else { throw error }
-        Log.extractionDood.error("Playmogo static page fetch failed: \(error.localizedDescription, privacy: .public)")
-        fetched = PageFetchResult(html: "", finalURL: targetUrl)
+        if let alternateURL = alternatePlaymogoURL(for: targetUrl) {
+          do {
+            Log.extractionDood.notice("Provider page fetch failed; trying Playmogo mirror: \(alternateURL.absoluteString, privacy: .public)")
+            fetched = try await fetchPageResult(url: alternateURL)
+          } catch {
+            Log.extractionDood.error("Static provider page fetch failed; falling back to WebView: \(error.localizedDescription, privacy: .public)")
+            fetched = PageFetchResult(html: "", finalURL: targetUrl)
+          }
+        } else {
+          Log.extractionDood.error("Static provider page fetch failed; falling back to WebView: \(error.localizedDescription, privacy: .public)")
+          fetched = PageFetchResult(html: "", finalURL: targetUrl)
+        }
       }
     } else {
       fetched = PageFetchResult(html: html, finalURL: resolvedPageURL ?? targetUrl)
@@ -96,6 +106,9 @@ struct DoodStreamExtractor: VideoSiteExtractor {
           }
         } catch {
           Log.extractionDood.error("WebView extraction failed: \(error.localizedDescription, privacy: .public)")
+          Task { @MainActor in
+            ExtractionVerificationCoordinator.shared.requestVerification(for: targetUrl)
+          }
           finalVideoUrl = nil
         }
       }
@@ -120,7 +133,14 @@ struct DoodStreamExtractor: VideoSiteExtractor {
 
       if finalVideoUrl == nil {
         Log.extractionDood.debug("Static extraction failed. Falling back to WebViewExtractor...")
-        finalVideoUrl = try? await WebViewExtractor.shared.extractVideoUrl(from: targetUrl, timeout: 25)
+        do {
+          finalVideoUrl = try await WebViewExtractor.shared.extractVideoUrl(from: targetUrl, timeout: 25)
+        } catch {
+          Task { @MainActor in
+            ExtractionVerificationCoordinator.shared.requestVerification(for: targetUrl)
+          }
+          finalVideoUrl = nil
+        }
       }
     }
 
@@ -244,6 +264,14 @@ struct DoodStreamExtractor: VideoSiteExtractor {
     host.hasSuffix(".playmogo.com") || host.hasSuffix(".ds2play.com")
   }
 
+  private static func alternatePlaymogoURL(for url: URL) -> URL? {
+    guard url.host?.lowercased() == "vide0.net" else { return nil }
+    var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+    components?.scheme = "https"
+    components?.host = "playmogo.com"
+    return components?.url
+  }
+
   private static func findPlaymogoVideoUrl(
     in html: String,
     pageURL: URL,
@@ -292,9 +320,9 @@ struct DoodStreamExtractor: VideoSiteExtractor {
   private static func extractPlaymogoTokenPrefix(from html: String) -> String? {
     let text = normalizedHTML(html)
     let patterns = [
-      #"return\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\+\s*['"]([^'"]+\?token=[^'"]+&expiry=)['"]\s*\+\s*(?:Date\s*\.\s*now\s*\(\s*\)|(?:new\s+Date\s*\(\s*\)|\(new\s+Date\s*\))\s*\.\s*getTime\s*\(\s*\))"#,
-      #"[A-Za-z_$][A-Za-z0-9_$]*\s*\+\s*['"]([^'"]+\?token=[^'"]+&expiry=)['"]\s*\+\s*(?:Date\s*\.\s*now\s*\(\s*\)|(?:new\s+Date\s*\(\s*\)|\(new\s+Date\s*\))\s*\.\s*getTime\s*\(\s*\))"#,
-      #"['"]([^'"]+\?token=[^'"]+&expiry=)['"]\s*\+\s*(?:Date\s*\.\s*now\s*\(\s*\)|(?:new\s+Date\s*\(\s*\)|\(new\s+Date\s*\))\s*\.\s*getTime\s*\(\s*\))"#
+      #"return\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\+\s*['"]([^'"]*\?token=[^'"]+&expiry=)['"]\s*\+\s*(?:Date\s*\.\s*now\s*\(\s*\)|(?:new\s+Date\s*\(\s*\)|\(new\s+Date\s*\))\s*\.\s*getTime\s*\(\s*\))"#,
+      #"[A-Za-z_$][A-Za-z0-9_$]*\s*\+\s*['"]([^'"]*\?token=[^'"]+&expiry=)['"]\s*\+\s*(?:Date\s*\.\s*now\s*\(\s*\)|(?:new\s+Date\s*\(\s*\)|\(new\s+Date\s*\))\s*\.\s*getTime\s*\(\s*\))"#,
+      #"['"]([^'"]*\?token=[^'"]+&expiry=)['"]\s*\+\s*(?:Date\s*\.\s*now\s*\(\s*\)|(?:new\s+Date\s*\(\s*\)|\(new\s+Date\s*\))\s*\.\s*getTime\s*\(\s*\))"#
     ]
     for pattern in patterns {
       if let token = extractJsStringValue(pattern: pattern, in: text) {

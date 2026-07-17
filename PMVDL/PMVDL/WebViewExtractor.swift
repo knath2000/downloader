@@ -1,5 +1,30 @@
 import WebKit
 import Foundation
+import SwiftUI
+import AppKit
+
+@MainActor
+final class ExtractionVerificationCoordinator: ObservableObject {
+    struct Request: Identifiable {
+        let id = UUID()
+        let url: URL
+    }
+
+    static let shared = ExtractionVerificationCoordinator()
+
+    @Published private(set) var request: Request?
+
+    private init() {}
+
+    func requestVerification(for url: URL) {
+        guard request?.url != url else { return }
+        request = Request(url: url)
+    }
+
+    func finishVerification() {
+        request = nil
+    }
+}
 
 @MainActor
 class WebViewExtractor {
@@ -50,8 +75,6 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
 
             self.webView = WKWebView(frame: .zero, configuration: configuration)
             self.webView?.navigationDelegate = self
-
-            self.webView?.customUserAgent = NetworkConstants.webViewUserAgent
 
             let request = URLRequest(url: url)
             self.webView?.load(request)
@@ -677,6 +700,104 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
             window.addEventListener("load", function() { scanDocument("load"); scanPlayers(); });
         })();
         """
+    }
+}
+
+struct ExtractionVerificationPane: View {
+    let request: ExtractionVerificationCoordinator.Request
+    let onCompleted: () -> Void
+    let onCancel: () -> Void
+    @State private var reloadToken = UUID()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Label("Verification required", systemImage: "checkmark.shield")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .buttonStyle(.bordered)
+            }
+
+            Text("This provider may block embedded browsers. Complete verification below if it loads, or open the same page in your normal browser and then return here.")
+                .font(.callout)
+                .foregroundStyle(Theme.textSecondary)
+
+            ExtractionVerificationWebView(url: request.url)
+                .id(reloadToken)
+                .frame(minWidth: 620, minHeight: 460)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Theme.borderSubtle, lineWidth: 1)
+                )
+
+            HStack {
+                Text(request.url.host ?? request.url.absoluteString)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer()
+                Button("Reload") { reloadToken = UUID() }
+                    .buttonStyle(.bordered)
+                Button("Open in Browser") {
+                    ExtractionVerificationPane.openInChromeForTesting(request.url)
+                }
+                .buttonStyle(.bordered)
+                Button("Continue Extraction", action: onCompleted)
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.skyBlue)
+            }
+        }
+        .padding(22)
+        .background(Theme.surfaceGlass, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    static func openInChromeForTesting(_ url: URL) {
+        let candidates = [
+            FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Caches/ms-playwright/chromium-1223/chrome-mac-x64/Google Chrome for Testing.app"),
+            URL(fileURLWithPath: "/Applications/Google Chrome for Testing.app")
+        ]
+        if let appURL = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) {
+            let configuration = NSWorkspace.OpenConfiguration()
+            NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: configuration)
+        } else {
+            NSWorkspace.shared.open(url)
+        }
+    }
+}
+
+private struct ExtractionVerificationWebView: NSViewRepresentable {
+    let url: URL
+
+    func makeNSView(context: Context) -> WKWebView {
+        let configuration = WKWebViewConfiguration()
+        configuration.preferences.javaScriptEnabled = true
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
+        configuration.mediaTypesRequiringUserActionForPlayback = []
+        configuration.websiteDataStore = WKWebsiteDataStore.default()
+        let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.navigationDelegate = context.coordinator
+        webView.setValue(false, forKey: "drawsBackground")
+        var request = URLRequest(url: url)
+        request.setValue("https://allpornstream.com/", forHTTPHeaderField: "Referer")
+        webView.load(request)
+        return webView
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator: NSObject, WKNavigationDelegate {
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            Log.extractionWebView.error("Verification page failed: \(error.localizedDescription, privacy: .public)")
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            Log.extractionWebView.error("Verification page could not load: \(error.localizedDescription, privacy: .public)")
+        }
     }
 }
 

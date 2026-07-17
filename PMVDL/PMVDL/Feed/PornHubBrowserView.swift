@@ -112,7 +112,8 @@ enum FeedBrowserSite: CaseIterable {
         "vidara.so",
         "playmogo.com",
         "doodstream.com",
-        "dood.wf"
+        "dood.wf",
+        "vide0.net"
     ]
 
     private static func normalizedHost(_ host: String) -> String {
@@ -182,7 +183,8 @@ enum FeedBrowserContextResolver {
         "vidara.so",
         "playmogo.com",
         "doodstream.com",
-        "dood.wf"
+        "dood.wf",
+        "vide0.net"
     ]
 
     private static func normalizedHost(_ host: String) -> String {
@@ -501,7 +503,8 @@ enum PornHubBrowserFeedMapper {
         "vidara.so",
         "playmogo.com",
         "doodstream.com",
-        "dood.wf"
+        "dood.wf",
+        "vide0.net"
     ]
 
     private static func firstCapture(pattern: String, in value: String) -> String? {

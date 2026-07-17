@@ -357,7 +357,7 @@ enum DownloadResolver {
             "streamtape.com", "streamtape.net",
             "mixdrop.ag", "mixdrop.co", "mixdrop.sx", "mixdrop.pw", "m1xdrop.click",
             "doodstream.com", "doodstream.org", "dood.wf", "dood.pm", "dood.la", "dood.to",
-            "dood.sh", "dood.ws", "dood.one", "dood.watch", "playmogo.com", "vidara.so"
+            "dood.sh", "dood.ws", "dood.one", "dood.watch", "vide0.net", "playmogo.com", "vidara.so"
         ]
         return hosts.contains { host == $0 || host.hasSuffix("." + $0) }
     }

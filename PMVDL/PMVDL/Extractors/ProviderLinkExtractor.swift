@@ -285,13 +285,18 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
 
     private static func resolveProviderCandidates(
         _ candidates: [ProviderCandidate],
-        resolver: @escaping ProviderResolver = { try await ScraperEngine.extract(from: $0) }
+        resolver: ProviderResolver? = nil
     ) async -> [VideoSource.Quality] {
         await withTaskGroup(of: (Int, [VideoSource.Quality]).self) { group in
-            for (index, candidate) in candidates.enumerated() where isResolvableProviderURL(candidate.selectedUrl) {
+            for (index, candidate) in candidates.enumerated() where isResolvableProvider(candidate) {
                 group.addTask {
                     do {
-                        let resolved = try await resolver(candidate.selectedUrl)
+                        let resolved: VideoSource
+                        if let resolver {
+                            resolved = try await resolver(candidate.selectedUrl)
+                        } else {
+                            resolved = try await resolveProvider(candidate)
+                        }
                         return (index, flatten(resolved, provider: candidate))
                     } catch {
                         return (index, [])
@@ -308,6 +313,22 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
                 byIndex[index] ?? []
             }
         }
+    }
+
+    private static func resolveProvider(_ candidate: ProviderCandidate) async throws -> VideoSource {
+        guard let url = URLTrustPolicy.validated(candidate.selectedUrl) else {
+            throw VideoExtractorError.invalidURL
+        }
+
+        if isDoodProvider(candidate.providerName) {
+            let host = url.host?.lowercased() ?? "unknown"
+            if !DoodStreamExtractor.supports(url) {
+                Log.extractionDood.notice("Resolving AllPornStream DoodStream provider through new host: \(host, privacy: .public)")
+            }
+            return try await DoodStreamExtractor.extract(fromHTML: "", url: url)
+        }
+
+        return try await ScraperEngine.extract(from: candidate.selectedUrl)
     }
 
     private static func flatten(_ source: VideoSource, provider candidate: ProviderCandidate) -> [VideoSource.Quality] {
@@ -371,6 +392,14 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
             return nil
         }
         return parts[marker + 1]
+    }
+
+    private static func isResolvableProvider(_ candidate: ProviderCandidate) -> Bool {
+        isDoodProvider(candidate.providerName) || isResolvableProviderURL(candidate.selectedUrl)
+    }
+
+    private static func isDoodProvider(_ providerName: String) -> Bool {
+        normalizedProviderKey(providerName) == "doodstream"
     }
 
     private static func isResolvableProviderURL(_ urlString: String) -> Bool {
