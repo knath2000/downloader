@@ -1,4 +1,8 @@
-# Latest Session - 2026-07-17 DoodStream/Playmogo Resolution and Verification
+# Latest Session - 2026-07-18 Provider Resolution Observability and MixDrop Fallback
+
+See `docs/SESSION_2026_07_18_PROVIDER_RESOLUTION_OBSERVABILITY.md` for per-result resolver-method labels, trusted Dood provider canonicalization, challenge-only verification behavior, and the MixDrop WebView media-capture fallback for browser-only provider pages.
+
+# Previous Session - 2026-07-17 DoodStream/Playmogo Resolution and Verification
 
 See `docs/SESSION_2026_07_17_DOOD_PLAYMOGO_RESOLUTION.md` for the confirmed AllPornStream provider chain, Playmogo pass_md5/CloudAta resolution, vide0 alias handling, manual Cloudflare verification fallback, and validation.
 

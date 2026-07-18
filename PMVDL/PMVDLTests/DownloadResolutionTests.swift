@@ -157,6 +157,23 @@ final class DoodStreamExtractorTests: XCTestCase {
         XCTAssertTrue(DoodStreamExtractor.supports(URL(string: "https://vide0.net/e/hxptj42uoxb0")!))
     }
 
+    func testDoodstreamAliasUsesPlaymogoMirror() {
+        XCTAssertEqual(
+            DoodStreamExtractor.alternatePlaymogoURLForTesting(URL(string: "https://doodstream.com/e/0465n2jwgl4g")!),
+            URL(string: "https://playmogo.com/e/0465n2jwgl4g")
+        )
+    }
+
+    func testTrustedDoodProviderMapsRotatedAliasToPlaymogo() {
+        XCTAssertEqual(
+            DoodStreamExtractor.alternatePlaymogoURLForTesting(
+                URL(string: "https://dooodster.com/e/d5n3b9j5zn5y")!,
+                force: true
+            ),
+            URL(string: "https://playmogo.com/e/d5n3b9j5zn5y")
+        )
+    }
+
     func testPlaymogoPassMd5BuildsCloudAtaDirectUrl() async throws {
         let pageURL = URL(string: "https://playmogo.com/e/ta6jhp0sh9jd")!
 
@@ -206,14 +223,14 @@ final class DoodStreamExtractorTests: XCTestCase {
         XCTAssertEqual(source.hls.first?.headers?["Referer"], finalURL.absoluteString)
     }
 
-    func testPlaymogoDPathNormalizesToEmbedPath() async throws {
+    func testPlaymogoDPathUsesResolvedEmbedPage() async throws {
         let pageURL = URL(string: "https://playmogo.com/d/ta6jhp0sh9jd")!
         let embedURL = URL(string: "https://playmogo.com/e/ta6jhp0sh9jd")!
 
         let source = try await DoodStreamExtractor.extract(
             fromHTML: playmogoHTML(),
             url: pageURL,
-            resolvedPageURL: nil,
+            resolvedPageURL: embedURL,
             playmogoPassResolver: { _, referer in
                 XCTAssertEqual(referer, embedURL)
                 return "https://ll288op.cloudatacdn.com/base/video~"
@@ -225,6 +242,16 @@ final class DoodStreamExtractorTests: XCTestCase {
         XCTAssertEqual(source.siteName, "Playmogo")
         XCTAssertNil(source.mp4)
         XCTAssertEqual(source.hls.first?.headers?["Referer"], embedURL.absoluteString)
+    }
+
+    func testDoodDownloadPageUsesEmbeddedPlayerURL() {
+        let pageURL = URL(string: "https://playmogo.com/d/89flmbsimkv3rg7asnuryarhjckeymi")!
+        let html = #"<iframe src="/e/3betolo9i3aiilq78hgzum8qzc7wsqkg" scrolling="no"></iframe>"#
+
+        XCTAssertEqual(
+            DoodStreamExtractor.extractEmbeddedPlayerURLForTesting(from: html, pageURL: pageURL),
+            URL(string: "https://playmogo.com/e/3betolo9i3aiilq78hgzum8qzc7wsqkg")
+        )
     }
 
     func testPlaymogoMinifiedTokenBuilderParsesRenamedVariable() async throws {

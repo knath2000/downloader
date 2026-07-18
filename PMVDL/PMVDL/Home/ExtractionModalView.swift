@@ -470,6 +470,13 @@ private struct ExtractionResultRow: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1)
+
+                    if let method = selectedQuality?.resolutionMethod ?? presentation.resolutionMethod {
+                        Label("Resolved via \(method)", systemImage: "wand.and.stars")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Theme.skyBlue)
+                            .lineLimit(1)
+                    }
                 }
             }
 

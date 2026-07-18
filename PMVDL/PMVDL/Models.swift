@@ -15,9 +15,10 @@ struct VideoSource: Codable, Equatable {
         let kind: Kind
         let headers: [String: String]?  // e.g. ["Referer": "...", "User-Agent": "..."]
         let sourcePageUrl: String?  // LuluStream embed page URL for URL refresh at download time
+        let resolutionMethod: String?
 
-        init(label: String, url: String, kind: Kind = .hlsManifest, headers: [String: String]? = nil, sourcePageUrl: String? = nil) {
-            self.label = label; self.url = url; self.kind = kind; self.headers = headers; self.sourcePageUrl = sourcePageUrl
+        init(label: String, url: String, kind: Kind = .hlsManifest, headers: [String: String]? = nil, sourcePageUrl: String? = nil, resolutionMethod: String? = nil) {
+            self.label = label; self.url = url; self.kind = kind; self.headers = headers; self.sourcePageUrl = sourcePageUrl; self.resolutionMethod = resolutionMethod
         }
     }
     let mp4: String?
@@ -29,13 +30,14 @@ struct VideoSource: Codable, Equatable {
     let uploaderURL: String?
     let siteName: String?
     let isAudio: Bool
+    let resolutionMethod: String?
     /// Source-level HTTP headers required for downloading the video (e.g. Referer for hot-link
     /// protected CDNs like pmvhaven.com's video.pmvhaven.com origin). Used as a fallback when
     /// a per-quality `headers` map isn't available (e.g. the bare `mp4` URL is not in `hls`).
     let headers: [String: String]?
 
-    init(mp4: String?, hls: [Quality], title: String? = nil, thumbnail: String? = nil, duration: TimeInterval? = nil, uploader: String? = nil, uploaderURL: String? = nil, siteName: String? = nil, isAudio: Bool = false, headers: [String: String]? = nil) {
-        self.mp4 = mp4; self.hls = hls; self.title = title; self.thumbnail = thumbnail; self.duration = duration; self.uploader = uploader; self.uploaderURL = uploaderURL; self.siteName = siteName; self.isAudio = isAudio; self.headers = headers
+    init(mp4: String?, hls: [Quality], title: String? = nil, thumbnail: String? = nil, duration: TimeInterval? = nil, uploader: String? = nil, uploaderURL: String? = nil, siteName: String? = nil, isAudio: Bool = false, headers: [String: String]? = nil, resolutionMethod: String? = nil) {
+        self.mp4 = mp4; self.hls = hls; self.title = title; self.thumbnail = thumbnail; self.duration = duration; self.uploader = uploader; self.uploaderURL = uploaderURL; self.siteName = siteName; self.isAudio = isAudio; self.headers = headers; self.resolutionMethod = resolutionMethod
     }
 
     var displaySiteName: String {
@@ -44,6 +46,24 @@ struct VideoSource: Codable, Equatable {
 
     func headers(forQualityURL url: String) -> [String: String]? {
         hls.first(where: { $0.url == url })?.headers ?? headers
+    }
+
+    func withResolutionMethod(_ method: String) -> VideoSource {
+        VideoSource(
+            mp4: mp4,
+            hls: hls.map {
+                Quality(label: $0.label, url: $0.url, kind: $0.kind, headers: $0.headers, sourcePageUrl: $0.sourcePageUrl, resolutionMethod: $0.resolutionMethod ?? method)
+            },
+            title: title,
+            thumbnail: thumbnail,
+            duration: duration,
+            uploader: uploader,
+            uploaderURL: uploaderURL,
+            siteName: siteName,
+            isAudio: isAudio,
+            headers: headers,
+            resolutionMethod: resolutionMethod ?? method
+        )
     }
 }
 

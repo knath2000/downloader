@@ -6,23 +6,42 @@ struct MixDropExtractor: VideoSiteExtractor {
 
  static func supports(_ url: URL) -> Bool {
  guard let host = url.host()?.lowercased() else { return false }
- return host == "mixdrop.ag" || host == "mixdrop.co" || host == "mixdrop.sx" || host == "mixdrop.pw" || host == "mixdrop.top" || host == "mxdrop.to" || host == "m1xdrop.click" || host == "miiixdrop.net"
- || host.hasSuffix(".mixdrop.ag") || host.hasSuffix(".mixdrop.co") || host.hasSuffix(".mixdrop.sx") || host.hasSuffix(".mixdrop.pw") || host.hasSuffix(".mixdrop.top") || host.hasSuffix(".mxdrop.to") || host.hasSuffix(".m1xdrop.click") || host.hasSuffix(".miiixdrop.net")
+ return host == "mixdrop.ag" || host == "mixdrop.co" || host == "mixdrop.sx" || host == "mixdrop.pw" || host == "mixdrop.top" || host == "mxdrop.to" || host == "m1xdrop.click" || host == "miiixdrop.net" || host == "miiiixdrop.net"
+ || host.hasSuffix(".mixdrop.ag") || host.hasSuffix(".mixdrop.co") || host.hasSuffix(".mixdrop.sx") || host.hasSuffix(".mixdrop.pw") || host.hasSuffix(".mixdrop.top") || host.hasSuffix(".mxdrop.to") || host.hasSuffix(".m1xdrop.click") || host.hasSuffix(".miiixdrop.net") || host.hasSuffix(".miiiixdrop.net")
  }
 
  static func extract(fromHTML html: String, url: URL) async throws -> VideoSource {
- let pageHtml = html.isEmpty ? try await fetchPage(url: url) : html
+ let pageHtml: String
+ if html.isEmpty {
+ do {
+ pageHtml = try await fetchPage(url: url)
+ } catch {
+ return try await extractViaWebView(url: url)
+ }
+ } else {
+ pageHtml = html
+ }
 
  let title = extractTitle(from: pageHtml) ?? "MixDrop Video"
  let thumbnail = extractThumbnail(from: pageHtml)
 
  guard let videoUrl = findVideoUrl(in: pageHtml, pageURL: url) ?? findVideoUrlViaPacker(pageHtml, pageURL: url) else {
- throw MixDropError.noVideoSource
+ return try await extractViaWebView(url: url)
  }
 
+ return videoSource(videoUrl, pageURL: url, title: title, thumbnail: thumbnail, resolutionMethod: "Static MixDrop resolver")
+ }
+
+ private static func extractViaWebView(url: URL) async throws -> VideoSource {
+ let videoUrl = try await WebViewExtractor.shared.extractVideoUrl(from: url, timeout: 45)
+ guard isValidMixDropMediaUrl(videoUrl) else { throw MixDropError.noVideoSource }
+ return videoSource(videoUrl, pageURL: url, title: "MixDrop Video", thumbnail: nil, resolutionMethod: "WebView media capture")
+ }
+
+ private static func videoSource(_ videoUrl: String, pageURL: URL, title: String, thumbnail: String?, resolutionMethod: String) -> VideoSource {
  let headers = [
  "User-Agent": NetworkConstants.chromeUserAgent,
- "Referer": url.absoluteString
+ "Referer": pageURL.absoluteString
  ]
 
  let quality = VideoSource.Quality(
@@ -30,7 +49,8 @@ struct MixDropExtractor: VideoSiteExtractor {
  url: videoUrl,
  kind: .direct,
  headers: headers,
- sourcePageUrl: url.absoluteString
+ sourcePageUrl: pageURL.absoluteString,
+ resolutionMethod: resolutionMethod
  )
 
  return VideoSource(
@@ -39,7 +59,8 @@ struct MixDropExtractor: VideoSiteExtractor {
  title: title,
  thumbnail: thumbnail,
  siteName: "MixDrop",
- headers: headers
+ headers: headers,
+ resolutionMethod: resolutionMethod
  )
  }
 

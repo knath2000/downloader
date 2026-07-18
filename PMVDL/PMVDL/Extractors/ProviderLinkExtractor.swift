@@ -325,7 +325,7 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
             if !DoodStreamExtractor.supports(url) {
                 Log.extractionDood.notice("Resolving AllPornStream DoodStream provider through new host: \(host, privacy: .public)")
             }
-            return try await DoodStreamExtractor.extract(fromHTML: "", url: url)
+            return try await DoodStreamExtractor.extractTrustedProviderURL(url)
         }
 
         return try await ScraperEngine.extract(from: candidate.selectedUrl)
@@ -342,7 +342,8 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
                 url: mp4,
                 kind: .direct,
                 headers: source.headers(forQualityURL: mp4),
-                sourcePageUrl: candidate.sourcePageUrl
+                sourcePageUrl: candidate.sourcePageUrl,
+                resolutionMethod: source.resolutionMethod
             ))
         } else {
             for quality in concrete {
@@ -352,7 +353,8 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
                     url: quality.url,
                     kind: quality.kind,
                     headers: quality.headers ?? source.headers(forQualityURL: quality.url),
-                    sourcePageUrl: quality.sourcePageUrl ?? candidate.sourcePageUrl
+                    sourcePageUrl: quality.sourcePageUrl ?? candidate.sourcePageUrl,
+                    resolutionMethod: quality.resolutionMethod ?? source.resolutionMethod
                 ))
             }
         }
@@ -414,6 +416,7 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
             || host == "mxdrop.to" || host.hasSuffix(".mxdrop.to")
             || host == "m1xdrop.click" || host.hasSuffix(".m1xdrop.click")
             || host == "miiixdrop.net" || host.hasSuffix(".miiixdrop.net")
+            || host == "miiiixdrop.net" || host.hasSuffix(".miiiixdrop.net")
             || host == "doodstream.com" || host.hasSuffix(".doodstream.com")
             || host == "doodstream.org" || host.hasSuffix(".doodstream.org")
             || host == "dood.wf" || host.hasSuffix(".dood.wf")

@@ -61,6 +61,8 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
             self.continuation = cont
             self.startTime = Date()
             self.targetUrl = url
+            self.isCloudflareChallenge = false
+            self.hasStartedPolling = false
 
             // Create webView with proper configuration
             let configuration = WKWebViewConfiguration()
@@ -85,7 +87,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
                     Log.extractionWebView.debug("Timeout reached after \(timeout, privacy: .public) seconds")
                     self.continuation = nil
                     self.cleanup()
-                    c.resume(throwing: WebViewError.timeout)
+                    c.resume(throwing: self.isCloudflareChallenge ? WebViewError.cloudflareChallenge : WebViewError.timeout)
                 }
             }
         }
@@ -137,35 +139,29 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
             return
         }
 
-        // Check if this is a Cloudflare challenge page
         let urlString = currentUrl.absoluteString
         if urlString.contains("challenges.cloudflare.com") || urlString.contains("turnstile") {
-            Log.extractionWebView.debug("Detected Cloudflare challenge, will wait longer for completion")
+            Log.extractionWebView.debug("Detected Cloudflare challenge URL")
             isCloudflareChallenge = true
-            // Don't start polling yet, wait for challenge to complete
-            return
         }
 
         // Store the final URL after redirects
         self.finalUrl = currentUrl
 
-        // Determine polling delay based on Cloudflare detection and page type
-        let pollingDelay: TimeInterval
-        if isCloudflareChallenge {
-            pollingDelay = 20.0 // Much longer delay after Cloudflare
-        } else if urlString.contains("/e/") {
-            // Embed page - might need time for player to load
-            pollingDelay = 10.0
-        } else {
-            pollingDelay = 5.0
-        }
-
-        // Start polling for video URL
         if !hasStartedPolling {
             hasStartedPolling = true
-            Log.extractionWebView.debug("Will start polling in \(pollingDelay, privacy: .public) seconds...")
-            DispatchQueue.main.asyncAfter(deadline: .now() + pollingDelay) {
-                self.executeScript()
+            webView.evaluateJavaScript(Self.cloudflareProbeScript) { [weak self] result, _ in
+                guard let self else { return }
+                if Self.pageLooksLikeCloudflareChallenge(result as? String ?? "") {
+                    Log.extractionWebView.debug("Detected Cloudflare challenge page")
+                    self.isCloudflareChallenge = true
+                }
+
+                let pollingDelay: TimeInterval = self.isCloudflareChallenge ? 20 : (urlString.contains("/e/") ? 10 : 5)
+                Log.extractionWebView.debug("Will start polling in \(pollingDelay, privacy: .public) seconds...")
+                DispatchQueue.main.asyncAfter(deadline: .now() + pollingDelay) {
+                    self.executeScript()
+                }
             }
         }
     }
@@ -405,16 +401,35 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
             let urlString = final.absoluteString
             if isFinalDoodVideoUrl(urlString) {
                 Log.extractionWebView.info("Using final page URL: \(urlString, privacy: .public)")
-                self.continuation?.resume(returning: urlString)
+                let continuation = self.continuation
+                self.continuation = nil
+                cleanup()
+                continuation?.resume(returning: urlString)
+                return
             } else {
                 Log.extractionWebView.debug("Final page URL is not a valid video URL: \(urlString, privacy: .public)")
-                self.continuation?.resume(throwing: WebViewError.noVideoUrlFound)
             }
-        } else {
-            self.continuation?.resume(throwing: WebViewError.noVideoUrlFound)
         }
-        cleanup()
+        finishWithoutVideo()
+    }
+
+    private func finishWithoutVideo() {
+        guard let continuation else { return }
         self.continuation = nil
+        webView?.evaluateJavaScript(Self.cloudflareProbeScript) { [weak self] result, _ in
+            guard let self else { return }
+            let isChallenge = self.isCloudflareChallenge || Self.pageLooksLikeCloudflareChallenge(result as? String ?? "")
+            self.cleanup()
+            continuation.resume(throwing: isChallenge ? WebViewError.cloudflareChallenge : WebViewError.noVideoUrlFound)
+        }
+    }
+
+    private static let cloudflareProbeScript = "document.title + '\\n' + (document.body ? document.body.innerText : '') + '\\n' + (document.documentElement ? document.documentElement.innerHTML : '')"
+
+    private static func pageLooksLikeCloudflareChallenge(_ page: String) -> Bool {
+        let lower = page.lowercased()
+        return lower.contains("just a moment") || lower.contains("cf-chl") || lower.contains("cf-turnstile") ||
+            lower.contains("challenges.cloudflare.com") || lower.contains("turnstile")
     }
 
     private func handleCandidate(_ rawUrl: String, type: String) -> Bool {
@@ -430,7 +445,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
             return false
         }
 
-        if isFinalDoodVideoUrl(candidate) || isFullCloudMediaUrl(candidate) {
+        if isFinalDoodVideoUrl(candidate) || isFullCloudMediaUrl(candidate) || isMixDropMediaUrl(candidate) {
             Log.extractionWebView.info("Found candidate URL via \(type, privacy: .public): \(candidate, privacy: .public)")
             let c = continuation
             continuation = nil
@@ -439,7 +454,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
             return true
         }
 
-        if candidate.lowercased().contains("dood.video") || candidate.lowercased().contains("cloudatacdn.com") {
+        if candidate.lowercased().contains("dood.video") || candidate.lowercased().contains("cloudatacdn.com") || candidate.lowercased().contains("mxcontent.net") {
             Log.extractionWebView.debug("Observed intermediate URL via \(type, privacy: .public): \(candidate, privacy: .public)")
             return false
         }
@@ -510,6 +525,16 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
             queryItems.contains(where: { $0.name == "expiry" })
     }
 
+    private func isMixDropMediaUrl(_ url: String) -> Bool {
+        guard !isRejectedAsset(url),
+              let components = URLComponents(string: url),
+              let host = components.host?.lowercased(),
+              host == "mxcontent.net" || host.hasSuffix(".mxcontent.net") else {
+            return false
+        }
+        return components.percentEncodedPath.lowercased().contains(".mp4")
+    }
+
     private static func candidateCollectorScript(handlerName: String) -> String {
         """
         (function() {
@@ -539,7 +564,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
                     if (!value) return;
                     var text = makeFullCandidate(value);
                     if (!text || text.indexOf("blob:") === 0 || text.indexOf("data:") === 0) return;
-                    if (text.indexOf("dood.video") === -1 && text.indexOf("cloudatacdn.com") === -1) return;
+                    if (text.indexOf("dood.video") === -1 && text.indexOf("cloudatacdn.com") === -1 && text.indexOf("mxcontent.net") === -1) return;
                     handler.postMessage({ url: text, type: type || "unknown", page: window.location.href });
                 } catch (e) {}
             }
@@ -564,7 +589,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
             function scanText(text, type) {
                 try {
                     if (!text) return;
-                    var matches = String(text).match(/(?:https?:)?\\/\\/[^"'\\s<>]+(?:dood\\.video|cloudatacdn\\.com)[^"'\\s<>]*/gi);
+                    var matches = String(text).match(/(?:https?:)?\\/\\/[^"'\\s<>]+(?:dood\\.video|cloudatacdn\\.com|mxcontent\\.net)[^"'\\s<>]*/gi);
                     if (!matches) return;
                     for (var i = 0; i < matches.length; i++) report(matches[i], type);
                 } catch (e) {}
@@ -805,6 +830,7 @@ enum WebViewError: LocalizedError {
     case invalidURL
     case timeout
     case noVideoUrlFound
+    case cloudflareChallenge
     case navigationFailed(String)
 
     var errorDescription: String? {
@@ -812,6 +838,7 @@ enum WebViewError: LocalizedError {
         case .invalidURL: return "This URL is not allowed for extraction."
         case .timeout: return "Timeout loading page"
         case .noVideoUrlFound: return "Could not find video URL in page"
+        case .cloudflareChallenge: return "Cloudflare verification is required."
         case .navigationFailed(let msg): return msg
         }
     }

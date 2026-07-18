@@ -74,9 +74,16 @@ struct ScraperEngine {
  static func extract(from urlString: String) async throws -> VideoSource {
   guard let url = URLTrustPolicy.validated(urlString) else { throw VideoExtractorError.invalidURL }
   if let extractor = findExtractor(for: url) {
-   return try await extractor.extract(fromHTML: "", url: url)
+   let source = try await extractor.extract(fromHTML: "", url: url)
+   return source.withResolutionMethod(resolutionMethod(for: extractor))
   }
   throw VideoExtractorError.noVideoSources
+ }
+
+ private static func resolutionMethod(for extractor: any VideoSiteExtractor.Type) -> String {
+  if extractor == YtDlpExtractor.self { return "yt-dlp" }
+  if extractor == M3U8Extractor.self { return "Direct stream" }
+  return "Static page parser"
  }
 
  static var isYTDLPAvailable: Bool { ToolLocator.find("yt-dlp") != nil }

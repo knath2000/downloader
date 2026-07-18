@@ -29,6 +29,12 @@ struct VideoResultRow: View {
                         .font(.caption)
                         .foregroundStyle(Theme.textSecondary)
 
+                    if let method = result.source?.resolutionMethod {
+                        Text("Resolved via \(method)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Theme.skyBlue)
+                    }
+
                     if let error = result.error {
                         Text(displayError(error))
                             .font(.caption)

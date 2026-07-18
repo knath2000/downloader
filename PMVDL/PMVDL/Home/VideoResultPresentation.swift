@@ -6,6 +6,7 @@ struct VideoQualityChoice: Identifiable, Equatable {
     let url: String
     let kind: VideoSource.Kind
     let headers: [String: String]?
+    let resolutionMethod: String?
 }
 
 struct VideoResultPresentation: Equatable {
@@ -14,6 +15,7 @@ struct VideoResultPresentation: Equatable {
     let thumbnailURL: String?
     let qualities: [VideoQualityChoice]
     let recommendedQualityID: String?
+    let resolutionMethod: String?
 
     init(result: ExtractResult) {
         let source = result.source
@@ -23,6 +25,7 @@ struct VideoResultPresentation: Equatable {
         thumbnailURL = source?.thumbnail
         qualities = Self.qualities(from: source)
         recommendedQualityID = qualities.first?.id
+        resolutionMethod = qualities.first?.resolutionMethod ?? source?.resolutionMethod
     }
 
     static func qualities(from source: VideoSource?) -> [VideoQualityChoice] {
@@ -35,7 +38,8 @@ struct VideoResultPresentation: Equatable {
                     label: "MP4",
                     url: mp4,
                     kind: .direct,
-                    headers: source.headers
+                    headers: source.headers,
+                    resolutionMethod: source.resolutionMethod
                 )
             )
         }
@@ -45,7 +49,8 @@ struct VideoResultPresentation: Equatable {
                 label: $0.label,
                 url: $0.url,
                 kind: $0.kind,
-                headers: $0.headers
+                headers: $0.headers,
+                resolutionMethod: $0.resolutionMethod ?? source.resolutionMethod
             )
         })
         return output
