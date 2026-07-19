@@ -35,17 +35,29 @@ struct ExtractionSlot: Identifiable, Equatable {
     let id: UUID
     let url: String
     var result: ExtractResult?
+    var activity: [String]
 }
 
 enum ExtractionSlotSupport {
     static func startingSlots(for urls: [String]) -> [ExtractionSlot] {
-        urls.map { ExtractionSlot(id: UUID(), url: $0, result: nil) }
+        urls.map { ExtractionSlot(id: UUID(), url: $0, result: nil, activity: []) }
     }
 
     static func replacingSlot(id: UUID, in slots: [ExtractionSlot], with result: ExtractResult) -> [ExtractionSlot] {
         slots.map { slot in
             guard slot.id == id else { return slot }
-            return ExtractionSlot(id: slot.id, url: slot.url, result: result)
+            return ExtractionSlot(id: slot.id, url: slot.url, result: result, activity: slot.activity)
+        }
+    }
+
+    static func appendingActivity(_ message: String, toSlot id: UUID, in slots: [ExtractionSlot]) -> [ExtractionSlot] {
+        slots.map { slot in
+            guard slot.id == id else { return slot }
+            var activity = slot.activity
+            if activity.last != message {
+                activity.append(message)
+            }
+            return ExtractionSlot(id: slot.id, url: slot.url, result: slot.result, activity: Array(activity.suffix(12)))
         }
     }
 
@@ -846,8 +858,22 @@ struct HomeView: View {
                         let slotID = slots[i].id
                         group.addTask {
                             var src: VideoSource?; var err: String?
-                            do { src = try await ScraperEngine.extract(from: url) }
-                            catch { err = error.localizedDescription }
+                            let progress: @Sendable (String) -> Void = { message in
+                                Task { @MainActor in
+                                    guard extractionGeneration == generation else { return }
+                                    extractionSlots = ExtractionSlotSupport.appendingActivity(
+                                        message,
+                                        toSlot: slotID,
+                                        in: extractionSlots
+                                    )
+                                    loadProgress = message
+                                }
+                            }
+                            do { src = try await ScraperEngine.extractWithProgress(from: url, onProgress: progress) }
+                            catch {
+                                err = error.localizedDescription
+                                progress("Source failed • stage: page extraction • source: \(url) • reason: \(err ?? "Unknown error")")
+                            }
                             return (slotID, ExtractResult(url: url, source: src, error: err))
                         }
                     }
@@ -863,7 +889,12 @@ struct HomeView: View {
                                 extractionSlots = ExtractionSlotSupport.replacingSlot(id: slotID, in: extractionSlots, with: res)
                             }
                             results = ExtractionSlotSupport.completedResults(in: extractionSlots)
-                            loadProgress = "Extracting batch \(batchIndex + 1) of \(batchRanges.count)… \(completed)/\(urls.count)"
+                            let resultCount = res.source.map { $0.hls.filter { $0.kind != .pageUrl }.count + ($0.mp4 == nil ? 0 : 1) } ?? 0
+                            let completion = res.source == nil
+                                ? (res.error ?? "Extraction failed.")
+                                : "Completed: \(resultCount) downloadable source\(resultCount == 1 ? "" : "s")"
+                            extractionSlots = ExtractionSlotSupport.appendingActivity(completion, toSlot: slotID, in: extractionSlots)
+                            loadProgress = "Batch \(batchIndex + 1) of \(batchRanges.count) • \(completed)/\(urls.count) • \(completion)"
                             if res.source != nil {
                                 successCount += 1
                                 persistSuccessfulExtraction(res, feedThumbnailURL: feedThumbnailURL)
@@ -898,13 +929,20 @@ struct HomeView: View {
     private func extractAdditionalURL(_ url: String) {
         let generation = UUID()
         extractionGeneration = generation
-        let slot = ExtractionSlot(id: UUID(), url: url, result: nil)
+        let slot = ExtractionSlot(id: UUID(), url: url, result: nil, activity: [])
         extractionSlots.append(slot)
         isLoading = true
         loadProgress = "Extracting 1 URL..."
 
         Task {
-            let result = await extractResult(for: url)
+            let progress: @Sendable (String) -> Void = { message in
+                Task { @MainActor in
+                    guard extractionGeneration == generation else { return }
+                    extractionSlots = ExtractionSlotSupport.appendingActivity(message, toSlot: slot.id, in: extractionSlots)
+                    loadProgress = message
+                }
+            }
+            let result = await extractResult(for: url, onProgress: progress)
             await MainActor.run {
                 guard extractionGeneration == generation else { return }
                 if result.source == nil {
@@ -914,6 +952,11 @@ struct HomeView: View {
                     extractionSlots = ExtractionSlotSupport.replacingSlot(id: slot.id, in: extractionSlots, with: result)
                 }
                 results = ExtractionSlotSupport.completedResults(in: extractionSlots)
+                let resolvedCount = result.source.map { $0.hls.filter { $0.kind != .pageUrl }.count + ($0.mp4 == nil ? 0 : 1) } ?? 0
+                let completion = result.source == nil
+                    ? (result.error ?? "Extraction failed.")
+                    : "Completed: \(resolvedCount) downloadable source\(resolvedCount == 1 ? "" : "s")"
+                extractionSlots = ExtractionSlotSupport.appendingActivity(completion, toSlot: slot.id, in: extractionSlots)
                 if result.source != nil {
                     persistSuccessfulExtraction(result, feedThumbnailURL: nil)
                 }
@@ -955,10 +998,11 @@ struct HomeView: View {
         )
     }
 
-    private func extractResult(for url: String) async -> ExtractResult {
+    private func extractResult(for url: String, onProgress: (@Sendable (String) -> Void)? = nil) async -> ExtractResult {
         do {
-            return ExtractResult(url: url, source: try await ScraperEngine.extract(from: url), error: nil)
+            return ExtractResult(url: url, source: try await ScraperEngine.extractWithProgress(from: url, onProgress: onProgress), error: nil)
         } catch {
+            onProgress?("Source failed • stage: page extraction • source: \(url) • reason: \(error.localizedDescription)")
             return ExtractResult(url: url, source: nil, error: error.localizedDescription)
         }
     }
@@ -980,7 +1024,16 @@ struct HomeView: View {
         let slotID = ExtractionSlotSupport.slotIDForCompletedResult(at: index, in: extractionSlots)
 
         Task {
-            let retried = await extractResult(for: url)
+            let progress: @Sendable (String) -> Void = { message in
+                Task { @MainActor in
+                    guard extractionGeneration == generation else { return }
+                    if let slotID {
+                        extractionSlots = ExtractionSlotSupport.appendingActivity(message, toSlot: slotID, in: extractionSlots)
+                    }
+                    loadProgress = message
+                }
+            }
+            let retried = await extractResult(for: url, onProgress: progress)
             await MainActor.run {
                 guard extractionGeneration == generation else { return }
                 retryingResultIndices.remove(index)

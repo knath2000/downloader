@@ -9,6 +9,15 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
     }
 
     static func extract(fromHTML html: String, url: URL) async throws -> VideoSource {
+        try await extract(fromHTML: html, url: url, onProgress: nil)
+    }
+
+    static func extract(
+        fromHTML html: String,
+        url: URL,
+        onProgress: (@Sendable (String) -> Void)?
+    ) async throws -> VideoSource {
+        onProgress?("Fetching the page and reading provider metadata…")
         let pageHtml = html.isEmpty ? try await fetchPage(url: url) : html
 
         let title = extractTitle(from: pageHtml)
@@ -20,9 +29,12 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
         }
 
         let candidates = providerCandidates(from: entries, pageURL: url)
-        let qualities = await resolveProviderCandidates(candidates)
+        let providerNames = candidates.map(\.providerName).joined(separator: ", ")
+        onProgress?("Found \(candidates.count) provider source\(candidates.count == 1 ? "" : "s"): \(providerNames)")
+        let qualities = await resolveProviderCandidates(candidates, onProgress: onProgress)
 
         guard !qualities.isEmpty else {
+            onProgress?("Source failed • stage: provider resolution • source: all discovered providers • reason: every provider failed")
             throw VideoExtractorError.noVideoSources
         }
 
@@ -157,6 +169,18 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
 
     private typealias ProviderResolver = (String) async throws -> VideoSource
 
+    private enum ProviderResolutionError: LocalizedError {
+        case timedOut
+
+        var errorDescription: String? {
+            switch self {
+            case .timedOut: return "Timed out while resolving this provider."
+            }
+        }
+    }
+
+    private static let providerResolutionTimeoutNanoseconds: UInt64 = 15_000_000_000
+
     struct ProviderCandidateForTesting: Equatable {
         let providerName: String
         let url: String
@@ -285,33 +309,64 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
 
     private static func resolveProviderCandidates(
         _ candidates: [ProviderCandidate],
-        resolver: ProviderResolver? = nil
+        resolver: ProviderResolver? = nil,
+        onProgress: (@Sendable (String) -> Void)? = nil
     ) async -> [VideoSource.Quality] {
-        await withTaskGroup(of: (Int, [VideoSource.Quality]).self) { group in
+        await withTaskGroup(of: (Int, [VideoSource.Quality], String).self) { group in
             for (index, candidate) in candidates.enumerated() where isResolvableProvider(candidate) {
                 group.addTask {
                     do {
+                        onProgress?("Extracting \(candidate.providerName) from \(candidate.selectedUrl)…")
                         let resolved: VideoSource
-                        if let resolver {
-                            resolved = try await resolver(candidate.selectedUrl)
-                        } else {
-                            resolved = try await resolveProvider(candidate)
-                        }
-                        return (index, flatten(resolved, provider: candidate))
+                        resolved = try await resolveProviderWithTimeout(candidate, resolver: resolver)
+                        let flattened = flatten(resolved, provider: candidate)
+                        onProgress?("\(candidate.providerName) resolved \(flattened.count) downloadable source\(flattened.count == 1 ? "" : "s")")
+                        return (index, flattened, "\(candidate.providerName): resolved \(flattened.count) source\(flattened.count == 1 ? "" : "s")")
                     } catch {
-                        return (index, [])
+                        let failure = "\(candidate.providerName): failed — \(error.localizedDescription)"
+                        onProgress?("Source failed • stage: provider resolution • source: \(candidate.providerName) • reason: \(error.localizedDescription) • URL: \(candidate.selectedUrl)")
+                        return (index, [], failure)
                     }
                 }
             }
 
             var byIndex: [Int: [VideoSource.Quality]] = [:]
-            for await (index, qualities) in group {
+            var summaries: [Int: String] = [:]
+            for await (index, qualities, summary) in group {
                 byIndex[index] = qualities
+                summaries[index] = summary
             }
 
+            let orderedSummaries = candidates.indices.compactMap { summaries[$0] }.joined(separator: " • ")
+            if !orderedSummaries.isEmpty {
+                onProgress?("Provider resolution results • \(orderedSummaries)")
+            }
             return candidates.indices.flatMap { index in
                 byIndex[index] ?? []
             }
+        }
+    }
+
+    private static func resolveProviderWithTimeout(
+        _ candidate: ProviderCandidate,
+        resolver: ProviderResolver?
+    ) async throws -> VideoSource {
+        try await withThrowingTaskGroup(of: VideoSource.self) { group in
+            group.addTask {
+                if let resolver {
+                    return try await resolver(candidate.selectedUrl)
+                }
+                return try await resolveProvider(candidate)
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: providerResolutionTimeoutNanoseconds)
+                throw ProviderResolutionError.timedOut
+            }
+            defer { group.cancelAll() }
+            guard let result = try await group.next() else {
+                throw ProviderResolutionError.timedOut
+            }
+            return result
         }
     }
 
@@ -427,6 +482,7 @@ struct ProviderLinkExtractor: VideoSiteExtractor {
             || host == "dood.watch" || host.hasSuffix(".dood.watch")
             || host == "dood.la" || host.hasSuffix(".dood.la")
             || host == "dood.sh" || host.hasSuffix(".dood.sh")
+            || host == "dooodster.com" || host.hasSuffix(".dooodster.com")
             || host == "playmogo.com" || host.hasSuffix(".playmogo.com")
             || host == "ds2play.com" || host.hasSuffix(".ds2play.com")
             || host == "vidara.so" || host.hasSuffix(".vidara.so")

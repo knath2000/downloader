@@ -639,6 +639,7 @@ extension GDriveManager {
     static func fetchContentLength(url: URL, headers: [String: String]?) async -> Int64 {
         var request = sourceRequest(url: url, headers: headers)
         request.httpMethod = "HEAD"
+        request.setValue(nil, forHTTPHeaderField: "Range")
         guard let (_, response) = try? await URLSession.shared.data(for: request),
               let http = response as? HTTPURLResponse,
               (200..<400).contains(http.statusCode) else {
@@ -667,6 +668,10 @@ extension GDriveManager {
         request.timeoutInterval = 60
         request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
         headers?.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        if MediaRequestHeaders.requiresInitialRange(for: url),
+           request.value(forHTTPHeaderField: "Range") == nil {
+            request.setValue("bytes=0-", forHTTPHeaderField: "Range")
+        }
         return request
     }
 

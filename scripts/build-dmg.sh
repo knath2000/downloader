@@ -7,11 +7,11 @@ cd "$ROOT"
 SCHEME="PMVDL"
 PROJECT="PMVDL/PMVDL.xcodeproj"
 CONFIGURATION="Debug"
-APP_NAME="VidDL"
+APP_NAME="LustreStudio"
 INFO_PLIST="PMVDL/PMVDL/Info.plist"
 DEVELOPER_DIR="${DEVELOPER_DIR:-/Volumes/MyPassport/Applications/Xcode.app/Contents/Developer}"
-DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-/tmp/viddl-local-dmg-debug}"
-STAGING_DIR="${STAGING_DIR:-/tmp/viddl-dmg-staging}"
+DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-/tmp/lustrestudio-local-dmg-debug}"
+STAGING_DIR="${STAGING_DIR:-/tmp/lustrestudio-dmg-staging}"
 
 VERSION="${VERSION:-$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$INFO_PLIST")}"
 BUILD_NUMBER="${BUILD_NUMBER:-$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$INFO_PLIST")}"
@@ -36,9 +36,9 @@ if [[ ! -x "$EXECUTABLE_PATH" ]]; then
 fi
 
 echo "==> Verifying unsigned app bundle..."
-if codesign -dv "$APP_PATH" >/tmp/viddl-codesign-check.log 2>&1; then
+if codesign -dv "$APP_PATH" >/tmp/lustrestudio-codesign-check.log 2>&1; then
     echo "WARNING: ${APP_NAME}.app is signed; this script is intended for unsigned local DMGs." >&2
-    cat /tmp/viddl-codesign-check.log >&2
+    cat /tmp/lustrestudio-codesign-check.log >&2
 else
     echo "Expected: ${APP_NAME}.app is unsigned."
 fi

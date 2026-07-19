@@ -528,6 +528,20 @@ final class SeedboxManager {
         progressHandler: @escaping (Double) -> Void,
         metricsHandler: @escaping (DownloadTransferMetrics) -> Void
     ) async throws -> String {
+        if MediaRequestHeaders.requiresInitialRange(for: sourceURL) {
+            return try await uploadUnknownLengthSourceViaWebDAV(
+                sourceURL: sourceURL,
+                webdavBase: webdavBase,
+                remotePath: remotePath,
+                filename: filename,
+                user: user,
+                password: password,
+                headers: headers,
+                allowSelfSigned: allowSelfSigned,
+                progressHandler: progressHandler
+            )
+        }
+
         let contentLength = await fetchContentLength(url: sourceURL, headers: headers)
         guard contentLength > 0 else {
             return try await uploadUnknownLengthSourceViaWebDAV(
@@ -621,12 +635,20 @@ final class SeedboxManager {
             .appendingPathComponent("viddl_webdav_\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: stagedFile) }
 
-        let (downloadURL, response) = try await URLSession.shared.download(for: sourceRequest(url: sourceURL, headers: headers))
-        guard let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode) else {
-            throw SeedboxError.transferFailed("Source download failed before WebDAV upload.")
+        if MediaRequestHeaders.requiresInitialRange(for: sourceURL) {
+            try await downloadMixDropSource(
+                sourceURL: sourceURL,
+                headers: headers,
+                destination: stagedFile
+            )
+        } else {
+            let (downloadURL, response) = try await URLSession.shared.download(for: sourceRequest(url: sourceURL, headers: headers))
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode) else {
+                throw SeedboxError.transferFailed("Source download failed before WebDAV upload.")
+            }
+            try FileManager.default.moveItem(at: downloadURL, to: stagedFile)
         }
-        try FileManager.default.moveItem(at: downloadURL, to: stagedFile)
 
         progressHandler(0.05)
         let destinationURL = Self.webDAVFileURL(baseURL: webdavBase, remotePath: remotePath, filename: filename)
@@ -654,6 +676,38 @@ final class SeedboxManager {
         try await delegate.waitForCompletion()
         progressHandler(1.0)
         return destinationURL.absoluteString
+    }
+
+    private func downloadMixDropSource(
+        sourceURL: URL,
+        headers: [String: String]?,
+        destination: URL
+    ) async throws {
+        guard let curl = ToolLocator.find("curl") else {
+            throw SeedboxError.transferFailed("curl is required for this MixDrop CDN source.")
+        }
+
+        var arguments = [
+            "--fail",
+            "--location",
+            "--http1.1",
+            "--retry", "2",
+            "--connect-timeout", "30",
+            "--max-time", "7200",
+            "--range", "0-",
+            "--user-agent", NetworkConstants.chromeUserAgent,
+            "--output", destination.path
+        ]
+        for (key, value) in MediaRequestHeaders.sanitized(headers) where key.caseInsensitiveCompare("Range") != .orderedSame {
+            arguments += ["--header", "\(key): \(value)"]
+        }
+        arguments.append(sourceURL.absoluteString)
+
+        let result = try await SubprocessRunner.run(executable: curl, arguments: arguments, timeout: 7_300)
+        guard result.exitStatus == 0 else {
+            let reason = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw SeedboxError.transferFailed(reason.isEmpty ? "MixDrop CDN download failed (curl exit \(result.exitStatus))." : reason)
+        }
     }
 
     private func uploadHLSViaRcloneRcat(
@@ -845,6 +899,7 @@ final class SeedboxManager {
     private func fetchContentLength(url: URL, headers: [String: String]?) async -> Int64 {
         var request = sourceRequest(url: url, headers: headers)
         request.httpMethod = "HEAD"
+        request.setValue(nil, forHTTPHeaderField: "Range")
         guard let (_, response) = try? await URLSession.shared.data(for: request),
               let http = response as? HTTPURLResponse,
               (200..<400).contains(http.statusCode) else {
@@ -875,6 +930,10 @@ final class SeedboxManager {
         request.timeoutInterval = 60
         request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
         headers?.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        if MediaRequestHeaders.requiresInitialRange(for: url),
+           request.value(forHTTPHeaderField: "Range") == nil {
+            request.setValue("bytes=0-", forHTTPHeaderField: "Range")
+        }
         return request
     }
 

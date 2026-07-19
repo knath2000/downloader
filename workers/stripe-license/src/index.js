@@ -33,7 +33,7 @@ export default {
       return handleWebhook(request, env);
     }
     if (request.method === "GET" && url.pathname === "/cancel") {
-      return html("Checkout canceled. You can return to VidDL and try again.");
+      return html("Checkout canceled. You can return to LustreStudio and try again.");
     }
 
     return json({ error: "Not found" }, 404);
@@ -131,7 +131,7 @@ async function confirmLicenseMove(url, env) {
   const record = await env.LICENSES.get(move.email, "json");
   if (!record || record.status !== "active") return html("This license is no longer active.", 410);
   await env.LICENSES.put(move.email, JSON.stringify({ ...record, redeemedByHwid: move.hwid, updatedAt: new Date().toISOString() }));
-  return html(`<p>VidDL Pro was moved to this Mac. Return to VidDL and refresh the license.</p>`);
+  return html(`<p>LustreStudio Pro was moved to this Mac. Return to LustreStudio and refresh the license.</p>`);
 }
 
 async function sendMoveEmail(email, link, env) {
@@ -145,8 +145,8 @@ async function sendMoveEmail(email, link, env) {
     body: JSON.stringify({
       from: env.RESEND_FROM_EMAIL,
       to: [email],
-      subject: "Move your VidDL Pro license",
-      html: `<p>Confirm moving VidDL Pro to this Mac:</p><p><a href="${escapeHtml(link)}">Move license</a></p><p>This link expires in 15 minutes.</p>`
+      subject: "Move your LustreStudio Pro license",
+      html: `<p>Confirm moving LustreStudio Pro to this Mac:</p><p><a href="${escapeHtml(link)}">Move license</a></p><p>This link expires in 15 minutes.</p>`
     })
   });
   return response.ok;
@@ -227,7 +227,7 @@ async function successPage(url, env) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VidDL Pro Activated</title>
+  <title>LustreStudio Pro Activated</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #f6f7f9; color: #111827; }
     main { max-width: 520px; margin: 12vh auto; padding: 32px; background: white; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.08); }
@@ -240,9 +240,9 @@ async function successPage(url, env) {
 <body>
   <main>
     <h1>Payment complete</h1>
-    <p>Your VidDL Pro purchase was received. Return to VidDL to refresh your license.</p>
-    <p>If VidDL does not open automatically, click the button below.</p>
-    <a class="button" href="${escapedAppUrl}">Open VidDL</a>
+    <p>Your LustreStudio Pro purchase was received. Return to LustreStudio to refresh your license.</p>
+    <p>If LustreStudio does not open automatically, click the button below.</p>
+    <a class="button" href="${escapedAppUrl}">Open LustreStudio</a>
   </main>
   <script>
     setTimeout(function () {

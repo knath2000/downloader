@@ -1,11 +1,12 @@
-# VidDL Changelog
+# LustreStudio Changelog
 
 ## Unreleased
+- Rebranded the visible app, bundle, packaging, and licensing experience as LustreStudio while retaining compatibility identities and persisted paths
 - Added a persistent macOS menu-bar download monitor with transfer progress, pause/resume, quick-open, and quit controls
 - Added concurrent Google Drive and Seedbox transfers from a single extracted result
 - Added local rotating-code activation for personal Pro use
 - Polished Feed spacing, card density, and the top filter toolbar layout
-- Gated Feed, Favorites, and Profile behind VidDL Pro
+- Gated Feed, Favorites, and Profile behind LustreStudio Pro
 - Simplified Settings Cloud Destinations into one selector-driven setup section
 - Removed legacy upload automation rules, updater integration, and companion-entrypoint scope
 - Fixed AI Profile narrative rendering for flattened cached analysis text
@@ -35,6 +36,11 @@
 - Added PornHub hover MP4 previews from `data-mediabook` with matching playback headers
 - Added live PornHub card parsing for `data-video-vkey`, thumbnails, views, duration, uploader, and relative upload dates
 - Added user-facing setup documentation in `README.md`
+
+- Added live extraction traces with provider-specific progress, results, pipeline stages, and failure reasons
+- Preserved the primary page URL for queued work so delayed tasks refresh short-lived provider media URLs when they begin
+- Hardened AllPornStream provider resolution for current MixDrop and DoodStream aliases, including independent provider outcomes
+- Added a browser-compatible curl fallback for MixDrop mxcontent.net WebDAV transfers when macOS URLSession receives CDN 403 responses
 
 ## v2.0.0 (Apr 2026)
 - Dual window + menu bar mode (no longer menubar-only)

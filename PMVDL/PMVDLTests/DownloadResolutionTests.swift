@@ -93,8 +93,33 @@ final class StreamTapeExtractorTests: XCTestCase {
 }
 
 final class MixDropExtractorTests: XCTestCase {
+    func testMixContentSourcesUseInitialByteRangeRequests() throws {
+        XCTAssertTrue(MediaRequestHeaders.requiresInitialRange(for: try XCTUnwrap(URL(string: "https://a-delivery49.mxcontent.net/v2/video.mp4"))))
+        XCTAssertFalse(MediaRequestHeaders.requiresInitialRange(for: try XCTUnwrap(URL(string: "https://example.test/video.mp4"))))
+    }
+
     func testSupportsCurrentMirrorHost() throws {
         XCTAssertTrue(MixDropExtractor.supports(try XCTUnwrap(URL(string: "https://miiixdrop.net/e/4dvjklq6u3w8md"))))
+        XCTAssertTrue(MixDropExtractor.supports(try XCTUnwrap(URL(string: "https://miiiixdrop.net/f/36430q3wfllnwj"))))
+    }
+
+    func testMixDropBuildsLiveMirrorFallback() throws {
+        let staleURL = try XCTUnwrap(URL(string: "https://mxdrop.to/e/36430q3wfllnwj"))
+        XCTAssertEqual(
+            MixDropExtractor.fallbackMirrorURL(for: staleURL)?.absoluteString,
+            "https://miiiixdrop.net/f/36430q3wfllnwj"
+        )
+    }
+
+    func testMixDropAcceptsExtensionlessDeliveryURL() async throws {
+        let pageURL = try XCTUnwrap(URL(string: "https://miiiixdrop.net/f/36430q3wfllnwj"))
+        let mediaURL = "https://a-delivery49.mxcontent.net/d/36430q3wfllnwj/ga10u1fqoagjk2q6kbiea7j9kx5?ab=0&r=https%3A%2F%2Fmiiiixdrop.net%2Ff%2F36430q3wfllnwj"
+        let html = "<script>MDCore.wurl = '\(mediaURL)';</script>"
+
+        let source = try await MixDropExtractor.extract(fromHTML: html, url: pageURL)
+
+        XCTAssertEqual(source.mp4, mediaURL)
+        XCTAssertEqual(source.hls.first?.headers?["Referer"], pageURL.absoluteString)
     }
 
     func testMixDropPrefersMDCoreWurlOverAdScriptSrc() async throws {
@@ -155,6 +180,10 @@ final class MixDropExtractorTests: XCTestCase {
 final class DoodStreamExtractorTests: XCTestCase {
     func testSupportsVide0DoodAlias() {
         XCTAssertTrue(DoodStreamExtractor.supports(URL(string: "https://vide0.net/e/hxptj42uoxb0")!))
+    }
+
+    func testSupportsCurrentDooodsterAlias() {
+        XCTAssertTrue(DoodStreamExtractor.supports(URL(string: "https://dooodster.com/e/xm7f2egykc8f")!))
     }
 
     func testDoodstreamAliasUsesPlaymogoMirror() {

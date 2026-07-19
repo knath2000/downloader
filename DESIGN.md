@@ -1,19 +1,19 @@
-# VidDL UI/UX Redesign Brief for Google Stitch
+# LustreStudio UI/UX Redesign Brief for Google Stitch
 
 ## Product Context
 
-VidDL is a macOS video downloader for streaming sites. Users paste URLs, extract downloadable video sources, download locally, send files to cloud/remote storage, browse supported feeds, and manage a library of downloaded or saved items.
+LustreStudio is a macOS video downloader for streaming sites. Users paste URLs, extract downloadable video sources, download locally, send files to cloud/remote storage, browse supported feeds, and manage a library of downloaded or saved items.
 
 The current app is a native SwiftUI macOS app with a dark glass visual language, compact floating bottom navigation, and four primary destinations:
 
 - Home: URL entry, extraction results, active/completed download queue, dependency setup.
-- Feed: controlled in-app feed/browser viewer with VidDL overlay actions such as Extract, Favorite, and site switching.
+- Feed: controlled in-app feed/browser viewer with LustreStudio overlay actions such as Extract, Favorite, and site switching.
 - Library: downloaded items, saved links, uploads, favorites, timeline/detail browsing.
 - Settings: dependency setup, download location, notifications, playback/download preferences, Pro license, app info.
 
 ## Stitch Prompt
 
-Use the attached screenshots as the current state of a native macOS app called VidDL. Redesign the UI/UX layout, hierarchy, and visual feel while preserving the existing product behavior. Do not produce a marketing landing page. Produce a polished app interface that feels like a professional macOS utility for power users.
+Use the attached screenshots as the current state of a native macOS app called LustreStudio. Redesign the UI/UX layout, hierarchy, and visual feel while preserving the existing product behavior. Do not produce a marketing landing page. Produce a polished app interface that feels like a professional macOS utility for power users.
 
 Design direction:
 
@@ -61,7 +61,7 @@ Screens to redesign:
 
 4. Feed browser state
    - Redesign the floating browser overlay so it feels integrated and does not cover common site controls.
-   - Make VidDL actions obvious without making the embedded page feel trapped in heavy chrome.
+   - Make LustreStudio actions obvious without making the embedded page feel trapped in heavy chrome.
    - Account for selection/batch extraction, right-click actions, and current-page extraction.
 
 5. Library state
@@ -92,7 +92,7 @@ Avoid:
 - Text-heavy explanations inside the app UI.
 - Removing functionality or changing the app into a general web browser.
 
-## Implementation Notes for VidDL
+## Implementation Notes for LustreStudio
 
 - Prefer incremental SwiftUI changes screen by screen.
 - Keep existing app behavior and stores intact unless a later implementation plan explicitly changes them.
@@ -104,7 +104,7 @@ Avoid:
 - The Stitch-style Home command panel must apply to every no-active-download state, not only a completely empty idle state.
 - Completed-only Home is still a "ready for the next URL" state: keep paste/extract primary and show completed downloads as a compact embedded success strip with Open Library, Show Details, and Clear All.
 - Active downloads remain queue-first; no-active Home should not show the older separate hero/status card plus separate paste card stack.
-- The target Home structure is one centered glass command panel containing: VidDL title/subtitle, dependency pills, large URL editor, Paste/Clear/Extract actions, optional completed/results strips, and the four supported platform cards.
+- The target Home structure is one centered glass command panel containing: LustreStudio title/subtitle, dependency pills, large URL editor, Paste/Clear/Extract actions, optional completed/results strips, and the four supported platform cards.
 
 ## Implementation Lesson: Extraction Modal
 

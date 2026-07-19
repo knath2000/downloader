@@ -62,12 +62,13 @@ struct ExtractionModalView: View {
                     id: slot.id,
                     url: slot.url,
                     resultIndex: completedIndex,
-                    result: result
+                    result: result,
+                    activity: slot.activity
                 )
                 completedIndex += 1
                 return row
             }
-            return ExtractionDisplayRow(id: slot.id, url: slot.url, resultIndex: nil, result: nil)
+            return ExtractionDisplayRow(id: slot.id, url: slot.url, resultIndex: nil, result: nil, activity: slot.activity)
         }
     }
 
@@ -135,7 +136,7 @@ struct ExtractionModalView: View {
                         ) {
                             if let result = row.result, let resultIndex = row.resultIndex {
                                 ExtractionResultRow(
-                                    row: ExtractionResultRowModel(id: row.id, index: resultIndex, result: result),
+                                    row: ExtractionResultRowModel(id: row.id, index: resultIndex, result: result, activity: row.activity),
                                     isRetrying: retryingResultIndices.contains(resultIndex),
                                     usesLightweightThumbnail: usesLightweightResultRows,
                                     localState: localState,
@@ -151,7 +152,10 @@ struct ExtractionModalView: View {
                                     onQueue: onQueue
                                 )
                             } else {
-                                ExtractionLoadingRow(subtitle: loadingSubtitle(for: row.url))
+                                ExtractionLoadingRow(
+                                    subtitle: loadingSubtitle(for: row.url),
+                                    activity: row.activity
+                                )
                             }
                         }
                     }
@@ -289,6 +293,7 @@ private struct ExtractionDisplayRow: Identifiable, Equatable {
     let url: String
     let resultIndex: Int?
     let result: ExtractResult?
+    let activity: [String]
 }
 
 enum ExtractionRevealAnimationSupport {
@@ -389,12 +394,14 @@ private struct ExtractionResultRowModel: Identifiable, Equatable {
     let id: UUID
     let index: Int
     let result: ExtractResult
+    let activity: [String]
     let presentation: VideoResultPresentation
 
-    init(id: UUID, index: Int, result: ExtractResult) {
+    init(id: UUID, index: Int, result: ExtractResult, activity: [String]) {
         self.id = id
         self.index = index
         self.result = result
+        self.activity = activity
         self.presentation = VideoResultPresentation(result: result)
     }
 }
@@ -480,6 +487,8 @@ private struct ExtractionResultRow: View {
                 }
             }
 
+            extractionActivity
+
             if result.source != nil {
                 progressLine
                 controls
@@ -536,6 +545,27 @@ private struct ExtractionResultRow: View {
                         .background(.black.opacity(0.52), in: Circle())
             }
         }
+    }
+
+    private var extractionActivity: some View {
+        guard !row.activity.isEmpty else { return AnyView(EmptyView()) }
+        return AnyView(
+            VStack(alignment: .leading, spacing: 4) {
+                Label("Extraction trace", systemImage: "waveform.path.ecg")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Theme.textSecondary)
+                ForEach(Array(row.activity.suffix(8).enumerated()), id: \.offset) { _, message in
+                    Text(message)
+                        .font(.caption2)
+                        .foregroundStyle(message.localizedCaseInsensitiveContains("failed") ? Theme.error : Theme.textSecondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface0.opacity(0.28), in: RoundedRectangle(cornerRadius: 12))
+        )
     }
 
     private var fallbackThumbnail: some View {
@@ -692,10 +722,10 @@ private struct ExtractionResultRow: View {
 
     private var failedContent: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(result.error ?? "Extraction failed.")
+            Text(failureSummary)
                 .font(.caption)
                 .foregroundStyle(Theme.error)
-                .lineLimit(2)
+                .lineLimit(4)
 
             if isRetrying {
                 HStack(spacing: 8) {
@@ -718,6 +748,12 @@ private struct ExtractionResultRow: View {
                 }
             }
         }
+    }
+
+    private var failureSummary: String {
+        row.activity.last(where: { $0.localizedCaseInsensitiveContains("Source failed") })
+            ?? result.error
+            ?? "Source failed • stage: page extraction • source: \(row.result.url)"
     }
 
     private var statusBadge: some View {
@@ -808,6 +844,7 @@ enum ExtractionPulse {
 
 struct ExtractionLoadingRow: View {
     let subtitle: String
+    let activity: [String]
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.performanceProfile) private var performanceProfile
@@ -922,9 +959,17 @@ struct ExtractionLoadingRow: View {
                 }
                 .frame(height: 7)
 
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(Theme.textSecondary)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(activity.last ?? subtitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(2)
+                    if activity.count > 1 {
+                        Text("\(activity.count) extraction steps reported")
+                            .font(.caption2)
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                }
             }
 
             Spacer()

@@ -294,6 +294,11 @@ struct MegaManager {
         var request = URLRequest(url: URL(string: url)!)
         request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
         headers?.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        if let sourceURL = request.url,
+           MediaRequestHeaders.requiresInitialRange(for: sourceURL),
+           request.value(forHTTPHeaderField: "Range") == nil {
+            request.setValue("bytes=0-", forHTTPHeaderField: "Range")
+        }
         try await delegate.performDownload(session: session, request: request)
         if isCanceled(uploadID) { throw MegaUpError.uploadFailed("Upload canceled") }
 

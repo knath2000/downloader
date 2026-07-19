@@ -134,12 +134,24 @@ final class DownloadJobRunner {
     @discardableResult
     func queue(resolutions: [DownloadResolution], target: CloudTarget, context: DownloadJobContext) -> [UUID] {
         let items = resolutions.map { resolution in
-            DownloadQueueItem(
-                url: resolution.requestedUrl,
-                quality: queueQuality(for: resolution, target: target),
+            let sourcePageURL = resolution.result.url
+            let quality = queueQuality(for: resolution, target: target)
+            let preferredQualityLabel = resolution.source.hls.first(where: {
+                $0.url == resolution.requestedUrl || $0.url == resolution.finalUrl
+            })?.label
+            let payload = DownloadRetryPayload(
+                sourcePageURL: sourcePageURL,
+                preferredQualityLabel: preferredQualityLabel,
+                title: resolution.title,
+                target: target,
+                context: context.retryContext
+            )
+            return DownloadQueueItem(
+                url: sourcePageURL,
+                quality: quality,
                 targetCloud: target,
                 displayTitle: resolution.title,
-                retryPayload: buildRetryPayload(for: resolution, target: target, context: context)
+                retryPayload: payload
             )
         }
         return DownloadQueue.shared.addQueued(items)
@@ -189,7 +201,7 @@ final class DownloadJobRunner {
     }
 
     func startInterruptedResume(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) {
-        enqueueExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword)
+        enqueueExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword, refreshSource: true)
     }
 
     func startQueuedNow(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) {
@@ -304,7 +316,7 @@ final class DownloadJobRunner {
     ) -> UUID {
         let payload = buildRetryPayload(for: resolution, target: target, context: context)
         let queueId = DownloadQueue.shared.add(
-            url: resolution.requestedUrl,
+            url: resolution.result.url,
             quality: queueQuality(for: resolution, target: target),
             targetCloud: target,
             displayTitle: resolution.title,
@@ -477,23 +489,27 @@ final class DownloadJobRunner {
 
         do {
             try validate(target: target, context: context)
-            DownloadQueue.shared.update(
-                id: queueId,
-                status: .waiting,
-                progress: 0,
-                message: "Resolving video source..."
-            )
-            resolution = try await DownloadResolver.resolve(
-                sourcePageURL: payload.sourcePageURL,
-                preferredQualityLabel: payload.preferredQualityLabel,
-                preferredQualityURL: payload.preferredQualityURL
-            )
+            if refreshSource {
+                DownloadQueue.shared.update(
+                    id: queueId,
+                    status: .waiting,
+                    progress: 0,
+                    message: "Resolving video source..."
+                )
+                resolution = try await DownloadResolver.resolve(
+                    sourcePageURL: payload.sourcePageURL,
+                    preferredQualityLabel: payload.preferredQualityLabel,
+                    preferredQualityURL: nil
+                )
+            }
             try validateProFeatures(for: resolution)
         } catch {
             return handleFailure(
                 queueId: queueId,
                 title: resolution.title,
                 error: error,
+                stage: "source resolution",
+                source: payload.sourcePageURL,
                 payload: payload,
                 seedboxWebdavPassword: seedboxWebdavPassword
             )
@@ -523,6 +539,8 @@ final class DownloadJobRunner {
                 queueId: queueId,
                 title: resolution.title,
                 error: error,
+                stage: "media transfer",
+                source: resolution.finalUrl,
                 payload: payload,
                 seedboxWebdavPassword: seedboxWebdavPassword
             )
@@ -533,19 +551,21 @@ final class DownloadJobRunner {
         queueId: UUID,
         title: String,
         error: Error,
+        stage: String,
+        source: String,
         payload: DownloadRetryPayload,
         seedboxWebdavPassword: String
     ) -> RunOutcome {
         let attempts = DownloadQueue.shared.item(id: queueId)?.automaticRetryCount ?? 0
         guard DownloadAutomaticRetryPolicy.shouldRetry(error, after: attempts) else {
-            fail(queueId: queueId, title: title, error: error)
+            fail(queueId: queueId, title: title, error: error, stage: stage, source: source)
             return .finished(false)
         }
 
         let nextAttempt = attempts + 1
         let delay = DownloadAutomaticRetryPolicy.delay(forAttempt: nextAttempt)
         guard DownloadQueue.shared.scheduleAutomaticRetry(id: queueId, attempt: nextAttempt, after: delay) else {
-            fail(queueId: queueId, title: title, error: error)
+            fail(queueId: queueId, title: title, error: error, stage: stage, source: source)
             return .finished(false)
         }
         scheduleRetryWake(
@@ -688,10 +708,11 @@ final class DownloadJobRunner {
         )
     }
 
-    private func fail(queueId: UUID, title: String, error: Error) {
-        DownloadQueue.shared.fail(id: queueId, error: error)
+    private func fail(queueId: UUID, title: String, error: Error, stage: String, source: String) {
+        let message = "Source failed • stage: \(stage) • source: \(source) • reason: \(error.localizedDescription)"
+        DownloadQueue.shared.fail(id: queueId, message: message)
         ActiveWorkTracker.shared.project(queueId: queueId)
-        NotificationManager.shared.notifyUploadFailed(filename: title, reason: error.localizedDescription)
+        NotificationManager.shared.notifyUploadFailed(filename: title, reason: message)
     }
 
     private func shouldStop(queueId: UUID) -> Bool {

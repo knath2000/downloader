@@ -191,7 +191,20 @@ class DownloadQueue: ObservableObject {
     private func load() {
         if let data = UserDefaults.standard.data(forKey: userDefaultsKey),
            let decoded = try? JSONDecoder().decode([DownloadQueueItem].self, from: data) {
-            queue = decoded
+            var didNormalize = false
+            queue = decoded.map { item in
+                guard item.itemKind != .extraction,
+                      let sourcePageURL = item.retryPayload?.sourcePageURL,
+                      item.url != sourcePageURL else { return item }
+                var normalized = item
+                normalized.url = sourcePageURL
+                normalized.filename = URL(string: sourcePageURL)?.lastPathComponent ?? "video.mp4"
+                didNormalize = true
+                return normalized
+            }
+            if didNormalize {
+                persistQueueSnapshot()
+            }
         }
     }
 

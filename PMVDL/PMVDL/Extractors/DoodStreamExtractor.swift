@@ -15,11 +15,11 @@ struct DoodStreamExtractor: VideoSiteExtractor {
     guard let host = url.host()?.lowercased() else { return false }
     return host == "doodstream.com" || host == "doodstream.org" || host == "dood.wf" || host == "dood.pm"
       || host == "dood.to" || host == "dood.ws" || host == "dood.one" || host == "dood.watch" || host == "dood.la"
-      || host == "dood.sh" || host == "vide0.net" || host == "playmogo.com"
+      || host == "dood.sh" || host == "vide0.net" || host == "dooodster.com" || host == "playmogo.com"
       || host.hasSuffix(".doodstream.com") || host.hasSuffix(".doodstream.org") || host.hasSuffix(".dood.wf")
       || host.hasSuffix(".dood.pm") || host.hasSuffix(".dood.to") || host.hasSuffix(".dood.ws")
       || host.hasSuffix(".dood.one") || host.hasSuffix(".dood.watch") || host.hasSuffix(".dood.la")
-      || host.hasSuffix(".dood.sh") || host.hasSuffix(".vide0.net") || isPlaymogoHost(host)
+      || host.hasSuffix(".dood.sh") || host.hasSuffix(".vide0.net") || host.hasSuffix(".dooodster.com") || isPlaymogoHost(host)
   }
 
   static func extract(fromHTML html: String, url: URL) async throws -> VideoSource {

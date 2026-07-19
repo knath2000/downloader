@@ -35,7 +35,7 @@ final class DownloadQueueProjectionTests: XCTestCase {
 
     // MARK: - Retry payload round-trip
 
-    func testRetryPayloadRoundTripsResolutionTargetAndNonSecretContext() throws {
+    func testRetryPayloadRoundTripsSourceTargetAndNonSecretContext() throws {
         let context = DownloadJobContext(
             megaRemotePath: "/Original/Mega/",
             gdriveRemoteName: "gdrive-original",
@@ -60,11 +60,14 @@ final class DownloadQueueProjectionTests: XCTestCase {
                        "Password must not appear in encoded JSON")
         XCTAssertFalse(json.contains("seedboxWebdavPassword"),
                        "Password key must not appear in encoded JSON")
+        XCTAssertTrue(json.contains("https://example.test/watch"))
+        XCTAssertFalse(json.contains("https://video.example.test/movie/1080p.m3u8"),
+                       "Resolved media URL must not be persisted in the retry payload")
 
         let decoded = try JSONDecoder().decode(DownloadRetryPayload.self, from: encoded)
-        XCTAssertEqual(decoded.resolution.title, "Retry Fixture")
-        XCTAssertEqual(decoded.resolution.mediaKind, .hls)
-        XCTAssertEqual(decoded.resolution.headers?["Referer"], "https://example.test/watch")
+        XCTAssertEqual(decoded.sourcePageURL, "https://example.test/watch")
+        XCTAssertNil(decoded.preferredQualityURL)
+        XCTAssertEqual(decoded.preferredQualityLabel, "1080p")
         XCTAssertEqual(decoded.target, .seedbox)
         XCTAssertEqual(decoded.context.seedboxTransferMode, "webdav")
         XCTAssertEqual(decoded.context.seedboxWebdavURL, "https://seedbox.example.test/webdav/")

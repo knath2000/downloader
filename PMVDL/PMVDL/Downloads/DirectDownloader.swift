@@ -45,6 +45,10 @@ struct DirectDownloader {
         request.timeoutInterval = 120
         request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
         MediaRequestHeaders.sanitized(headers).forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+        if MediaRequestHeaders.requiresInitialRange(for: validUrl),
+           request.value(forHTTPHeaderField: "Range") == nil {
+            request.setValue("bytes=0-", forHTTPHeaderField: "Range")
+        }
         try await delegate.performDownload(session: session, request: request)
 
         return destFile
@@ -85,6 +89,8 @@ struct DirectDownloader {
         MediaRequestHeaders.sanitized(headers).forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
         if existingSize > 0 {
             request.setValue("bytes=\(existingSize)-", forHTTPHeaderField: "Range")
+        } else if MediaRequestHeaders.requiresInitialRange(for: url) {
+            request.setValue("bytes=0-", forHTTPHeaderField: "Range")
         }
 
         let initialPartialPath = outputURL.path

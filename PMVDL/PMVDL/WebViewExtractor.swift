@@ -207,7 +207,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
                         var videoElement = videoElements[v];
                         var src = videoElement.currentSrc || videoElement.src;
                         if (src && src.length > 0 && !src.startsWith("blob:") && !src.startsWith("data:") &&
-                            (src.includes(".mp4") || src.includes(".m3u8") || src.includes("dood.video"))) {
+                            (src.includes(".mp4") || src.includes(".m3u8") || src.includes("dood.video") || src.includes("mxcontent.net"))) {
                             return {url: src, type: "video_element"};
                         }
                     }
@@ -219,7 +219,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
                     for (var i = 0; i < sources.length; i++) {
                         var s = sources[i].src || sources[i].getAttribute("src");
                         if (s && s.trim().length > 0 && !s.startsWith("blob:") && !s.startsWith("data:") &&
-                            (s.includes(".mp4") || s.includes(".m3u8") || s.includes("dood.video"))) {
+                            (s.includes(".mp4") || s.includes(".m3u8") || s.includes("dood.video") || s.includes("mxcontent.net"))) {
                             return {url: s.trim(), type: "source_element"};
                         }
                     }
@@ -232,7 +232,7 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
                         if (player && player.getPlaylist) {
                             var playlist = player.getPlaylist();
                             if (playlist && playlist[0] && playlist[0].file &&
-                                (playlist[0].file.includes(".mp4") || playlist[0].file.includes(".m3u8") || playlist[0].file.includes("dood.video"))) {
+                                (playlist[0].file.includes(".mp4") || playlist[0].file.includes(".m3u8") || playlist[0].file.includes("dood.video") || playlist[0].file.includes("mxcontent.net"))) {
                                 return {url: playlist[0].file, type: "jwplayer"};
                             }
                         }
@@ -532,7 +532,12 @@ private class WebViewExtractorTask: NSObject, WKNavigationDelegate, WKScriptMess
               host == "mxcontent.net" || host.hasSuffix(".mxcontent.net") else {
             return false
         }
-        return components.percentEncodedPath.lowercased().contains(".mp4")
+        let path = components.percentEncodedPath.lowercased()
+        if path.contains(".mp4") {
+            return true
+        }
+        let segments = path.split(separator: "/", omittingEmptySubsequences: true)
+        return segments.count >= 3 && segments[0] == "d" && !segments[1].isEmpty && !segments[2].isEmpty
     }
 
     private static func candidateCollectorScript(handlerName: String) -> String {

@@ -41,6 +41,20 @@ Terminal inspection found:
 
 `MixDropExtractor` therefore keeps its fast static parser first and falls back to `WKWebView` media capture only if the page request or static parsing fails. WebView capture now accepts only validated `mxcontent.net` MP4 URLs and returns the MixDrop Referer plus Chrome user-agent headers. The discovered `miiiixdrop.net` alias is also recognized for direct inputs and provider routing.
 
+## Provider progress and MixDrop transfer compatibility
+
+The extraction modal now retains a per-URL trace while work is in progress and after it completes. It reports page parsing, discovered providers, the provider currently resolving, each provider's result, and a deterministic summary across all providers. Terminal extraction and download failures identify the failing source, pipeline stage, and reason.
+
+For AllPornStream provider posts, StreamTape, MixDrop, and DoodStream are resolved independently with a bounded provider timeout. A failed provider no longer hides the result from the other providers or blocks a viable MixDrop source.
+
+Manual validation against a live MixDrop mxcontent.net MP4 established a transport-specific distinction:
+
+- HEAD returns a valid MP4 content length.
+- A browser-compatible curl request using HTTP/1.1 and Range: bytes=0- returns 206 Partial Content.
+- The same request issued through macOS URLSession returns 403.
+
+Seedbox WebDAV transfers now route mxcontent.net media through curl with the proven HTTP/1.1 range request, stage it locally, then upload the staged file to WebDAV. This bypasses the CDN behavior that rejects the native Foundation client while preserving the existing direct streaming path for other hosts.
+
 ## Validation
 
 - `git diff --check`

@@ -11,25 +11,43 @@ struct MixDropExtractor: VideoSiteExtractor {
  }
 
  static func extract(fromHTML html: String, url: URL) async throws -> VideoSource {
- let pageHtml: String
- if html.isEmpty {
- do {
- pageHtml = try await fetchPage(url: url)
- } catch {
- return try await extractViaWebView(url: url)
- }
- } else {
- pageHtml = html
+ if !html.isEmpty {
+ return try await extractFromPage(html, url: url)
  }
 
+ let pageURLs = [url, fallbackMirrorURL(for: url)].compactMap { $0 }
+ for pageURL in pageURLs {
+ if let pageHtml = try? await fetchPage(url: pageURL),
+ let source = staticSource(from: pageHtml, pageURL: pageURL) {
+ return source
+ }
+ }
+
+ var lastError: Error?
+ for pageURL in [fallbackMirrorURL(for: url), url].compactMap({ $0 }) {
+ do {
+ return try await extractViaWebView(url: pageURL)
+ } catch {
+ lastError = error
+ }
+ }
+ throw lastError ?? MixDropError.noVideoSource
+ }
+
+ private static func extractFromPage(_ pageHtml: String, url: URL) async throws -> VideoSource {
+ if let source = staticSource(from: pageHtml, pageURL: url) {
+ return source
+ }
+ return try await extractViaWebView(url: url)
+ }
+
+ private static func staticSource(from pageHtml: String, pageURL: URL) -> VideoSource? {
  let title = extractTitle(from: pageHtml) ?? "MixDrop Video"
  let thumbnail = extractThumbnail(from: pageHtml)
-
- guard let videoUrl = findVideoUrl(in: pageHtml, pageURL: url) ?? findVideoUrlViaPacker(pageHtml, pageURL: url) else {
- return try await extractViaWebView(url: url)
+ guard let videoUrl = findVideoUrl(in: pageHtml, pageURL: pageURL) ?? findVideoUrlViaPacker(pageHtml, pageURL: pageURL) else {
+ return nil
  }
-
- return videoSource(videoUrl, pageURL: url, title: title, thumbnail: thumbnail, resolutionMethod: "Static MixDrop resolver")
+ return videoSource(videoUrl, pageURL: pageURL, title: title, thumbnail: thumbnail, resolutionMethod: "Static MixDrop resolver")
  }
 
  private static func extractViaWebView(url: URL) async throws -> VideoSource {
@@ -225,7 +243,25 @@ struct MixDropExtractor: VideoSiteExtractor {
  return false
  }
 
- return path.hasSuffix(".mp4") || path.contains(".mp4")
+ if path.hasSuffix(".mp4") || path.contains(".mp4") {
+ return true
+ }
+
+ let segments = path.split(separator: "/", omittingEmptySubsequences: true)
+ return segments.count >= 3 && segments[0] == "d" && !segments[1].isEmpty && !segments[2].isEmpty
+ }
+
+ static func fallbackMirrorURL(for url: URL) -> URL? {
+ guard let host = url.host?.lowercased(), host != "miiiixdrop.net",
+ let fileCode = url.path.split(separator: "/").last, !fileCode.isEmpty,
+ var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+ return nil
+ }
+ components.host = "miiiixdrop.net"
+ components.path = "/f/\(fileCode)"
+ components.query = nil
+ components.fragment = nil
+ return components.url
  }
 
  private static func extractJsStringValue(pattern: String, in text: String) -> String? {

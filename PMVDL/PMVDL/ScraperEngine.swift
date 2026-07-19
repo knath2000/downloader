@@ -72,9 +72,28 @@ struct ScraperEngine {
  }
 
  static func extract(from urlString: String) async throws -> VideoSource {
+  try await extractWithProgress(from: urlString, onProgress: nil)
+ }
+
+ static func extractWithProgress(from urlString: String, onProgress: (@Sendable (String) -> Void)?) async throws -> VideoSource {
   guard let url = URLTrustPolicy.validated(urlString) else { throw VideoExtractorError.invalidURL }
+  onProgress?("Validating page URL…")
   if let extractor = findExtractor(for: url) {
-   let source = try await extractor.extract(fromHTML: "", url: url)
+   let source: VideoSource
+   do {
+    if extractor == ProviderLinkExtractor.self {
+     onProgress?("Reading provider sources from the page…")
+     source = try await ProviderLinkExtractor.extract(fromHTML: "", url: url, onProgress: onProgress)
+    } else {
+     onProgress?("Extracting with \(String(describing: extractor))…")
+     source = try await extractor.extract(fromHTML: "", url: url)
+    }
+   } catch {
+    onProgress?("Source failed • stage: page extraction • source: \(String(describing: extractor)) • reason: \(error.localizedDescription)")
+    throw error
+   }
+   let count = source.hls.filter { $0.kind != .pageUrl }.count + (source.mp4 == nil ? 0 : 1)
+   onProgress?("Found \(count) downloadable source\(count == 1 ? "" : "s")")
    return source.withResolutionMethod(resolutionMethod(for: extractor))
   }
   throw VideoExtractorError.noVideoSources

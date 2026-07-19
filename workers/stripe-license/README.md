@@ -1,6 +1,6 @@
-# VidDL Stripe License Worker
+# LustreStudio Stripe License Worker
 
-Cloudflare Worker backend for VidDL Pro.
+Cloudflare Worker backend for LustreStudio Pro.
 
 See `../../docs/STRIPE_PRO_LICENSE.md` for the current production IDs, checkout flow, deployment notes, and verification checklist.
 

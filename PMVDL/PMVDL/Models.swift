@@ -263,7 +263,7 @@ struct DownloadRetryPayload: Codable, Equatable {
         self.preferredQualityLabel = resolution.source.hls.first(where: {
             $0.url == resolution.requestedUrl || $0.url == resolution.finalUrl
         })?.label
-        self.preferredQualityURL = resolution.requestedUrl
+        self.preferredQualityURL = nil
         self.target = target
         self.context = context
         self.gdriveMegaRemotePath = gdriveMegaRemotePath
@@ -308,7 +308,7 @@ struct DownloadRetryPayload: Codable, Equatable {
         if let pageURL = try container.decodeIfPresent(String.self, forKey: .sourcePageURL) {
             sourcePageURL = pageURL
             preferredQualityLabel = try container.decodeIfPresent(String.self, forKey: .preferredQualityLabel)
-            preferredQualityURL = try container.decodeIfPresent(String.self, forKey: .preferredQualityURL)
+            preferredQualityURL = nil
             let source = VideoSource(mp4: nil, hls: [], title: nil, siteName: URL(string: pageURL)?.host ?? "Video")
             inMemoryResolution = DownloadResolution(
                 requestedUrl: pageURL,
@@ -326,7 +326,7 @@ struct DownloadRetryPayload: Codable, Equatable {
             preferredQualityLabel = legacyResolution.source.hls.first(where: {
                 $0.url == legacyResolution.requestedUrl || $0.url == legacyResolution.finalUrl
             })?.label
-            preferredQualityURL = legacyResolution.requestedUrl
+            preferredQualityURL = nil
             inMemoryResolution = legacyResolution
         }
     }
@@ -384,8 +384,8 @@ struct DownloadActivityEvent: Identifiable, Codable, Equatable {
 
 struct DownloadQueueItem: Identifiable, Codable, Equatable {
     let id: UUID
-    let url: String
-    let filename: String
+    var url: String
+    var filename: String
     let quality: String // "MP4", "1080p", etc.
     var status: QueueStatus
     var progress: Double // 0-100

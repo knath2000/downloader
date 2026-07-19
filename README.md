@@ -1,6 +1,6 @@
-# VidDL
+# LustreStudio
 
-VidDL is a macOS video downloader for streaming sites.
+LustreStudio is a macOS video downloader for streaming sites.
 
 Minimum macOS version: macOS 14.0 Sonoma.
 
@@ -14,15 +14,15 @@ bash scripts/build-dmg.sh
 
 Then:
 
-1. Open the generated `VidDL-<version>-build<build>-unsigned.dmg`.
-2. Open the DMG and drag VidDL into `Applications`.
-3. Open VidDL from `Applications`.
+1. Open the generated `LustreStudio-<version>-build<build>-unsigned.dmg`.
+2. Open the DMG and drag LustreStudio into `Applications`.
+3. Open LustreStudio from `Applications`.
 
-On first launch, macOS may say VidDL is from an unidentified developer because the local DMG is unsigned and unnotarized. Open System Settings, go to Privacy & Security, then allow VidDL from the security prompt. After that, open VidDL again.
+On first launch, macOS may say LustreStudio is from an unidentified developer because the local DMG is unsigned and unnotarized. Open System Settings, go to Privacy & Security, then allow LustreStudio from the security prompt. After that, open LustreStudio again.
 
 ## Required Dependencies
 
-VidDL uses external command-line tools for extraction, HLS downloads, and video processing. Install them with Homebrew.
+LustreStudio uses external command-line tools for extraction, HLS downloads, and video processing. Install them with Homebrew.
 
 If Homebrew is not installed:
 
@@ -68,9 +68,9 @@ In the rclone setup flow, choose Google Drive and name the remote:
 gdrive
 ```
 
-You can use a different remote name, but it must match the Google Drive remote name in VidDL Settings.
+You can use a different remote name, but it must match the Google Drive remote name in LustreStudio Settings.
 
-The default Google Drive upload path is:
+The legacy default Google Drive upload path is preserved for compatibility:
 
 ```text
 VidDL/
@@ -78,7 +78,7 @@ VidDL/
 
 ## First Launch
 
-The Home tab shows a Setup panel when VidDL finds missing tools or incomplete cloud setup.
+The Home tab shows a Setup panel when LustreStudio finds missing tools or incomplete cloud setup.
 
 The setup panel includes copyable install or setup commands, such as:
 
@@ -95,9 +95,9 @@ Cloud setup, notifications, download options, helper checks, Pro licensing, and 
 
 ## Licensing
 
-VidDL includes 3 free downloads.
+LustreStudio includes 3 free downloads.
 
-VidDL Pro unlocks unlimited downloads with a one-time $0.99 purchase. Purchase or activate Pro from the in-app upgrade prompt or the Pro section in Settings.
+LustreStudio Pro unlocks unlimited downloads with a one-time $0.99 purchase. Purchase or activate Pro from the in-app upgrade prompt or the Pro section in Settings.
 
 ## Keeping Dependencies Updated
 
@@ -115,7 +115,7 @@ brew upgrade rclone
 
 ## Automation URL Scheme
 
-VidDL registers this custom URL scheme for local automation:
+LustreStudio retains this custom URL scheme for local automation:
 
 ```text
 pmvdl://extract?url=<encoded-url>

@@ -1,11 +1,11 @@
-# Stripe Pro License
+# LustreStudio Pro License
 
-VidDL Pro licensing is backed by Stripe Checkout and a Cloudflare Worker.
+LustreStudio Pro licensing is backed by Stripe Checkout and a Cloudflare Worker.
 
 ## Current Production Setup
 
 - Worker URL: `https://pmvdl-license.knath2000.workers.dev`
-- Stripe product: `prod_UQHUCYQlL9krzf` (`VidDL Pro`)
+- Stripe product: `prod_UQHUCYQlL9krzf` (rename its Stripe dashboard display to `LustreStudio Pro` before the next public checkout)
 - Active testing price: `price_1TRRmdBlEcaRurIYAXvQkYAL` (`$0.99 USD`, one-time)
 - Previous launch price: `price_1TRQveBlEcaRurIYvgK2Sd5P` (`$5.00 USD`, one-time)
 - KV namespace binding: `LICENSES`
@@ -21,7 +21,7 @@ Do not commit Stripe secret keys, webhook secrets, or `.dev.vars`.
 2. The Worker creates a Stripe Checkout Session using `PMVDL_PRO_PRICE_ID`.
 3. Stripe redirects to the hosted Worker success page:
    `https://pmvdl-license.knath2000.workers.dev/success?session_id={CHECKOUT_SESSION_ID}&email=...`
-4. The success page offers `Open VidDL`, linking to:
+4. The success page offers `Open LustreStudio`, linking to:
    `pmvdl://license-success?email=...`
 5. The Stripe webhook marks the normalized email active in KV after paid checkout completion.
 6. The app refreshes license state through `GET /license?email=...`.
@@ -92,4 +92,4 @@ curl -sS -X POST 'https://pmvdl-license.knath2000.workers.dev/checkout' \
   --data '{"email":"pmvdl-checkout-smoke@example.com"}'
 ```
 
-After running the app from Xcode, LaunchServices should register `pmvdl://` for the debug app. The success page's `Open VidDL` button should open the app and refresh the license state.
+After running the app from Xcode, LaunchServices should register `pmvdl://` for the debug app. The success page's `Open LustreStudio` button should open the app and refresh the license state.
