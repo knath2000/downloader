@@ -121,12 +121,14 @@ enum LustreAgentClientError: LocalizedError {
     case unavailable
     case invalidResponse
     case server(String)
+    case http(Int, String)
 
     var errorDescription: String? {
         switch self {
         case .unavailable: "The background Agent is not available."
         case .invalidResponse: "The background Agent returned an invalid response."
         case .server(let message): message
+        case .http(let status, let message): "Agent request failed with HTTP \(status): \(message)"
         }
     }
 }
@@ -207,7 +209,7 @@ struct LustreAgentClient {
         guard let http = response as? HTTPURLResponse else { throw LustreAgentClientError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
             let message = (try? decoder.decode(ErrorEnvelope.self, from: data).error) ?? "Agent request failed with HTTP \(http.statusCode)."
-            throw LustreAgentClientError.server(message)
+            throw LustreAgentClientError.http(http.statusCode, message)
         }
         guard let value = try? decoder.decode(T.self, from: data) else {
             throw LustreAgentClientError.invalidResponse
@@ -255,6 +257,10 @@ final class LustreAgentController: ObservableObject {
     private var refreshInFlight = false
     private var lastEntitlementLimit: Int?
     private var lastEntitlementSyncAttempt: Date?
+    private var pendingRemovalIDs: Set<UUID> = Set(
+        UserDefaults.standard.stringArray(forKey: "lustreAgentPendingRemovalIDs")?
+            .compactMap(UUID.init(uuidString:)) ?? []
+    )
 
     private init() {}
 
@@ -304,6 +310,9 @@ final class LustreAgentController: ObservableObject {
             activeJobCount = snapshot.jobs.filter { $0.status == .running }.count
             if lastError != nil {
                 lastError = nil
+            }
+            if Int(snapshot.health.runtimeVersion) ?? 0 >= 6 {
+                await reconcilePendingRemovals()
             }
             project(snapshot.jobs)
             if isUpdatePending, activeJobCount == 0 {
@@ -389,11 +398,24 @@ final class LustreAgentController: ObservableObject {
     }
 
     func remove(id: UUID) {
+        pendingRemovalIDs.insert(id)
+        persistPendingRemovals()
         Task {
             do {
-                try await Task.detached(priority: .userInitiated) {
-                    try await LustreAgentClient().removeJob(id: id)
+                let removedDurably = try await Task.detached(priority: .userInitiated) {
+                    let client = try LustreAgentClient()
+                    do {
+                        try await client.removeJob(id: id)
+                        return true
+                    } catch LustreAgentClientError.http(404, _) {
+                        _ = try? await client.apply(.cancel, id: id)
+                        return false
+                    }
                 }.value
+                if removedDurably {
+                    pendingRemovalIDs.remove(id)
+                    persistPendingRemovals()
+                }
                 projectedJobUpdates[id] = nil
                 importedCompletions.remove(id)
                 DownloadQueue.shared.removeAgentProjection(id: id)
@@ -412,6 +434,7 @@ final class LustreAgentController: ObservableObject {
 
     private func project(_ jobs: [LustreAgentJob]) {
         for job in jobs {
+            guard !pendingRemovalIDs.contains(job.id) else { continue }
             guard projectedJobUpdates[job.id] != job.updatedAt else { continue }
             projectedJobUpdates[job.id] = job.updatedAt
             DownloadQueue.shared.projectAgentJob(job)
@@ -419,6 +442,40 @@ final class LustreAgentController: ObservableObject {
                 importCompletion(job)
             }
         }
+    }
+
+    private func reconcilePendingRemovals() async {
+        let ids = pendingRemovalIDs
+        guard !ids.isEmpty else { return }
+        let removed = await Task.detached(priority: .utility) {
+            guard let client = try? LustreAgentClient() else { return Set<UUID>() }
+            var removed = Set<UUID>()
+            for id in ids {
+                do {
+                    try await client.removeJob(id: id)
+                    removed.insert(id)
+                } catch LustreAgentClientError.http(404, _) {
+                    removed.insert(id)
+                } catch {
+                }
+            }
+            return removed
+        }.value
+        guard !removed.isEmpty else { return }
+        pendingRemovalIDs.subtract(removed)
+        for id in removed {
+            projectedJobUpdates[id] = nil
+            importedCompletions.remove(id)
+            DownloadQueue.shared.removeAgentProjection(id: id)
+        }
+        persistPendingRemovals()
+    }
+
+    private func persistPendingRemovals() {
+        UserDefaults.standard.set(
+            pendingRemovalIDs.map(\.uuidString).sorted(),
+            forKey: "lustreAgentPendingRemovalIDs"
+        )
     }
 
     private func importCompletion(_ job: LustreAgentJob) {
