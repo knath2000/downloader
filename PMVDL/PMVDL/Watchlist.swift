@@ -244,24 +244,32 @@ struct WatchlistView: View {
     }
 
     private var metrics: some View {
-        HStack(spacing: 10) {
-            metric("All", count: store.items.count, filter: .all)
-            metric("Unwatched", count: store.items.filter { !$0.watched }.count, filter: .unwatched)
-            metric("Watched", count: store.items.filter(\.watched).count, filter: .watched)
+        HStack(spacing: 6) {
+            metric("All", count: store.items.count, filter: .all, tint: Theme.warning)
+            metric("Unwatched", count: store.items.filter { !$0.watched }.count, filter: .unwatched, tint: Theme.skyBlue)
+            metric("Watched", count: store.items.filter(\.watched).count, filter: .watched, tint: Theme.success)
+            Spacer()
         }
     }
 
-    private func metric(_ title: String, count: Int, filter: WatchlistStatusFilter) -> some View {
+    private func metric(_ title: String, count: Int, filter: WatchlistStatusFilter, tint: Color) -> some View {
         Button {
             status = filter
         } label: {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.caption).foregroundStyle(Theme.textSecondary)
-                Text("\(count)").font(.title2.bold()).foregroundStyle(status == filter ? Theme.accent : Theme.textPrimary)
+            HStack(spacing: 5) {
+                Text(title)
+                Text("\(count)")
+                    .font(.system(size: 9, weight: .black))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(.white.opacity(status == filter ? 0.24 : 0.12), in: Capsule())
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
-            .mobileCard(tint: status == filter ? Theme.accent : Theme.surface2, isElevated: false)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(status == filter ? tint : tint.opacity(0.45), in: Capsule())
+            .overlay(Capsule().strokeBorder(.white.opacity(status == filter ? 0.28 : 0.12), lineWidth: 0.5))
         }
         .buttonStyle(.plain)
     }
@@ -287,7 +295,11 @@ struct WatchlistView: View {
 
     private var batchBar: some View {
         HStack {
-            Button(selected.count == visibleItems.count && !selected.isEmpty ? "Clear visible" : "Select visible") {
+            WatchlistPillButton(
+                selected.count == visibleItems.count && !selected.isEmpty ? "Clear visible" : "Select visible",
+                systemImage: selected.isEmpty ? "checklist" : "checkmark.circle.fill",
+                tint: Theme.lavender
+            ) {
                 let ids = Set(visibleItems.map(\.id))
                 if !ids.isEmpty && ids.isSubset(of: selected) { selected.subtract(ids) }
                 else { selected.formUnion(ids) }
@@ -300,10 +312,8 @@ struct WatchlistView: View {
                 }
             }
             .frame(width: 150)
-            Button("Extract all", action: extractSelected)
-                .disabled(selected.isEmpty)
-            Button("Download all", action: downloadSelected)
-                .disabled(selected.isEmpty)
+            WatchlistPillButton("Extract all", systemImage: "bolt.fill", tint: Theme.warning, disabled: selected.isEmpty, action: extractSelected)
+            WatchlistPillButton("Download all", systemImage: "arrow.down.circle.fill", tint: Theme.skyBlue, disabled: selected.isEmpty, action: downloadSelected)
         }
     }
 
@@ -335,14 +345,24 @@ struct WatchlistView: View {
                 Text(item.title).font(.headline).lineLimit(2)
                 Text("Added \(item.createdAt.formatted(date: .abbreviated, time: .omitted))")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
-                HStack {
-                    Button("Extract") { extract([item]) }
-                    Button("Download") { download([item]) }
-                    Button(item.watched ? "Mark unwatched" : "Mark watched") { store.toggleWatched(id: item.id) }
-                    Button("Copy URL") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(item.sourcePageURL, forType: .string) }
-                    Button("Remove", role: .destructive) { removedItem = store.remove(id: item.id) }
+                HStack(spacing: 6) {
+                    WatchlistPillButton("Extract", systemImage: "bolt.fill", tint: Theme.warning) { extract([item]) }
+                    WatchlistPillButton("Download", systemImage: "arrow.down.circle.fill", tint: Theme.skyBlue) { download([item]) }
+                    WatchlistPillButton(
+                        item.watched ? "Unwatched" : "Watched",
+                        systemImage: item.watched ? "circle" : "checkmark.circle.fill",
+                        tint: Theme.success
+                    ) {
+                        store.toggleWatched(id: item.id)
+                    }
+                    WatchlistPillButton("Copy URL", systemImage: "doc.on.doc.fill", tint: Theme.lavender) {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(item.sourcePageURL, forType: .string)
+                    }
+                    WatchlistPillButton("Remove", systemImage: "trash.fill", tint: Theme.error) {
+                        removedItem = store.remove(id: item.id)
+                    }
                 }
-                .buttonStyle(.borderless)
             }
             Spacer()
         }
@@ -387,5 +407,36 @@ struct WatchlistView: View {
                 context: context
             )
         }
+    }
+}
+
+private struct WatchlistPillButton: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+    let disabled: Bool
+    let action: () -> Void
+
+    init(_ title: String, systemImage: String, tint: Color, disabled: Bool = false, action: @escaping () -> Void) {
+        self.title = title
+        self.systemImage = systemImage
+        self.tint = tint
+        self.disabled = disabled
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(disabled ? Theme.textSecondary.opacity(0.55) : tint)
+                .lineLimit(1)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(tint.opacity(disabled ? 0.06 : 0.14), in: Capsule())
+                .overlay(Capsule().strokeBorder(tint.opacity(disabled ? 0.1 : 0.28), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
     }
 }

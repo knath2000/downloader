@@ -171,5 +171,6 @@ enum MediaRequestHeaders {
     static func requiresInitialRange(for url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
         return host == "mxcontent.net" || host.hasSuffix(".mxcontent.net")
+            || host == "cloudatacdn.com" || host.hasSuffix(".cloudatacdn.com")
     }
 }

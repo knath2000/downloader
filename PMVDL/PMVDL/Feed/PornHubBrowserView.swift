@@ -871,7 +871,7 @@ struct PornHubBrowserWebView: NSViewRepresentable {
         configuration.userContentController.add(context.coordinator, name: "viddlContext")
         configuration.userContentController.addUserScript(WKUserScript(
             source: Self.contextMenuScript,
-            injectionTime: .atDocumentEnd,
+            injectionTime: .atDocumentStart,
             forMainFrameOnly: true
         ))
         let webView = PornHubContextMenuWebView(frame: .zero, configuration: configuration)
@@ -909,6 +909,10 @@ struct PornHubBrowserWebView: NSViewRepresentable {
       const payload = __PAYLOAD__;
       window.__viddlDownloadedPayload = payload;
       window.__viddlDownloadedObserver?.disconnect();
+      const host = window.location.hostname.toLowerCase();
+      if (host === "rentry.co" || host.endsWith(".rentry.co")) return;
+      const downloadedURLs = new Set(payload.urls);
+      const downloadedViewkeys = new Set(payload.viewkeys);
       const normalize = value => {
         try {
           const url = new URL(value, document.location.href);
@@ -928,10 +932,11 @@ struct PornHubBrowserWebView: NSViewRepresentable {
       const matches = value => {
         const normalized = normalize(value);
         const key = viewkey(value);
-        return payload.urls.includes(normalized) || (key && payload.viewkeys.includes(key));
+        return downloadedURLs.has(normalized) || (key && downloadedViewkeys.has(key));
       };
       const selectors = 'a[href*="view_video.php"][href*="viewkey="], a[href*="/hdporn/"], a[href*="/post/"], a[href*="/video-"], a[href*="luluvid.com"], a[href*="luluvdo.com"], a[href*="lulustream.com"], a[href*="vidara.so"], a[href*="playmogo.com"], a[href*="doodstream.com"], a[href*="dood.wf"]';
       let observer;
+      let scheduled = false;
       const decorate = () => {
         observer?.disconnect();
         document.querySelectorAll(selectors).forEach(anchor => {
@@ -959,7 +964,14 @@ struct PornHubBrowserWebView: NSViewRepresentable {
         document.head.appendChild(style);
       }
       decorate();
-      observer = new MutationObserver(() => { window.requestAnimationFrame(decorate); });
+      observer = new MutationObserver(() => {
+        if (scheduled) return;
+        scheduled = true;
+        window.requestAnimationFrame(() => {
+          scheduled = false;
+          decorate();
+        });
+      });
       window.__viddlDownloadedObserver = observer;
       observer.observe(document.body, { childList: true, subtree: true });
     })();
@@ -1021,19 +1033,29 @@ struct PornHubBrowserWebView: NSViewRepresentable {
       };
       const videoHref = value => isVideoURL(value) ? abs(value) : "";
       const text = value => (value || "").replace(/\\s+/g, " ").trim();
+      const usableTitle = value => {
+        const candidate = text(value);
+        return /^(previous|next)\\s+(image|photo|slide)$/i.test(candidate) ? "" : candidate;
+      };
       const firstSrcsetURL = value => {
         const first = (value || "").split(",")[0]?.trim().split(/\\s+/)[0];
         return abs(first);
       };
       document.addEventListener("contextmenu", event => {
-        const videoSelector = 'a[href*="view_video.php"][href*="viewkey="], a[href*="/hdporn/"], a[href*="/post/"], a[href*="/video-"], a[href*="luluvid.com"], a[href*="luluvdo.com"], a[href*="lulustream.com"], a[href*="vidara.so"], a[href*="playmogo.com"], a[href*="doodstream.com"], a[href*="dood.wf"]';
+        const videoSelector = 'a[href]';
+        const isRentry = window.location.hostname.toLowerCase().replace(/^www\\./, "") === "rentry.co";
         const cardSelector = '[data-href*="/post/"], [data-thumb-id], [data-href*="/hdporn/"], [data-href*="view_video.php"], [data-href*="/video-"], li, .pcVideoListItem, .videoBox, .videoUList, .phimage, article, section';
-        const anchor = event.target && event.target.closest ? event.target.closest(videoSelector) : null;
-        const card = event.target && event.target.closest ? (event.target.closest(cardSelector) || anchor?.closest(cardSelector)) : null;
+        const anchors = event.composedPath ? event.composedPath().filter(node => node?.matches?.(videoSelector)) : [];
+        const anchor = anchors.find(node => isVideoURL(node.getAttribute("href"))) ||
+          (event.target && event.target.closest ? event.target.closest(videoSelector) : null);
+        if (isRentry && !videoHref(anchor?.getAttribute("href"))) return;
+        const card = isRentry ? anchor : (event.target && event.target.closest ? (event.target.closest(cardSelector) || anchor?.closest(cardSelector)) : null);
         const cardHref = card?.getAttribute("data-href") || card?.getAttribute("data-url") || card?.getAttribute("href");
-        const descendant = card?.querySelector(videoSelector);
+        const descendant = isRentry ? null : Array.from(card?.querySelectorAll(videoSelector) || []).find(node => isVideoURL(node.getAttribute("href")));
         const img = card?.querySelector("img") || anchor?.querySelector("img");
-        const titleNode = anchor || card?.querySelector('a[href*="/post/"], a[href*="/hdporn/"], a[href*="view_video.php"], a[href*="/video-"], h1, h2, h3, [aria-label]');
+        const titleNode = card?.querySelector('h1, h2, h3, .title, .video-title, [class*="title"]') ||
+          Array.from(card?.querySelectorAll('a[href*="/post/"], a[href*="/hdporn/"], a[href*="view_video.php"], a[href*="/video-"]') || [])
+            .find(node => node !== anchor && usableTitle(node.textContent));
         const url = videoHref(anchor?.getAttribute("href")) ||
           videoHref(cardHref) ||
           videoHref(descendant?.getAttribute("href")) ||
@@ -1042,11 +1064,12 @@ struct PornHubBrowserWebView: NSViewRepresentable {
           abs(img?.getAttribute("data-src")) ||
           firstSrcsetURL(img?.getAttribute("srcset")) ||
           firstSrcsetURL(img?.getAttribute("data-srcset"));
-        const title = text(anchor?.getAttribute("title")) ||
-          text(titleNode?.getAttribute("title")) ||
-          text(titleNode?.getAttribute("aria-label")) ||
-          text(img?.getAttribute("alt")) ||
-          text(titleNode?.textContent) ||
+        const title = usableTitle(titleNode?.getAttribute("title")) ||
+          usableTitle(titleNode?.getAttribute("aria-label")) ||
+          usableTitle(titleNode?.textContent) ||
+          usableTitle(anchor?.getAttribute("title")) ||
+          usableTitle(anchor?.getAttribute("aria-label")) ||
+          usableTitle(img?.getAttribute("alt")) ||
           document.title ||
           url;
         event.preventDefault();
@@ -1166,12 +1189,21 @@ struct PornHubBrowserWebView: NSViewRepresentable {
                 return nil
             }
 
-            let title = latestContext?["title"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let contextTitle = latestContext?["title"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = contextTitle.flatMap(Self.usableTitle)
                 ?? webView.title?.trimmingCharacters(in: .whitespacesAndNewlines)
             return (
                 targetURL,
                 title?.isEmpty == false ? title ?? targetURL.absoluteString : targetURL.absoluteString
             )
+        }
+
+        private static func usableTitle(_ title: String) -> String? {
+            let normalized = title.lowercased()
+            if ["previous image", "next image", "previous photo", "next photo", "previous slide", "next slide"].contains(normalized) {
+                return nil
+            }
+            return title
         }
 
         private func showContextMenu(for rawContext: [String: Any]) {

@@ -186,7 +186,9 @@ struct DoodStreamExtractor: VideoSiteExtractor {
 
     let playmogoHeaders = isPlaymogo ? [
       "Referer": targetUrl.absoluteString,
-      "User-Agent": NetworkConstants.chromeUserAgent
+      "User-Agent": NetworkConstants.chromeUserAgent,
+      "Accept": "*/*",
+      "Accept-Language": "en-US,en;q=0.9"
     ] : nil
 
     if isPlaymogo, !isFullCloudMediaUrl(videoUrl) {

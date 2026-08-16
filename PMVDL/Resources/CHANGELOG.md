@@ -41,6 +41,8 @@
 - Preserved the primary page URL for queued work so delayed tasks refresh short-lived provider media URLs when they begin
 - Hardened AllPornStream provider resolution for current MixDrop and DoodStream aliases, including independent provider outcomes
 - Added a browser-compatible curl fallback for MixDrop mxcontent.net WebDAV transfers when macOS URLSession receives CDN 403 responses
+- Kept OnlyFan420/Rentry feed scrolling and right-click menus responsive by avoiding page-wide badge and link scans
+- Hardened Playmogo CloudAta transfers with browser-compatible range staging and invalid-response safeguards before WebDAV upload
 
 ## v2.0.0 (Apr 2026)
 - Dual window + menu bar mode (no longer menubar-only)

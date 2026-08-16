@@ -46,6 +46,8 @@ private actor WebDAVDirectoryCache {
 }
 
 final class SeedboxManager {
+    private static let minimumDirectMediaBytes: Int64 = 1_024
+
     private let mode: SeedboxTransferMode
 
     init(mode: SeedboxTransferMode) {
@@ -438,6 +440,7 @@ final class SeedboxManager {
         guard Self.isRcloneConfigured(remoteName: trimmed) else { throw SeedboxError.notConfigured }
 
         let contentLength = await fetchContentLength(url: sourceURL, headers: headers)
+        try Self.validateKnownMediaLength(contentLength)
         let destination = Self.rcloneDestination(remoteName: trimmed, remotePath: remotePath, filename: filename)
 
         let process = Process()
@@ -543,6 +546,7 @@ final class SeedboxManager {
         }
 
         let contentLength = await fetchContentLength(url: sourceURL, headers: headers)
+        try Self.validateKnownMediaLength(contentLength)
         guard contentLength > 0 else {
             return try await uploadUnknownLengthSourceViaWebDAV(
                 sourceURL: sourceURL,
@@ -636,7 +640,7 @@ final class SeedboxManager {
         defer { try? FileManager.default.removeItem(at: stagedFile) }
 
         if MediaRequestHeaders.requiresInitialRange(for: sourceURL) {
-            try await downloadMixDropSource(
+            try await downloadRangeRequiredSource(
                 sourceURL: sourceURL,
                 headers: headers,
                 destination: stagedFile
@@ -647,6 +651,7 @@ final class SeedboxManager {
                   (200..<300).contains(http.statusCode) else {
                 throw SeedboxError.transferFailed("Source download failed before WebDAV upload.")
             }
+            try Self.validateMediaResponse(http)
             try FileManager.default.moveItem(at: downloadURL, to: stagedFile)
         }
 
@@ -661,9 +666,7 @@ final class SeedboxManager {
         setBasicAuth(user: user, password: password, request: &putRequest)
 
         let fileSize = (try? stagedFile.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { Int64($0) } ?? -1
-        guard fileSize > 0 else {
-            throw SeedboxError.transferFailed("Source download produced an empty file.")
-        }
+        try Self.validateStagedMediaFile(size: fileSize)
         putRequest.setValue(String(fileSize), forHTTPHeaderField: "Content-Length")
 
         let delegate = WebDAVUploadDelegate(contentLength: fileSize, allowedHost: webdavBase.host, allowSelfSigned: allowSelfSigned) { progress in
@@ -678,13 +681,13 @@ final class SeedboxManager {
         return destinationURL.absoluteString
     }
 
-    private func downloadMixDropSource(
+    private func downloadRangeRequiredSource(
         sourceURL: URL,
         headers: [String: String]?,
         destination: URL
     ) async throws {
         guard let curl = ToolLocator.find("curl") else {
-            throw SeedboxError.transferFailed("curl is required for this MixDrop CDN source.")
+            throw SeedboxError.transferFailed("curl is required for this CDN source.")
         }
 
         var arguments = [
@@ -706,7 +709,7 @@ final class SeedboxManager {
         let result = try await SubprocessRunner.run(executable: curl, arguments: arguments, timeout: 7_300)
         guard result.exitStatus == 0 else {
             let reason = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-            throw SeedboxError.transferFailed(reason.isEmpty ? "MixDrop CDN download failed (curl exit \(result.exitStatus))." : reason)
+            throw SeedboxError.transferFailed(reason.isEmpty ? "CDN download failed (curl exit \(result.exitStatus))." : reason)
         }
     }
 
@@ -909,6 +912,26 @@ final class SeedboxManager {
             return length
         }
         return response.expectedContentLength
+    }
+
+    private static func validateKnownMediaLength(_ contentLength: Int64) throws {
+        guard contentLength < 0 || contentLength >= minimumDirectMediaBytes else {
+            throw SeedboxError.transferFailed("Source returned only \(contentLength) bytes, not a playable video.")
+        }
+    }
+
+    private static func validateMediaResponse(_ response: HTTPURLResponse) throws {
+        let mimeType = response.mimeType?.lowercased() ?? ""
+        if mimeType.hasPrefix("text/") || mimeType.contains("json") || mimeType.contains("xml") {
+            throw SeedboxError.transferFailed("Source returned \(mimeType), not video media.")
+        }
+        try validateKnownMediaLength(response.expectedContentLength)
+    }
+
+    private static func validateStagedMediaFile(size: Int64) throws {
+        guard size >= minimumDirectMediaBytes else {
+            throw SeedboxError.transferFailed("Source download produced only \(size) bytes, not a playable video.")
+        }
     }
 
     private func streamSource(
