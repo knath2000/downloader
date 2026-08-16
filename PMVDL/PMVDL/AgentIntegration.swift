@@ -63,6 +63,18 @@ struct LustreAgentHealth: Codable, Equatable {
     let runtimeVersion: String
     let databaseReady: Bool
     let activeJobs: Int
+
+    private enum CodingKeys: String, CodingKey {
+        case status, runtimeVersion, databaseReady, activeJobs
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decode(String.self, forKey: .status)
+        runtimeVersion = try container.decodeIfPresent(String.self, forKey: .runtimeVersion) ?? "legacy"
+        databaseReady = try container.decodeIfPresent(Bool.self, forKey: .databaseReady) ?? (status == "ok")
+        activeJobs = try container.decodeIfPresent(Int.self, forKey: .activeJobs) ?? 0
+    }
 }
 
 struct LustreAgentExtractionResult: Codable {
@@ -251,7 +263,7 @@ final class LustreAgentController: ObservableObject {
     func refresh() async {
         do {
             let client = try LustreAgentClient()
-            try await client.setMaximumConcurrentDownloads(ProFeatureGate.concurrentDownloadLimit)
+            try? await client.setMaximumConcurrentDownloads(ProFeatureGate.concurrentDownloadLimit)
             async let nextHealth = client.health()
             async let nextJobs = client.jobs()
             let (health, jobs) = try await (nextHealth, nextJobs)
@@ -357,8 +369,11 @@ final class LustreAgentController: ObservableObject {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("LustreStudioAgent/Runtime/\(version)", isDirectory: true)
         let executable = support.appendingPathComponent("lustre-agent")
-        let runningHealth = try? await LustreAgentClient().health()
-        if let runningHealth, runningHealth.runtimeVersion != version, runningHealth.activeJobs > 0 {
+        let runningClient = try? LustreAgentClient()
+        let runningHealth = try? await runningClient?.health()
+        let runningJobs = try? await runningClient?.jobs()
+        let activeJobCount = runningJobs?.filter { $0.status == .running }.count ?? runningHealth?.activeJobs ?? 0
+        if let runningHealth, runningHealth.runtimeVersion != version, activeJobCount > 0 {
             isUpdatePending = true
             return
         }
