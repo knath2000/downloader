@@ -230,6 +230,11 @@ struct LustreAgentClient {
     private struct StatusEnvelope: Codable { let status: String }
 }
 
+private struct LustreAgentPollSnapshot {
+    let health: LustreAgentHealth
+    let jobs: [LustreAgentJob]
+}
+
 @MainActor
 final class LustreAgentController: ObservableObject {
     static let shared = LustreAgentController()
@@ -240,6 +245,11 @@ final class LustreAgentController: ObservableObject {
 
     private var pollingTask: Task<Void, Never>?
     private var importedCompletions = Set<UUID>()
+    private var projectedJobUpdates: [UUID: Date] = [:]
+    private var activeJobCount = 0
+    private var refreshInFlight = false
+    private var lastEntitlementLimit: Int?
+    private var lastEntitlementSyncAttempt: Date?
 
     private init() {}
 
@@ -249,7 +259,7 @@ final class LustreAgentController: ObservableObject {
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refresh()
-                let active = self?.health?.activeJobs ?? 0
+                let active = self?.activeJobCount ?? 0
                 try? await Task.sleep(nanoseconds: active > 0 ? 1_000_000_000 : 5_000_000_000)
             }
         }
@@ -261,21 +271,47 @@ final class LustreAgentController: ObservableObject {
     }
 
     func refresh() async {
+        guard !refreshInFlight else { return }
+        refreshInFlight = true
+        defer { refreshInFlight = false }
+
         do {
-            let client = try LustreAgentClient()
-            try? await client.setMaximumConcurrentDownloads(ProFeatureGate.concurrentDownloadLimit)
-            async let nextHealth = client.health()
-            async let nextJobs = client.jobs()
-            let (health, jobs) = try await (nextHealth, nextJobs)
-            self.health = health
-            lastError = nil
-            project(jobs)
-            if isUpdatePending, health.activeJobs == 0 {
+            let entitlementLimit = ProFeatureGate.concurrentDownloadLimit
+            let now = Date()
+            let shouldSyncEntitlement = lastEntitlementLimit != entitlementLimit ||
+                lastEntitlementSyncAttempt.map { now.timeIntervalSince($0) >= 60 } != false
+            let snapshot = try await Task.detached(priority: .utility) {
+                let client = try LustreAgentClient()
+                if shouldSyncEntitlement {
+                    try? await client.setMaximumConcurrentDownloads(entitlementLimit)
+                }
+                async let nextHealth = client.health()
+                async let nextJobs = client.jobs()
+                return try await LustreAgentPollSnapshot(health: nextHealth, jobs: nextJobs)
+            }.value
+            if shouldSyncEntitlement {
+                lastEntitlementLimit = entitlementLimit
+                lastEntitlementSyncAttempt = now
+            }
+            if health != snapshot.health {
+                health = snapshot.health
+            }
+            activeJobCount = snapshot.jobs.filter { $0.status == .running }.count
+            if lastError != nil {
+                lastError = nil
+            }
+            project(snapshot.jobs)
+            if isUpdatePending, activeJobCount == 0 {
                 await installOrRepairIfNeeded()
             }
         } catch {
-            health = nil
-            lastError = error.localizedDescription
+            if health != nil {
+                health = nil
+            }
+            let message = error.localizedDescription
+            if lastError != message {
+                lastError = message
+            }
         }
     }
 
@@ -343,6 +379,8 @@ final class LustreAgentController: ObservableObject {
 
     private func project(_ jobs: [LustreAgentJob]) {
         for job in jobs {
+            guard projectedJobUpdates[job.id] != job.updatedAt else { continue }
+            projectedJobUpdates[job.id] = job.updatedAt
             DownloadQueue.shared.projectAgentJob(job)
             if job.status == .completed, importedCompletions.insert(job.id).inserted {
                 importCompletion(job)
