@@ -5,7 +5,7 @@ import Foundation
 struct ProFeatureGate {
     static let freeBatchLimit = 5
     static let freeConcurrentDownloadLimit = 2
-    static let proConcurrentDownloadLimit = 5
+    static let proConcurrentDownloadLimit = 3
 
     static var isPro: Bool { LicenseManager.shared.isPro }
     nonisolated static var storedIsPro: Bool { LicenseManager.storedIsPro }
