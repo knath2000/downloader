@@ -142,7 +142,8 @@ final class DownloadJobRunner {
         preferredQualityLabel: String?,
         title: String,
         target: CloudTarget,
-        context: DownloadJobContext
+        context: DownloadJobContext,
+        selector: LustreAgentQualitySelector? = nil
     ) -> UUID {
         let payload = DownloadRetryPayload(
             sourcePageURL: sourcePageURL,
@@ -168,7 +169,8 @@ final class DownloadJobRunner {
                 preferredQualityLabel: preferredQualityLabel,
                 target: target,
                 gdriveRemoteName: context.gdriveRemoteName,
-                gdriveRemotePath: context.gdriveRemotePath
+                gdriveRemotePath: context.gdriveRemotePath,
+                selector: selector
             )
         }
         return queueID

@@ -1090,6 +1090,7 @@ struct PornHubBrowserWebView: NSViewRepresentable {
         private var latestContext: [String: String]?
         private var contextPanel: NSPanel?
         private var contextEventMonitor: Any?
+        private var linkExtractionPanel: NSPanel?
 
         init(
             browser: PornHubBrowserViewModel,
@@ -1239,6 +1240,7 @@ struct PornHubBrowserWebView: NSViewRepresentable {
             let accent = FeedSiteTheme.theme(for: browser?.site.host ?? PornHubFeedScraper.supportedHost).accent
             var actions = [
                 AppContextMenuAction(isSelected(item) ? "Deselect" : "Select", systemImage: isSelected(item) ? "checkmark.circle.fill" : "circle", action: { [weak self] in self?.performToggleSelection(item) }),
+                AppContextMenuAction("Extract download links", systemImage: "link.badge.plus", action: { [weak self] in self?.performLinkExtraction(item, accent: accent, origin: menuOrigin) }),
                 AppContextMenuAction("Extract with LustreStudio", systemImage: "bolt.fill", action: { [weak self] in self?.performExtract(context) }),
                 AppContextMenuAction("Toggle Watchlist", systemImage: "bookmark.fill", action: { [weak self] in self?.performToggleFavorite(context) })
             ]
@@ -1287,6 +1289,66 @@ struct PornHubBrowserWebView: NSViewRepresentable {
             }
         }
 
+        private func performLinkExtraction(_ item: FeedItem, accent: Color, origin: NSPoint) {
+            dismissContextMenu()
+            linkExtractionPanel?.close()
+            let model = FeedLinkExtractionModel(item: item)
+            let panelSize = NSSize(width: 560, height: 430)
+            let visibleFrame = (webView?.window?.screen ?? NSScreen.main)?.visibleFrame ?? .zero
+            let panelOrigin = NSPoint(
+                x: min(max(origin.x, visibleFrame.minX + 8), visibleFrame.maxX - panelSize.width - 8),
+                y: min(max(origin.y, visibleFrame.minY + 8), visibleFrame.maxY - panelSize.height - 8)
+            )
+            let panel = NSPanel(
+                contentRect: NSRect(origin: panelOrigin, size: panelSize),
+                styleMask: [.titled, .closable, .utilityWindow],
+                backing: .buffered,
+                defer: false
+            )
+            panel.title = "Download links"
+            panel.isReleasedWhenClosed = false
+            panel.level = .floating
+            panel.contentView = NSHostingView(rootView: FeedLinkExtractionPanel(
+                model: model,
+                accent: accent,
+                download: { [weak self] provider, quality in
+                    self?.queueExtractedQuality(item: item, provider: provider, quality: quality)
+                },
+                verify: { [weak self] in
+                    self?.linkExtractionPanel?.close()
+                    self?.linkExtractionPanel = nil
+                    guard let sourceURL = URL(string: item.url) else { return }
+                    self?.performExtract((sourceURL, item.title))
+                }
+            ))
+            linkExtractionPanel = panel
+            panel.makeKeyAndOrderFront(nil)
+            model.start()
+        }
+
+        private func queueExtractedQuality(item: FeedItem, provider: String, quality: LustreAgentQuality) {
+            let defaults = UserDefaults.standard
+            let context = DownloadJobContext(
+                megaRemotePath: "",
+                gdriveRemoteName: defaults.string(forKey: "gdriveRemoteName") ?? "gdrive",
+                gdriveRemotePath: defaults.string(forKey: "gdriveRemotePath") ?? "VidDL/"
+            )
+            let selector = LustreAgentQualitySelector(
+                provider: provider,
+                mediaKind: quality.mediaKind,
+                formatSelector: quality.formatSelector
+            )
+            _ = DownloadJobRunner.shared.queue(
+                sourcePageURL: item.url,
+                preferredQualityLabel: quality.label,
+                title: item.title,
+                target: .local,
+                context: context,
+                selector: selector
+            )
+            AppStateManager.shared.transientMessage = AppTransientMessage(text: "\(quality.label) added to Downloads.")
+        }
+
         private func performToggleFavorite(_ context: (url: URL, title: String)) {
             dismissContextMenu()
             guard let item = feedItem(for: context) else { return }
@@ -1316,6 +1378,163 @@ struct PornHubBrowserWebView: NSViewRepresentable {
             guard let site = browser?.site else { return nil }
             return PornHubBrowserFeedMapper.item(title: context.title, url: context.url, site: site)
         }
+    }
+}
+
+@MainActor
+private final class FeedLinkExtractionModel: ObservableObject {
+    enum State {
+        case loading
+        case resolved(LustreAgentResolution)
+        case verificationRequired
+        case failed(String)
+    }
+
+    @Published private(set) var state: State = .loading
+    let item: FeedItem
+    private var started = false
+
+    init(item: FeedItem) {
+        self.item = item
+    }
+
+    func start() {
+        guard !started else { return }
+        started = true
+        Task {
+            do {
+                guard let url = URL(string: item.url) else {
+                    throw LustreAgentClientError.server("The source URL is invalid.")
+                }
+                let result = try await LustreAgentController.shared.preview(url: url)
+                if result.resolutionState == "verificationRequired" {
+                    state = .verificationRequired
+                } else if let resolution = result.resolution, !resolution.qualities.isEmpty {
+                    state = .resolved(resolution)
+                } else {
+                    state = .failed("No downloadable links were found.")
+                }
+            } catch {
+                state = .failed(error.localizedDescription)
+            }
+        }
+    }
+}
+
+private struct FeedLinkExtractionPanel: View {
+    @ObservedObject var model: FeedLinkExtractionModel
+    let accent: Color
+    let download: (String, LustreAgentQuality) -> Void
+    let verify: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(model.item.title)
+                    .font(.headline)
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(2)
+                Text(model.item.url)
+                    .font(.caption2)
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+            }
+
+            Divider().overlay(Theme.borderSubtle)
+
+            switch model.state {
+            case .loading:
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("Extracting download links in the background…")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .resolved(let resolution):
+                HStack {
+                    Label(resolution.provider, systemImage: "checkmark.circle.fill")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Theme.success)
+                    Spacer()
+                    Text("\(resolution.qualities.count) qualities")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(Array(resolution.qualities.enumerated()), id: \.offset) { _, quality in
+                            qualityRow(provider: resolution.provider, quality: quality)
+                        }
+                    }
+                }
+            case .verificationRequired:
+                ContentUnavailableView {
+                    Label("Browser verification required", systemImage: "person.badge.key.fill")
+                } description: {
+                    Text("This provider needs LustreStudio’s browser-assisted verification before it can reveal a media URL.")
+                } actions: {
+                    Button("Open verification", action: verify)
+                        .buttonStyle(.borderedProminent)
+                        .tint(accent)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .failed(let message):
+                ContentUnavailableView("Extraction failed", systemImage: "exclamationmark.triangle.fill", description: Text(message))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .padding(18)
+        .frame(minWidth: 540, minHeight: 390)
+        .background(
+            LinearGradient(
+                colors: [Theme.surface1, Theme.surface0],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+    }
+
+    private func qualityRow(provider: String, quality: LustreAgentQuality) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(quality.label)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(quality.mediaKind.rawValue.uppercased())
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundStyle(accent)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(accent.opacity(0.14), in: Capsule())
+                Spacer()
+                Button {
+                    ClipboardManager.copy(quality.url.absoluteString)
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+                Button {
+                    NSWorkspace.shared.open(quality.url)
+                } label: {
+                    Label("Open", systemImage: "safari")
+                }
+                Button {
+                    download(provider, quality)
+                } label: {
+                    Label("Download", systemImage: "arrow.down.circle.fill")
+                }
+            }
+            .buttonStyle(.borderless)
+
+            Text(quality.url.absoluteString)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(Theme.textSecondary)
+                .lineLimit(2)
+                .textSelection(.enabled)
+        }
+        .padding(10)
+        .background(Theme.surface2.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(accent.opacity(0.22), lineWidth: 0.6))
     }
 }
 

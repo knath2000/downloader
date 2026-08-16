@@ -315,6 +315,12 @@ final class LustreAgentController: ObservableObject {
         }
     }
 
+    func preview(url: URL) async throws -> LustreAgentExtractionResult {
+        try await Task.detached(priority: .userInitiated) {
+            try await LustreAgentClient().extract(url: url)
+        }.value
+    }
+
     func enqueue(
         id: UUID,
         sourcePageURL: String,
