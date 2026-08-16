@@ -255,8 +255,12 @@ final class DownloadJobRunner {
     /// Resets the existing queue row and reruns the job with the original payload.
     @discardableResult
     func retry(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) async -> Bool {
-        if DownloadQueue.shared.item(id: queueId)?.isAgentOwned == true {
-            LustreAgentController.shared.apply(.retry, id: queueId)
+        if let item = DownloadQueue.shared.item(id: queueId), item.isAgentOwned {
+            LustreAgentController.shared.retry(
+                id: queueId,
+                payload: payload,
+                title: item.displayTitle ?? payload.resolution.title
+            )
             return true
         }
         guard DownloadQueue.shared.resetForRetry(id: queueId) else { return false }

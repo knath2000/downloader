@@ -398,6 +398,33 @@ final class LustreAgentController: ObservableObject {
         }
     }
 
+    func retry(id: UUID, payload: DownloadRetryPayload, title: String) {
+        Task {
+            do {
+                _ = try await LustreAgentClient().apply(.retry, id: id)
+                await refresh()
+            } catch LustreAgentClientError.http(404, _) {
+                DownloadQueue.shared.update(
+                    id: id,
+                    status: .waiting,
+                    progress: 0,
+                    message: "Restoring job in background Agent…"
+                )
+                await enqueue(
+                    id: id,
+                    sourcePageURL: payload.sourcePageURL,
+                    title: title,
+                    preferredQualityLabel: payload.preferredQualityLabel,
+                    target: payload.target,
+                    gdriveRemoteName: payload.context.gdriveRemoteName,
+                    gdriveRemotePath: payload.context.gdriveRemotePath
+                )
+            } catch {
+                DownloadQueue.shared.fail(id: id, message: error.localizedDescription)
+            }
+        }
+    }
+
     func remove(id: UUID) {
         guard activeRemovalIDs.insert(id).inserted else { return }
         pendingRemovalIDs.insert(id)
