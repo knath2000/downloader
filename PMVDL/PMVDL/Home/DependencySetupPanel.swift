@@ -46,11 +46,11 @@ struct DependencySetupPanel: View {
     private func refresh() async {
         let remoteName = gdriveRemoteName.trimmingCharacters(in: .whitespacesAndNewlines)
         let resolvedRemoteName = remoteName.isEmpty ? "gdrive" : remoteName
+        let agentReady = LustreAgentController.shared.health?.status == "ok"
+        let agentDetail = LustreAgentController.shared.lastError ?? "Persistent downloads continue after LustreStudio quits"
         let next = await Task.detached {
             let ytDlpReady = ScraperEngine.isYTDLPAvailable
             let ffmpegReady = VideoProcessor.findFFmpeg() != nil
-            let megaReady = MegaManager.isAvailable
-            let megaLoggedIn = megaReady && MegaManager.isLoggedIn
             let rcloneReady = GDriveManager.isAvailable
             let gdriveReady = rcloneReady && GDriveManager.isConfigured(remoteName: resolvedRemoteName)
 
@@ -72,12 +72,12 @@ struct DependencySetupPanel: View {
                     isReady: ffmpegReady
                 ),
                 DependencyCheck(
-                    id: "mega",
-                    title: "MEGAcmd",
-                    detail: "Mega uploads",
-                    status: megaLoggedIn ? "Connected" : (megaReady ? "Sign in" : "Missing"),
-                    command: megaLoggedIn ? nil : (megaReady ? "mega-login" : "brew install --cask megacmd-app"),
-                    isReady: megaLoggedIn
+                    id: "agent",
+                    title: "Background Agent",
+                    detail: agentDetail,
+                    status: agentReady ? "Running" : "Needs repair",
+                    command: nil,
+                    isReady: agentReady
                 ),
                 DependencyCheck(
                     id: "gdrive",

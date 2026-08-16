@@ -53,6 +53,7 @@ enum Theme {
         switch dest {
         case .home:       return coral
         case .feed:       return lavender
+        case .watchlist:  return accent
         case .library:    return skyBlue
         case .settings:   return Color(hex: "#A0A0FF")
         }

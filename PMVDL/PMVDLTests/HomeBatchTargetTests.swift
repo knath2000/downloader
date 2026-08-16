@@ -15,4 +15,12 @@ final class HomeBatchTargetTests: XCTestCase {
         XCTAssertEqual(CloudTarget.gdrive.homeActionTitle, "Send to GDrive")
         XCTAssertEqual(CloudTarget.seedbox.homeActionTitle, "Send to Seedbox")
     }
+
+    func testOnlyLocalAndGoogleDriveAcceptNewJobs() {
+        XCTAssertEqual(DestinationAvailabilityPolicy.newJobTargets, [.local, .gdrive])
+        XCTAssertTrue(DestinationAvailabilityPolicy.canCreateNewJob(for: .local))
+        XCTAssertTrue(DestinationAvailabilityPolicy.canCreateNewJob(for: .gdrive))
+        XCTAssertFalse(DestinationAvailabilityPolicy.canCreateNewJob(for: .mega))
+        XCTAssertFalse(DestinationAvailabilityPolicy.canCreateNewJob(for: .seedbox))
+    }
 }

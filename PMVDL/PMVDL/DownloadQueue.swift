@@ -280,6 +280,77 @@ class DownloadQueue: ObservableObject {
     }
 
     @discardableResult
+    func addAgentOwned(
+        id: UUID,
+        url: String,
+        quality: String,
+        targetCloud: CloudTarget,
+        displayTitle: String,
+        retryPayload: DownloadRetryPayload?
+    ) -> UUID {
+        guard queue.first(where: { $0.id == id }) == nil else { return id }
+        var item = DownloadQueueItem(
+            id: id,
+            url: url,
+            quality: quality,
+            targetCloud: targetCloud,
+            displayTitle: displayTitle,
+            retryPayload: retryPayload,
+            agentOwned: true
+        )
+        item.status = .waiting
+        item.statusMessage = "Sending to background Agent…"
+        queue.append(item)
+        save()
+        return id
+    }
+
+    func projectAgentJob(_ job: LustreAgentJob) {
+        let target: CloudTarget = job.destination.hasPrefix("gdrive:") ? .gdrive : .local
+        if queue.first(where: { $0.id == job.id }) == nil {
+            _ = addAgentOwned(
+                id: job.id,
+                url: job.sourcePageURL.absoluteString,
+                quality: job.preferredQualityLabel ?? "Video",
+                targetCloud: target,
+                displayTitle: job.title ?? job.sourcePageURL.lastPathComponent,
+                retryPayload: nil
+            )
+        }
+        let status: QueueStatus
+        switch job.status {
+        case .queued: status = .waiting
+        case .running:
+            switch job.transferPhase {
+            case "uploading": status = .uploading
+            case "materializing", "postProcessing": status = .processing
+            case "verifying": status = .verifying
+            default: status = .downloading
+            }
+        case .paused: status = .paused
+        case .completed: status = .completed
+        case .failed, .cancelled: status = .failed(job.message)
+        case .verificationRequired: status = .failed("Browser verification required. Reopen LustreStudio to continue.")
+        }
+        let fraction = job.phaseProgress ?? job.progress ?? {
+            guard let bytes = job.phaseBytes ?? job.downloadedBytes,
+                  let total = job.phaseTotalBytes ?? job.totalBytes,
+                  total > 0 else { return 0 }
+            return Double(bytes) / Double(total)
+        }()
+        let metrics = DownloadTransferMetrics(
+            bytesDownloaded: job.phaseBytes ?? job.downloadedBytes,
+            totalBytes: job.phaseTotalBytes ?? job.totalBytes,
+            bytesPerSecond: job.phaseBytesPerSecond
+        )
+        _ = update(id: job.id, status: status, progress: fraction * 100, message: job.message, metrics: metrics)
+        if let path = job.completionArtifact?.path,
+           let index = queue.firstIndex(where: { $0.id == job.id }) {
+            queue[index].finalPath = path
+        }
+    }
+
+    @discardableResult
     func addQueued(_ items: [DownloadQueueItem]) -> [UUID] {
         guard !items.isEmpty else { return [] }
         queue.append(contentsOf: items)

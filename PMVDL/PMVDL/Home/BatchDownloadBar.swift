@@ -51,7 +51,7 @@ struct BatchDownloadBar: View {
             Spacer(minLength: 8)
 
             Picker("Batch target", selection: $selectedTarget) {
-                ForEach(CloudTarget.allCases, id: \.self) { target in
+                ForEach(DestinationAvailabilityPolicy.newJobTargets, id: \.self) { target in
                     Label(target.homeDisplayName, systemImage: target.icon).tag(target)
                 }
             }

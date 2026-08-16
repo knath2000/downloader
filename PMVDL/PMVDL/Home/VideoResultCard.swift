@@ -15,6 +15,7 @@ struct VideoResultCard: View {
     let onSeedbox: (String) -> Void
     let onMultiple: (String, Set<CloudTarget>) -> Void
 
+    @ObservedObject private var watchlist = WatchlistStore.shared
     @State private var selectedQualityID: String?
     @State private var selectedTarget: CloudTarget = .local
     @State private var selectedDestinations: Set<CloudTarget> = []
@@ -187,6 +188,7 @@ struct VideoResultCard: View {
                 targetPicker
                 primaryAction
                 multipleDestinationButton
+                watchlistButton
                 copyButton
             }
             VStack(alignment: .leading, spacing: 8) {
@@ -195,6 +197,7 @@ struct VideoResultCard: View {
                 HStack(spacing: 8) {
                     primaryAction
                     multipleDestinationButton
+                    watchlistButton
                     copyButton
                 }
             }
@@ -216,7 +219,7 @@ struct VideoResultCard: View {
 
     private var targetPicker: some View {
         Picker("Target", selection: $selectedTarget) {
-            ForEach(CloudTarget.allCases, id: \.self) { target in
+            ForEach(DestinationAvailabilityPolicy.newJobTargets, id: \.self) { target in
                 Label(target.homeDisplayName, systemImage: target.icon).tag(target)
             }
         }
@@ -271,6 +274,26 @@ struct VideoResultCard: View {
         }
         .buttonStyle(.bordered)
         .disabled(selectedQuality == nil)
+    }
+
+    private var watchlistButton: some View {
+        let isSaved = watchlist.contains(result.url)
+        return Button {
+            if isSaved {
+                watchlist.remove(sourcePageURL: result.url)
+            } else if let source = result.source {
+                watchlist.add(WatchlistItem(
+                    sourcePageURL: result.url,
+                    title: source.title ?? result.url,
+                    provider: source.siteName ?? URL(string: result.url)?.host ?? "Video",
+                    thumbnailURL: source.thumbnail
+                ))
+            }
+        } label: {
+            Label(isSaved ? "Saved" : "Watchlist", systemImage: isSaved ? "bookmark.fill" : "bookmark")
+        }
+        .buttonStyle(.bordered)
+        .disabled(result.source == nil)
     }
 
     @ViewBuilder

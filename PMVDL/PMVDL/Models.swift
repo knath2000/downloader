@@ -410,6 +410,7 @@ struct DownloadQueueItem: Identifiable, Codable, Equatable {
     var activity: [DownloadActivityEvent]?
     var automaticRetryCount: Int?
     var automaticRetryAfter: Date?
+    var agentOwned: Bool?
 
     init(
         id: UUID = UUID(),
@@ -417,7 +418,8 @@ struct DownloadQueueItem: Identifiable, Codable, Equatable {
         quality: String,
         targetCloud: CloudTarget = .mega,
         displayTitle: String? = nil,
-        retryPayload: DownloadRetryPayload? = nil
+        retryPayload: DownloadRetryPayload? = nil,
+        agentOwned: Bool = false
     ) {
         self.id = id
         self.url = url
@@ -442,6 +444,7 @@ struct DownloadQueueItem: Identifiable, Codable, Equatable {
         self.activity = [DownloadActivityEvent(status: .pending, message: "Ready to start")]
         self.automaticRetryCount = 0
         self.automaticRetryAfter = nil
+        self.agentOwned = agentOwned
     }
 
     var isPaused: Bool { status == .paused }
@@ -460,6 +463,8 @@ struct DownloadQueueItem: Identifiable, Codable, Equatable {
     var isProcessingJob: Bool {
         itemKind == .processing || status == .processing
     }
+
+    var isAgentOwned: Bool { agentOwned == true }
 
     var sourcePageURL: String? {
         if itemKind == .extraction {
@@ -531,9 +536,18 @@ enum CloudTarget: String, Codable, CaseIterable {
     }
 }
 
+enum DestinationAvailabilityPolicy {
+    static let newJobTargets: [CloudTarget] = [.local, .gdrive]
+
+    static func canCreateNewJob(for target: CloudTarget) -> Bool {
+        newJobTargets.contains(target)
+    }
+}
+
 enum NavDestination: String, Codable, CaseIterable {
     case home = "Home"
     case feed = "Feed"
+    case watchlist = "Watchlist"
     case library = "Library"
     case settings = "Settings"
 
@@ -541,6 +555,7 @@ enum NavDestination: String, Codable, CaseIterable {
         switch self {
         case .home: return "house.fill"
         case .feed: return "antenna.radiowaves.left.and.right"
+        case .watchlist: return "bookmark.fill"
         case .library: return "books.vertical.fill"
         case .settings: return "gearshape.fill"
         }
@@ -550,7 +565,7 @@ enum NavDestination: String, Codable, CaseIterable {
         switch self {
         case .feed:
             return true
-        case .home, .library, .settings:
+        case .home, .watchlist, .library, .settings:
             return false
         }
     }

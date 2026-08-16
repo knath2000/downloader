@@ -27,16 +27,13 @@ struct ExtractVideoIntent: AppIntent {
 
 struct DownloadVideoIntent: AppIntent {
     static var title: LocalizedStringResource { "Download Video" }
-    static var description: IntentDescription { "Extract and start downloading a video to Mega." }
+    static var description: IntentDescription { "Extract and queue a video with the background Lustre Agent." }
 
     @Parameter(title: "Video URL")
     var url: URL
 
-    @Parameter(title: "Remote Path", default: "/Cloud/VidDL/")
-    var remotePath: String
-
     static var parameterSummary: any ParameterSummary {
-        Summary("Download \(\.$url) to \(\.$remotePath)")
+        Summary("Download \(\.$url)")
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
@@ -44,12 +41,14 @@ struct DownloadVideoIntent: AppIntent {
             throw IntentError.proRequired
         }
         let source = try await VideoScraper.extract(from: url.absoluteString)
-        guard let mp4 = source.mp4 else {
-            throw IntentError.noMp4Found
-        }
-        _ = try await MegaManager.upload(url: mp4, remotePath: remotePath, title: source.title) { _ in }
+        let resolution = try await DownloadResolver.resolve(
+            sourcePageURL: url.absoluteString,
+            preferredQualityLabel: source.hls.first?.label
+        )
+        let context = DownloadJobContext(megaRemotePath: "", gdriveRemoteName: "gdrive", gdriveRemotePath: "VidDL/")
+        _ = await DownloadJobRunner.shared.run(resolution: resolution, target: .local, context: context)
         await LicenseManager.shared.recordSuccessfulDownload()
-        return .result(dialog: "Downloaded and uploaded to Mega at \(remotePath)")
+        return .result(dialog: "Queued with the background Lustre Agent.")
     }
 }
 
@@ -57,7 +56,7 @@ struct DownloadVideoIntent: AppIntent {
 
 struct UploadToCloudIntent: AppIntent {
     static var title: LocalizedStringResource { "Upload to Cloud" }
-    static var description: IntentDescription { "Upload a local video file to Mega or Google Drive." }
+    static var description: IntentDescription { "Upload a local video file to Google Drive." }
 
     @Parameter(title: "File")
     var file: IntentFile
@@ -77,12 +76,11 @@ struct UploadToCloudIntent: AppIntent {
 }
 
 enum CloudProvider: String, AppEnum, CaseIterable {
-    case mega = "Mega"
     case gdrive = "Google Drive"
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation { "Cloud Provider" }
     static var caseDisplayRepresentations: [CloudProvider: DisplayRepresentation] {
-        [.mega: "Mega", .gdrive: "Google Drive"]
+        [.gdrive: "Google Drive"]
     }
 }
 

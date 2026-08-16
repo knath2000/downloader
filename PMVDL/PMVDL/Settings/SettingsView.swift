@@ -115,7 +115,7 @@ struct SettingsView: View {
                             panel: panel,
                             detail: tileDetail(for: panel),
                             status: tileStatus(for: panel),
-                            isEmphasized: panel == .cloud && (!dependencyModel.gdrive.isReady || !dependencyModel.seedbox.isReady)
+                            isEmphasized: panel == .cloud && !dependencyModel.gdrive.isReady
                         )
                     }
                     .buttonStyle(.plain)
@@ -133,7 +133,7 @@ struct SettingsView: View {
     private func tileDetail(for panel: SettingsPanel) -> String {
         switch panel {
         case .cloud:
-            return "GDrive: \(dependencyModel.gdrive.status) · Seedbox: \(dependencyModel.seedbox.status)"
+            return "Google Drive: \(dependencyModel.gdrive.status)"
         case .notifications:
             let enabled = [
                 NotificationManager.shared.isEnabled(.uploadComplete),
@@ -153,7 +153,7 @@ struct SettingsView: View {
     private func tileStatus(for panel: SettingsPanel) -> String? {
         switch panel {
         case .cloud:
-            return dependencyModel.seedbox.isReady && dependencyModel.gdrive.isReady ? "2 destinations ready" : "Configure destinations"
+            return dependencyModel.gdrive.isReady ? "Ready" : "Configure Google Drive"
         case .notifications:
             return nil
         case .downloads:
@@ -238,7 +238,6 @@ struct SettingsView: View {
                 }
             }
 
-            seedboxSection
         }
     }
 

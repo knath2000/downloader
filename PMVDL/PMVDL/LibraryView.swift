@@ -264,7 +264,6 @@ struct LibraryView: View {
             LibrarySelectionBar(
                 count: selection.count,
                 deleteAction: { showingBulkDeleteConfirmation = true },
-                uploadMegaAction: { uploadSelected(to: .mega) },
                 uploadDriveAction: { uploadSelected(to: .gdrive) },
                 clearAction: { selection.removeAll() }
             )
@@ -1237,9 +1236,7 @@ private struct LibraryTimelineRow: View {
                 LibraryTimelineIconButton(systemName: "arrow.clockwise", help: "Re-extract") { reExtractVideo(item) }
                 Menu {
                     Button("Local") { uploadVideo(item, .local) }
-                    Button("Mega") { uploadVideo(item, .mega) }
                     Button("Google Drive") { uploadVideo(item, .gdrive) }
-                    Button("Seedbox") { uploadVideo(item, .seedbox) }
                 } label: {
                     LibraryTimelineMenuLabel(systemName: "arrow.up.circle", help: "Send")
                 }
@@ -1272,9 +1269,7 @@ private struct LibraryTimelineRow: View {
                 AppContextMenuAction("Open Media", systemImage: "play.rectangle", action: { openMedia(item) }),
                 AppContextMenuAction("Re-extract", systemImage: "arrow.clockwise", action: { reExtractVideo(item) }),
                 AppContextMenuAction("Send to Local", systemImage: "arrow.up.circle", action: { uploadVideo(item, .local) }),
-                AppContextMenuAction("Send to Mega", systemImage: "arrow.up.circle", action: { uploadVideo(item, .mega) }),
                 AppContextMenuAction("Send to Google Drive", systemImage: "arrow.up.circle", action: { uploadVideo(item, .gdrive) }),
-                AppContextMenuAction("Send to Seedbox", systemImage: "arrow.up.circle", action: { uploadVideo(item, .seedbox) }),
                 AppContextMenuAction("Refresh Thumbnail", systemImage: "photo", action: { refreshThumbnail(item) }),
                 AppContextMenuAction("Copy Page URL", systemImage: "doc.on.doc", action: { ClipboardManager.copy(item.url) })
             ]
@@ -1658,9 +1653,7 @@ private struct LibraryDetailPanel: View {
                 }
                 LibraryDetailMenuButton(title: "Send", systemName: "arrow.up.circle", tint: Theme.success) {
                     Button("Local") { uploadVideo(item, .local) }
-                    Button("Mega") { uploadVideo(item, .mega) }
                     Button("Google Drive") { uploadVideo(item, .gdrive) }
-                    Button("Seedbox") { uploadVideo(item, .seedbox) }
                 }
                 LibraryDetailActionButton(title: "Refresh Thumbnail", systemName: "photo", tint: Theme.skyBlue) { refreshThumbnail(item) }
                 LibraryDetailActionButton(title: "Delete", systemName: "trash", tint: Theme.error, role: .destructive) { requestDeleteVideo(item) }
@@ -2171,7 +2164,6 @@ private struct LibraryKindBadge: View {
 private struct LibrarySelectionBar: View {
     let count: Int
     let deleteAction: () -> Void
-    let uploadMegaAction: () -> Void
     let uploadDriveAction: () -> Void
     let clearAction: () -> Void
 
@@ -2181,7 +2173,6 @@ private struct LibrarySelectionBar: View {
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(Theme.textPrimary)
             Spacer()
-            LibrarySelectionButton(title: "Upload to Mega", systemName: "cloud.fill", tint: Theme.success, action: uploadMegaAction)
             LibrarySelectionButton(title: "Upload to Drive", systemName: "externaldrive.fill", tint: Theme.skyBlue, action: uploadDriveAction)
             LibrarySelectionButton(title: "Delete", systemName: "trash", tint: Theme.error, action: deleteAction)
             LibrarySelectionButton(title: "Clear", systemName: "xmark.circle", tint: Theme.textSecondary, action: clearAction)

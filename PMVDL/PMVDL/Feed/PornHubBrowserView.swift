@@ -1208,7 +1208,7 @@ struct PornHubBrowserWebView: NSViewRepresentable {
             var actions = [
                 AppContextMenuAction(isSelected(item) ? "Deselect" : "Select", systemImage: isSelected(item) ? "checkmark.circle.fill" : "circle", action: { [weak self] in self?.performToggleSelection(item) }),
                 AppContextMenuAction("Extract with LustreStudio", systemImage: "bolt.fill", action: { [weak self] in self?.performExtract(context) }),
-                AppContextMenuAction("Toggle Favorite", systemImage: "heart.fill", action: { [weak self] in self?.performToggleFavorite(context) })
+                AppContextMenuAction("Toggle Watchlist", systemImage: "bookmark.fill", action: { [weak self] in self?.performToggleFavorite(context) })
             ]
             if DownloadedFeedIndex(items: VideoLibrary.shared.items).match(for: item) != nil {
                 actions.append(AppContextMenuAction("Open in Library", systemImage: "checkmark.circle.fill", action: { [weak self] in self?.performOpenLibrary(context) }))
@@ -1259,7 +1259,7 @@ struct PornHubBrowserWebView: NSViewRepresentable {
             dismissContextMenu()
             guard let item = feedItem(for: context) else { return }
             Task { @MainActor in
-                FeedFavoritesStore.shared.toggle(feedItem: item)
+                WatchlistStore.shared.toggle(feedItem: item)
             }
         }
 

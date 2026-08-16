@@ -189,7 +189,7 @@ struct ExtractionModalView: View {
 
             if batchQueuedCount > 0 {
                 Picker("Batch target", selection: $batchTarget) {
-                    ForEach(CloudTarget.allCases, id: \.self) { target in
+                    ForEach(DestinationAvailabilityPolicy.newJobTargets, id: \.self) { target in
                         Label(target.homeDisplayName, systemImage: target.icon).tag(target)
                     }
                 }
@@ -648,7 +648,7 @@ private struct ExtractionResultRow: View {
 
     private var targetPicker: some View {
         Picker("Target", selection: $selectedTarget) {
-            ForEach(CloudTarget.allCases, id: \.self) { target in
+            ForEach(DestinationAvailabilityPolicy.newJobTargets, id: \.self) { target in
                 Label(target.homeDisplayName, systemImage: target.icon).tag(target)
             }
         }

@@ -181,6 +181,9 @@ struct ContentView: View {
             LibraryView(onUpgradeRequired: presentUpgradeOverlay)
         case .feed:
             FeedView(bottomChromeInset: floatingTabContentInset)
+        case .watchlist:
+            WatchlistView()
+                .padding(.bottom, floatingTabContentInset)
         case .settings:
             SettingsView(gdriveRemoteName: $gdriveRemoteName,
                          gdriveRemotePath: $gdriveRemotePath,
@@ -204,6 +207,9 @@ struct ContentView: View {
         switch dest {
         case .home:
             return activeQueueBadge.activeCount == 0 ? nil : activeQueueBadge.activeCount
+        case .watchlist:
+            let count = WatchlistStore.shared.items.filter { !$0.watched }.count
+            return count == 0 ? nil : count
         default:
             return nil
         }
@@ -278,6 +284,7 @@ struct ContentView: View {
             _ = VideoLibrary.shared
             _ = HistoryManager.shared
             _ = FeedFavoritesStore.shared
+            _ = WatchlistStore.shared
             _ = FeedViewModel.shared
             _ = SettingsDependencyStore.shared
         }
@@ -556,7 +563,7 @@ private struct TabOpeningPlaceholder: View {
         switch destination {
         case .feed:
             browserPlaceholder
-        case .library:
+        case .watchlist, .library:
             libraryPlaceholder
         case .settings:
             settingsPlaceholder

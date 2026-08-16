@@ -19,7 +19,8 @@ struct LustreStudioApp: App {
             CommandMenu("Navigate") {
                 Button("Home") { appState.select(.home) }.keyboardShortcut("1", modifiers: .command)
                 Button("Feed") { appState.select(.feed) }.keyboardShortcut("2", modifiers: .command)
-                Button("Library") { appState.select(.library) }.keyboardShortcut("3", modifiers: .command)
+                Button("Watchlist") { appState.select(.watchlist) }.keyboardShortcut("3", modifiers: .command)
+                Button("Library") { appState.select(.library) }.keyboardShortcut("4", modifiers: .command)
                 Button("Settings") { appState.select(.settings) }.keyboardShortcut(",", modifiers: .command)
             }
             CommandMenu("Downloads") {
@@ -86,6 +87,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         SleepPreventionManager.shared.start()
         Task { @MainActor in
+            LustreAgentController.shared.start()
+        }
+        Task { @MainActor in
             await Task.yield()
             let seedboxWebdavPassword = SecureStore.string(forKey: "seedboxWebdavPassword") ?? ""
             DownloadQueue.shared.resumeInterruptedOnLaunch(seedboxWebdavPassword: seedboxWebdavPassword)
@@ -128,6 +132,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         DownloadQueue.shared.save()
         VideoLibrary.shared.save()
         FeedFavoritesStore.shared.save()
+        Task { @MainActor in
+            LustreAgentController.shared.stop()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

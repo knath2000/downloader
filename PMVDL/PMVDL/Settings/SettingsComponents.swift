@@ -35,7 +35,7 @@ enum SettingsPanel: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .cloud: return "Google Drive and seedbox destinations."
+        case .cloud: return "Google Drive destination."
         case .notifications: return "Event alerts."
         case .downloads: return "Saving, subtitles, and tools."
         case .pro: return "License and unlocks."
@@ -45,7 +45,7 @@ enum SettingsPanel: String, CaseIterable, Identifiable {
 
     var modalSubtitle: String {
         switch self {
-        case .cloud: return "Configure Google Drive plus WebDAV HTTPS or SFTP seedbox uploads used after downloads finish."
+        case .cloud: return "Configure the Google Drive destination used by the background Agent."
         case .notifications: return "Choose which LustreStudio events can notify you."
         case .downloads: return "Fine-tune downloads, subtitles, sleep prevention, and helper tools."
         case .pro: return "Manage your LustreStudio Pro purchase and activation."

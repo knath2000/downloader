@@ -133,28 +133,7 @@ final class DownloadJobRunner {
 
     @discardableResult
     func queue(resolutions: [DownloadResolution], target: CloudTarget, context: DownloadJobContext) -> [UUID] {
-        let items = resolutions.map { resolution in
-            let sourcePageURL = resolution.result.url
-            let quality = queueQuality(for: resolution, target: target)
-            let preferredQualityLabel = resolution.source.hls.first(where: {
-                $0.url == resolution.requestedUrl || $0.url == resolution.finalUrl
-            })?.label
-            let payload = DownloadRetryPayload(
-                sourcePageURL: sourcePageURL,
-                preferredQualityLabel: preferredQualityLabel,
-                title: resolution.title,
-                target: target,
-                context: context.retryContext
-            )
-            return DownloadQueueItem(
-                url: sourcePageURL,
-                quality: quality,
-                targetCloud: target,
-                displayTitle: resolution.title,
-                retryPayload: payload
-            )
-        }
-        return DownloadQueue.shared.addQueued(items)
+        resolutions.map { enqueueAgent(resolution: $0, target: target, context: context) }
     }
 
     @discardableResult
@@ -172,17 +151,34 @@ final class DownloadJobRunner {
             target: target,
             context: context.retryContext
         )
-        let queueID = DownloadQueue.shared.add(
+        let queueID = UUID()
+        DownloadQueue.shared.addAgentOwned(
+            id: queueID,
             url: sourcePageURL,
             quality: preferredQualityLabel ?? "Video",
             targetCloud: target,
             displayTitle: title,
             retryPayload: payload
         )
+        Task {
+            await LustreAgentController.shared.enqueue(
+                id: queueID,
+                sourcePageURL: sourcePageURL,
+                title: title,
+                preferredQualityLabel: preferredQualityLabel,
+                target: target,
+                gdriveRemoteName: context.gdriveRemoteName,
+                gdriveRemotePath: context.gdriveRemotePath
+            )
+        }
         return queueID
     }
 
     func run(resolution: DownloadResolution, target: CloudTarget, context: DownloadJobContext) async -> Bool {
+        if DestinationAvailabilityPolicy.canCreateNewJob(for: target) {
+            _ = enqueueAgent(resolution: resolution, target: target, context: context)
+            return true
+        }
         let queueId = enqueue(resolution: resolution, target: target, context: context, waitsForResult: true)
         return await waitForResult(queueId: queueId)
     }
@@ -225,6 +221,10 @@ final class DownloadJobRunner {
     }
 
     func pause(queueId: UUID) {
+        if DownloadQueue.shared.item(id: queueId)?.isAgentOwned == true {
+            LustreAgentController.shared.apply(.pause, id: queueId)
+            return
+        }
         cancelScheduledRetry(queueId: queueId)
         pausedQueueIDs.insert(queueId)
         cancelledQueueIDs.remove(queueId)
@@ -236,6 +236,10 @@ final class DownloadJobRunner {
     }
 
     func cancel(queueId: UUID) {
+        if DownloadQueue.shared.item(id: queueId)?.isAgentOwned == true {
+            LustreAgentController.shared.apply(.cancel, id: queueId)
+            return
+        }
         cancelScheduledRetry(queueId: queueId)
         cancelledQueueIDs.insert(queueId)
         pausedQueueIDs.remove(queueId)
@@ -249,6 +253,10 @@ final class DownloadJobRunner {
     /// Resets the existing queue row and reruns the job with the original payload.
     @discardableResult
     func retry(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) async -> Bool {
+        if DownloadQueue.shared.item(id: queueId)?.isAgentOwned == true {
+            LustreAgentController.shared.apply(.retry, id: queueId)
+            return true
+        }
         guard DownloadQueue.shared.resetForRetry(id: queueId) else { return false }
         awaitedResultIDs.insert(queueId)
         enqueueExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword, refreshSource: true)
@@ -257,6 +265,10 @@ final class DownloadJobRunner {
 
     @discardableResult
     func resume(queueId: UUID, payload: DownloadRetryPayload, seedboxWebdavPassword: String) async -> Bool {
+        if DownloadQueue.shared.item(id: queueId)?.isAgentOwned == true {
+            LustreAgentController.shared.apply(.resume, id: queueId)
+            return true
+        }
         guard DownloadQueue.shared.resetForResume(id: queueId) else { return false }
         awaitedResultIDs.insert(queueId)
         enqueueExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: seedboxWebdavPassword, refreshSource: true)
@@ -267,6 +279,7 @@ final class DownloadJobRunner {
         rehydrateWaitingRuns()
         let queueItems = DownloadQueue.shared.queue
         for item in queueItems {
+            guard !item.isAgentOwned else { continue }
             let limit = item.targetCloud == .seedbox
                 ? DownloadQueue.shared.concurrentLimit
                 : ProFeatureGate.concurrentDownloadLimit
@@ -314,6 +327,9 @@ final class DownloadJobRunner {
         context: DownloadJobContext,
         waitsForResult: Bool = false
     ) -> UUID {
+        if DestinationAvailabilityPolicy.canCreateNewJob(for: target) {
+            return enqueueAgent(resolution: resolution, target: target, context: context)
+        }
         let payload = buildRetryPayload(for: resolution, target: target, context: context)
         let queueId = DownloadQueue.shared.add(
             url: resolution.result.url,
@@ -329,6 +345,83 @@ final class DownloadJobRunner {
         }
         enqueueExisting(queueId: queueId, payload: payload, seedboxWebdavPassword: context.seedboxWebdavPassword)
         return queueId
+    }
+
+    private func enqueueAgent(
+        resolution: DownloadResolution,
+        target: CloudTarget,
+        context: DownloadJobContext
+    ) -> UUID {
+        let id = UUID()
+        let payload = buildRetryPayload(for: resolution, target: target, context: context)
+        let selectedQuality = resolution.source.hls.first {
+            $0.url == resolution.requestedUrl || $0.url == resolution.finalUrl
+        }
+        let preferredLabel = selectedQuality?.label
+        let selector = LustreAgentQualitySelector(
+            provider: agentProvider(for: resolution),
+            mediaKind: resolution.mediaKind == .hls ? .hls : (resolution.mediaKind == .ytDlp ? .ytDlp : .direct),
+            formatSelector: nil
+        )
+        let assisted: LustreAgentAssistedResolution?
+        if (selectedQuality?.resolutionMethod ?? resolution.source.resolutionMethod ?? "")
+            .localizedCaseInsensitiveContains("WebView") {
+            assisted = URL(string: resolution.finalUrl).map {
+                LustreAgentAssistedResolution(
+                    mediaURL: $0,
+                    headers: resolution.headers ?? [:],
+                    mediaKind: resolution.mediaKind == .hls ? .hls : .direct,
+                    title: resolution.title,
+                    resolutionMethod: selectedQuality?.resolutionMethod ?? "LustreStudio browser assistance"
+                )
+            }
+        } else {
+            assisted = nil
+        }
+        DownloadQueue.shared.addAgentOwned(
+            id: id,
+            url: resolution.result.url,
+            quality: queueQuality(for: resolution, target: target),
+            targetCloud: target,
+            displayTitle: resolution.title,
+            retryPayload: payload
+        )
+        Task {
+            await LustreAgentController.shared.enqueue(
+                id: id,
+                sourcePageURL: resolution.result.url,
+                title: resolution.title,
+                preferredQualityLabel: preferredLabel,
+                target: target,
+                gdriveRemoteName: context.gdriveRemoteName,
+                gdriveRemotePath: context.gdriveRemotePath,
+                assistedResolution: assisted,
+                selector: selector
+            )
+        }
+        return id
+    }
+
+    private func agentProvider(for resolution: DownloadResolution) -> String {
+        let identity = [
+            resolution.source.siteName,
+            URL(string: resolution.result.url)?.host,
+            URL(string: resolution.sourcePageUrl ?? "")?.host
+        ]
+        .compactMap { $0?.lowercased() }
+        .joined(separator: " ")
+        if identity.contains("pmvhaven") { return "pmvhaven" }
+        if identity.contains("allpornstream") { return "allPornStream" }
+        if identity.contains("hqporner") { return "hqporner" }
+        if identity.contains("dood") || identity.contains("playmogo") || identity.contains("vide0") { return "doodStream" }
+        if identity.contains("mydaddy") { return "myDaddy" }
+        if identity.contains("mixdrop") || identity.contains("m1xdrop") { return "mixDrop" }
+        if identity.contains("streamtape") { return "streamTape" }
+        if identity.contains("lulustream") { return "luluStream" }
+        if identity.contains("vidara") { return "vidara" }
+        if identity.contains("pornhub") { return "pornhub" }
+        if resolution.mediaKind == .ytDlp { return "yt-dlp" }
+        return "direct"
     }
 
     private func enqueueExisting(

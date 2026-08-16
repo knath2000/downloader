@@ -37,7 +37,7 @@ struct ProFeatureGate {
         switch destination {
         case .feed:
             return canUseFeed
-        case .home, .library, .settings:
+        case .home, .watchlist, .library, .settings:
             return true
         }
     }

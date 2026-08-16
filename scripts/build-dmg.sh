@@ -9,7 +9,7 @@ PROJECT="PMVDL/PMVDL.xcodeproj"
 CONFIGURATION="Debug"
 APP_NAME="LustreStudio"
 INFO_PLIST="PMVDL/PMVDL/Info.plist"
-DEVELOPER_DIR="${DEVELOPER_DIR:-/Volumes/MyPassport/Applications/Xcode.app/Contents/Developer}"
+DEVELOPER_DIR="${DEVELOPER_DIR:-/Volumes/WD/Applications/Xcode.app/Contents/Developer}"
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-/tmp/lustrestudio-local-dmg-debug}"
 STAGING_DIR="${STAGING_DIR:-/tmp/lustrestudio-dmg-staging}"
 
@@ -34,6 +34,8 @@ if [[ ! -x "$EXECUTABLE_PATH" ]]; then
     echo "ERROR: Missing app executable at ${EXECUTABLE_PATH}" >&2
     exit 1
 fi
+
+"$ROOT/scripts/embed-lustre-agent-runtime.sh" "$APP_PATH"
 
 echo "==> Verifying unsigned app bundle..."
 if codesign -dv "$APP_PATH" >/tmp/lustrestudio-codesign-check.log 2>&1; then
