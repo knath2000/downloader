@@ -448,8 +448,12 @@ class DownloadQueue: ObservableObject {
     }
 
     func remove(_ item: DownloadQueueItem) {
-        if let current = queue.first(where: { $0.id == item.id }),
-           !current.status.isTerminal {
+        guard let current = queue.first(where: { $0.id == item.id }) else { return }
+        if current.isAgentOwned {
+            LustreAgentController.shared.remove(id: item.id)
+            return
+        }
+        if !current.status.isTerminal {
             cancelActiveWork(id: item.id, status: current.status)
         }
         lastProgressUpdateAt[item.id] = nil
@@ -458,10 +462,20 @@ class DownloadQueue: ObservableObject {
     }
 
     func remove(id: UUID) {
-        if let current = queue.first(where: { $0.id == id }),
-           !current.status.isTerminal {
+        guard let current = queue.first(where: { $0.id == id }) else { return }
+        if current.isAgentOwned {
+            LustreAgentController.shared.remove(id: id)
+            return
+        }
+        if !current.status.isTerminal {
             cancelActiveWork(id: id, status: current.status)
         }
+        lastProgressUpdateAt[id] = nil
+        queue.removeAll { $0.id == id }
+        save()
+    }
+
+    func removeAgentProjection(id: UUID) {
         lastProgressUpdateAt[id] = nil
         queue.removeAll { $0.id == id }
         save()

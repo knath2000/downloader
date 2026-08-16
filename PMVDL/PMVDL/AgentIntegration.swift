@@ -178,6 +178,10 @@ struct LustreAgentClient {
         try await request(path: "/v1/jobs/\(id.uuidString)/action", method: "POST", body: try encoder.encode(["action": action.rawValue]))
     }
 
+    func removeJob(id: UUID) async throws {
+        let _: EmptyEnvelope = try await request(path: "/v1/jobs/\(id.uuidString)", method: "DELETE", body: nil)
+    }
+
     func googleDriveProfiles() async throws -> [LustreAgentGoogleDriveProfile] {
         try await request(path: "/v1/destinations/google-drive", method: "GET", body: nil)
     }
@@ -228,6 +232,7 @@ struct LustreAgentClient {
     private struct Endpoint: Codable { let port: UInt16 }
     private struct ErrorEnvelope: Codable { let error: String }
     private struct StatusEnvelope: Codable { let status: String }
+    private struct EmptyEnvelope: Codable {}
 }
 
 private struct LustreAgentPollSnapshot {
@@ -379,6 +384,28 @@ final class LustreAgentController: ObservableObject {
                 await refresh()
             } catch {
                 DownloadQueue.shared.fail(id: id, message: error.localizedDescription)
+            }
+        }
+    }
+
+    func remove(id: UUID) {
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try await LustreAgentClient().removeJob(id: id)
+                }.value
+                projectedJobUpdates[id] = nil
+                importedCompletions.remove(id)
+                DownloadQueue.shared.removeAgentProjection(id: id)
+                await refresh()
+            } catch {
+                let message = error.localizedDescription
+                if lastError != message {
+                    lastError = message
+                }
+                AppStateManager.shared.transientMessage = AppTransientMessage(
+                    text: "Unable to remove Agent download: \(message)"
+                )
             }
         }
     }
