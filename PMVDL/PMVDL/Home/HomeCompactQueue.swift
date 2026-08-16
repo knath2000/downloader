@@ -108,7 +108,14 @@ struct HomeCompactQueue: View {
     }
 
     private var activeItems: [DownloadQueueItem] {
-        items.filter { HomeQueueCounts.isActive($0.status) }
+        items
+            .filter { HomeQueueCounts.isActive($0.status) }
+            .sorted {
+                if $0.createdAt == $1.createdAt {
+                    return $0.id.uuidString < $1.id.uuidString
+                }
+                return $0.createdAt < $1.createdAt
+            }
     }
 
     private var queuedItems: [DownloadQueueItem] {

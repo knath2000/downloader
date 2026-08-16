@@ -41,7 +41,12 @@ struct DownloadQueueViewNew: View {
             guard !items.isEmpty else { return nil }
             let sorted: [DownloadQueueItem]
             if kind == .active {
-                sorted = items.sorted { $0.progress > $1.progress }
+                sorted = items.sorted {
+                    if $0.createdAt == $1.createdAt {
+                        return $0.id.uuidString < $1.id.uuidString
+                    }
+                    return $0.createdAt < $1.createdAt
+                }
             } else {
                 sorted = items.sorted { $0.createdAt > $1.createdAt }
             }
