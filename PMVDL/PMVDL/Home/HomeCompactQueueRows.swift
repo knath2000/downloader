@@ -104,6 +104,8 @@ struct HomeCompletedQueueRow: View {
 
 struct HomeCompactQueueRow: View, Equatable {
     let item: DownloadQueueItem
+    let queuePriority: Int?
+    let queuePriorityCount: Int
     let isHistory: Bool
     let isModalPresentation: Bool
     let pause: () -> Void
@@ -112,13 +114,15 @@ struct HomeCompactQueueRow: View, Equatable {
     let startNow: () -> Void
     let remove: () -> Void
     let moveToFront: () -> Void
+    let moveUp: () -> Void
+    let moveDown: () -> Void
     let showInFinder: () -> Void
     let showSource: () -> Void
     let copyError: () -> Void
     let onUpgradeRequired: () -> Void
 
     static func == (lhs: HomeCompactQueueRow, rhs: HomeCompactQueueRow) -> Bool {
-        lhs.item == rhs.item && lhs.isHistory == rhs.isHistory && lhs.isModalPresentation == rhs.isModalPresentation
+        lhs.item == rhs.item && lhs.queuePriority == rhs.queuePriority && lhs.queuePriorityCount == rhs.queuePriorityCount && lhs.isHistory == rhs.isHistory && lhs.isModalPresentation == rhs.isModalPresentation
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -167,6 +171,14 @@ struct HomeCompactQueueRow: View, Equatable {
     var body: some View {
         VStack(spacing: isModalPresentation ? 12 : 8) {
             HStack(spacing: isModalPresentation ? 14 : 10) {
+                if isModalPresentation, let queuePriority {
+                    Text("#\(queuePriority)")
+                        .font(.system(size: 12, weight: .black, design: .monospaced))
+                        .foregroundStyle(Theme.lavender)
+                        .frame(width: 32)
+                        .help("Queue priority \(queuePriority)")
+                }
+
                 HomeCompactQueueThumbnail(item: item, tint: tint, size: thumbnailSize)
 
                 VStack(alignment: .leading, spacing: bodySpacing) {
@@ -220,6 +232,25 @@ struct HomeCompactQueueRow: View, Equatable {
                 .frame(width: isModalPresentation ? 88 : 58, alignment: .trailing)
 
                 HStack(spacing: isModalPresentation ? 8 : 6) {
+                    if isModalPresentation, queuePriority != nil {
+                        HomeCompactQueueIconButton(
+                            systemName: "chevron.up",
+                            tint: Theme.lavender,
+                            help: "Increase queue priority",
+                            isDisabled: queuePriority == 1,
+                            size: 30,
+                            action: moveUp
+                        )
+                        HomeCompactQueueIconButton(
+                            systemName: "chevron.down",
+                            tint: Theme.lavender,
+                            help: "Decrease queue priority",
+                            isDisabled: queuePriority == queuePriorityCount,
+                            size: 30,
+                            action: moveDown
+                        )
+                    }
+
                     primaryActionButton
 
                     HomeCompactQueueIconButton(

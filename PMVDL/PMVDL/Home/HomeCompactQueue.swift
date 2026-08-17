@@ -126,7 +126,22 @@ struct HomeCompactQueue: View {
             case .downloading, .verifying, .uploading, .processing, .completed:
                 return false
             }
+        }.sorted {
+            let leftEligible = $0.status == .pending || $0.status == .waiting
+            let rightEligible = $1.status == .pending || $1.status == .waiting
+            if leftEligible != rightEligible { return leftEligible }
+            if leftEligible, $0.queuePriority != $1.queuePriority {
+                return ($0.queuePriority ?? Int.max) < ($1.queuePriority ?? Int.max)
+            }
+            if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+            return $0.id.uuidString < $1.id.uuidString
         }
+    }
+
+    private var priorityIDs: [UUID] {
+        queuedItems
+            .filter { $0.status == .pending || $0.status == .waiting }
+            .map(\.id)
     }
 
     private var visibleActiveItems: [DownloadQueueItem] {
@@ -526,6 +541,8 @@ struct HomeCompactQueue: View {
         } else {
             HomeCompactQueueRow(
                 item: item,
+                queuePriority: priorityIDs.firstIndex(of: item.id).map { $0 + 1 },
+                queuePriorityCount: priorityIDs.count,
                 isHistory: isHistory,
                 isModalPresentation: isModal,
                 pause: { queue.pause(item) },
@@ -534,6 +551,8 @@ struct HomeCompactQueue: View {
                 startNow: { startNow(item) },
                 remove: { queue.remove(item) },
                 moveToFront: { moveToFront(item) },
+                moveUp: { movePriority(item, offset: -1) },
+                moveDown: { movePriority(item, offset: 1) },
                 showInFinder: { showInFinder(item) },
                 showSource: { showSource(item) },
                 copyError: { copyError(item) },
@@ -765,9 +784,20 @@ struct HomeCompactQueue: View {
     }
 
     private func moveToFront(_ item: DownloadQueueItem) {
-        while let idx = queue.queue.firstIndex(where: { $0.id == item.id }), idx > 0 {
-            queue.moveUp(queue.queue[idx])
-        }
+        guard let index = priorityIDs.firstIndex(of: item.id), index > 0 else { return }
+        var ids = priorityIDs
+        ids.remove(at: index)
+        ids.insert(item.id, at: 0)
+        queue.reorderQueued(ids)
+    }
+
+    private func movePriority(_ item: DownloadQueueItem, offset: Int) {
+        guard let index = priorityIDs.firstIndex(of: item.id) else { return }
+        let destination = index + offset
+        guard priorityIDs.indices.contains(destination) else { return }
+        var ids = priorityIDs
+        ids.swapAt(index, destination)
+        queue.reorderQueued(ids)
     }
 
     private func startNow(_ item: DownloadQueueItem) {

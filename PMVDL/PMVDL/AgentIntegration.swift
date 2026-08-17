@@ -54,6 +54,7 @@ struct LustreAgentJob: Codable, Identifiable {
     var phaseTotalBytes: Int64?
     var phaseBytesPerSecond: Double?
     var completionArtifact: LustreAgentCompletionArtifact?
+    var queuePriority: Int?
     let createdAt: Date
     var updatedAt: Date
 }
@@ -178,6 +179,10 @@ struct LustreAgentClient {
 
     func apply(_ action: LustreAgentAction, id: UUID) async throws -> LustreAgentJob {
         try await request(path: "/v1/jobs/\(id.uuidString)/action", method: "POST", body: try encoder.encode(["action": action.rawValue]))
+    }
+
+    func reorderJobs(_ ids: [UUID]) async throws -> [LustreAgentJob] {
+        try await request(path: "/v1/jobs/order", method: "POST", body: try encoder.encode(["ids": ids.map(\.uuidString)]))
     }
 
     func removeJob(id: UUID) async throws {
@@ -394,6 +399,18 @@ final class LustreAgentController: ObservableObject {
                 await refresh()
             } catch {
                 DownloadQueue.shared.fail(id: id, message: error.localizedDescription)
+            }
+        }
+    }
+
+    func reorderQueuedJobs(_ ids: [UUID]) {
+        Task {
+            do {
+                let jobs = try await LustreAgentClient().reorderJobs(ids)
+                project(jobs)
+            } catch {
+                lastError = error.localizedDescription
+                await refresh()
             }
         }
     }

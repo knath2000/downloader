@@ -344,9 +344,11 @@ class DownloadQueue: ObservableObject {
             bytesPerSecond: job.phaseBytesPerSecond
         )
         _ = update(id: job.id, status: status, progress: fraction * 100, message: job.message, metrics: metrics)
-        if let path = job.completionArtifact?.path,
-           let index = queue.firstIndex(where: { $0.id == job.id }) {
-            queue[index].finalPath = path
+        if let index = queue.firstIndex(where: { $0.id == job.id }) {
+            queue[index].queuePriority = job.queuePriority
+            if let path = job.completionArtifact?.path {
+                queue[index].finalPath = path
+            }
         }
     }
 
@@ -531,6 +533,30 @@ class DownloadQueue: ObservableObject {
         guard let idx = queue.firstIndex(where: { $0.id == item.id }), idx < queue.count - 1 else { return }
         queue.swapAt(idx, idx + 1)
         save()
+    }
+
+    func reorderQueued(_ orderedIDs: [UUID]) {
+        let eligible = queue.filter { $0.status == .pending || $0.status == .waiting }
+        let eligibleIDs = Set(eligible.map(\.id))
+        var ids = orderedIDs.filter { eligibleIDs.contains($0) }
+        ids.append(contentsOf: eligible.map(\.id).filter { !ids.contains($0) })
+        for (priority, id) in ids.enumerated() {
+            if let index = queue.firstIndex(where: { $0.id == id }) {
+                queue[index].queuePriority = priority
+            }
+        }
+        queue.sort {
+            if $0.status == .pending || $0.status == .waiting,
+               $1.status == .pending || $1.status == .waiting {
+                return ($0.queuePriority ?? Int.max) < ($1.queuePriority ?? Int.max)
+            }
+            return $0.createdAt < $1.createdAt
+        }
+        save()
+        LustreAgentController.shared.reorderQueuedJobs(ids.filter {
+            item(id: $0)?.isAgentOwned == true
+        })
+        processNextIfNeeded()
     }
 
     func pauseAll() {

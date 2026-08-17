@@ -411,6 +411,7 @@ struct DownloadQueueItem: Identifiable, Codable, Equatable {
     var automaticRetryCount: Int?
     var automaticRetryAfter: Date?
     var agentOwned: Bool?
+    var queuePriority: Int?
 
     init(
         id: UUID = UUID(),
@@ -445,6 +446,7 @@ struct DownloadQueueItem: Identifiable, Codable, Equatable {
         self.automaticRetryCount = 0
         self.automaticRetryAfter = nil
         self.agentOwned = agentOwned
+        self.queuePriority = nil
     }
 
     var isPaused: Bool { status == .paused }
