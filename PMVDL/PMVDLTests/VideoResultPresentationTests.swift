@@ -100,12 +100,26 @@ final class VideoResultPresentationTests: XCTestCase {
         let slots = ExtractionSlotSupport.startingSlots(for: [
             "https://example.test/one",
             "https://example.test/two"
+        ], titleHints: [
+            "https://example.test/one": "Known Video"
         ])
 
         XCTAssertEqual(slots.count, 2)
         XCTAssertEqual(slots.map(\.url), ["https://example.test/one", "https://example.test/two"])
+        XCTAssertEqual(slots.map(\.title), ["Known Video", "Two"])
         XCTAssertTrue(slots.allSatisfy { $0.result == nil })
         XCTAssertNotEqual(slots[0].id, slots[1].id)
+    }
+
+    func testExtractionTitleSupportUsesReadableURLFallback() {
+        XCTAssertEqual(
+            ExtractionTitleSupport.title(for: "https://playmogo.com/e/my-video_title"),
+            "My Video Title"
+        )
+        XCTAssertEqual(
+            ExtractionTitleSupport.title(for: "https://playmogo.com", hint: "  Original Video  "),
+            "Original Video"
+        )
     }
 
     func testExtractionSlotsReplaceOnePendingRowAtATime() {
@@ -122,6 +136,7 @@ final class VideoResultPresentationTests: XCTestCase {
         let updated = ExtractionSlotSupport.replacingSlot(id: slots[0].id, in: slots, with: first)
 
         XCTAssertEqual(updated[0].id, slots[0].id)
+        XCTAssertEqual(updated[0].title, "One")
         XCTAssertEqual(updated[0].result, first)
         XCTAssertNil(updated[1].result)
         XCTAssertEqual(ExtractionSlotSupport.completedResults(in: updated), [first])

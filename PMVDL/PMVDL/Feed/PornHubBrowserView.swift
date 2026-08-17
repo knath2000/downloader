@@ -291,6 +291,32 @@ enum PornHubBrowserFeedMapper {
         )
     }
 
+    static func preferredItem(
+        title: String?,
+        url: URL,
+        detectedItems: [FeedItem],
+        site: FeedBrowserSite
+    ) -> FeedItem? {
+        if let detected = detectedItems.first(where: {
+            guard let detectedURL = URL(string: $0.url) else { return false }
+            return normalizedFeedIdentity(detectedURL) == normalizedFeedIdentity(url)
+        }) {
+            return detected
+        }
+        return item(title: title, url: url, site: site)
+    }
+
+    private static func normalizedFeedIdentity(_ url: URL) -> String {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url.absoluteString
+        }
+        components.fragment = nil
+        if components.path.count > 1, components.path.hasSuffix("/") {
+            components.path.removeLast()
+        }
+        return components.string ?? url.absoluteString
+    }
+
     static func feedItemForSite(
         title: String,
         url: String,
@@ -1069,6 +1095,7 @@ struct PornHubBrowserWebView: NSViewRepresentable {
           usableTitle(titleNode?.textContent) ||
           usableTitle(anchor?.getAttribute("title")) ||
           usableTitle(anchor?.getAttribute("aria-label")) ||
+          usableTitle(anchor?.textContent) ||
           usableTitle(img?.getAttribute("alt")) ||
           document.title ||
           url;
@@ -1283,6 +1310,7 @@ struct PornHubBrowserWebView: NSViewRepresentable {
             guard let item = feedItem(for: context) else { return }
             Task { @MainActor in
                 AppStateManager.shared.pendingExtractThumbnailURL = item.thumbnailURL
+                AppStateManager.shared.pendingExtractTitles = [item.url: item.title]
                 AppStateManager.shared.pendingExtractShouldStart = true
                 AppStateManager.shared.pendingExtractURL = item.url
                 AppStateManager.shared.select(.home)
@@ -1375,8 +1403,13 @@ struct PornHubBrowserWebView: NSViewRepresentable {
         }
 
         private func feedItem(for context: (url: URL, title: String)) -> FeedItem? {
-            guard let site = browser?.site else { return nil }
-            return PornHubBrowserFeedMapper.item(title: context.title, url: context.url, site: site)
+            guard let browser else { return nil }
+            return PornHubBrowserFeedMapper.preferredItem(
+                title: context.title,
+                url: context.url,
+                detectedItems: browser.detectedItems,
+                site: browser.site
+            )
         }
     }
 }

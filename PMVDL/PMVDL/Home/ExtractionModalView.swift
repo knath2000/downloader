@@ -61,6 +61,7 @@ struct ExtractionModalView: View {
                 let row = ExtractionDisplayRow(
                     id: slot.id,
                     url: slot.url,
+                    title: slot.title,
                     resultIndex: completedIndex,
                     result: result,
                     activity: slot.activity
@@ -68,7 +69,7 @@ struct ExtractionModalView: View {
                 completedIndex += 1
                 return row
             }
-            return ExtractionDisplayRow(id: slot.id, url: slot.url, resultIndex: nil, result: nil, activity: slot.activity)
+            return ExtractionDisplayRow(id: slot.id, url: slot.url, title: slot.title, resultIndex: nil, result: nil, activity: slot.activity)
         }
     }
 
@@ -136,7 +137,7 @@ struct ExtractionModalView: View {
                         ) {
                             if let result = row.result, let resultIndex = row.resultIndex {
                                 ExtractionResultRow(
-                                    row: ExtractionResultRowModel(id: row.id, index: resultIndex, result: result, activity: row.activity),
+                                    row: ExtractionResultRowModel(id: row.id, index: resultIndex, title: row.title, result: result, activity: row.activity),
                                     isRetrying: retryingResultIndices.contains(resultIndex),
                                     usesLightweightThumbnail: usesLightweightResultRows,
                                     localState: localState,
@@ -153,6 +154,7 @@ struct ExtractionModalView: View {
                                 )
                             } else {
                                 ExtractionLoadingRow(
+                                    title: row.title,
                                     subtitle: loadingSubtitle(for: row.url),
                                     activity: row.activity
                                 )
@@ -291,6 +293,7 @@ struct ExtractionModalView: View {
 private struct ExtractionDisplayRow: Identifiable, Equatable {
     let id: UUID
     let url: String
+    let title: String
     let resultIndex: Int?
     let result: ExtractResult?
     let activity: [String]
@@ -393,13 +396,15 @@ private struct ExtractionRevealRow<Content: View>: View {
 private struct ExtractionResultRowModel: Identifiable, Equatable {
     let id: UUID
     let index: Int
+    let title: String
     let result: ExtractResult
     let activity: [String]
     let presentation: VideoResultPresentation
 
-    init(id: UUID, index: Int, result: ExtractResult, activity: [String]) {
+    init(id: UUID, index: Int, title: String, result: ExtractResult, activity: [String]) {
         self.id = id
         self.index = index
+        self.title = title
         self.result = result
         self.activity = activity
         self.presentation = VideoResultPresentation(result: result)
@@ -462,7 +467,7 @@ private struct ExtractionResultRow: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .top, spacing: 8) {
-                        Text(presentation.title)
+                        Text(row.title)
                             .font(.headline.weight(.bold))
                             .foregroundStyle(Theme.textPrimary)
                             .lineLimit(2)
@@ -843,6 +848,7 @@ enum ExtractionPulse {
 }
 
 struct ExtractionLoadingRow: View {
+    let title: String
     let subtitle: String
     let activity: [String]
 
@@ -901,10 +907,6 @@ struct ExtractionLoadingRow: View {
         Theme.skyBlue
     }
 
-    private var titleWidth: CGFloat {
-        310
-    }
-
     private var staticProgress: CGFloat {
         0.55
     }
@@ -932,12 +934,11 @@ struct ExtractionLoadingRow: View {
                 )
 
             VStack(alignment: .leading, spacing: 10) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Theme.textPrimary.opacity(0.18))
-                    .frame(width: titleWidth, height: 16)
-                    .overlay(ExtractionPlaceholderShimmer(phase: shimmerPhase, isActive: allowsTravelingEffects))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .brightness(pulseT * ExtractionPulse.brightness)
+                Text(title)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {

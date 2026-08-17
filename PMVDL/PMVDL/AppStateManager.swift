@@ -11,6 +11,7 @@ class AppStateManager: ObservableObject {
     @Published var pendingExtractURL: String?
     @Published var pendingExtractShouldStart = false
     @Published var pendingExtractThumbnailURL: String?
+    @Published var pendingExtractTitles: [String: String] = [:]
     @Published var pendingLibraryItemID: UUID?
     @Published var pendingFeedNavigation: FeedNavigationRequest?
     @Published var transientMessage: AppTransientMessage?

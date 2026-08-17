@@ -346,7 +346,10 @@ struct WatchlistView: View {
                 Text("Added \(item.createdAt.formatted(date: .abbreviated, time: .omitted))")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
                 HStack(spacing: 6) {
-                    WatchlistPillButton("Extract", systemImage: "bolt.fill", tint: Theme.warning) { extract([item]) }
+                    WatchlistPillButton("Extract Links", systemImage: "link.badge.plus", tint: Theme.warning) {
+                        extract([item])
+                    }
+                    .help("Extract downloadable links")
                     WatchlistPillButton("Download", systemImage: "arrow.down.circle.fill", tint: Theme.skyBlue) { download([item]) }
                     WatchlistPillButton(
                         item.watched ? "Unwatched" : "Watched",
@@ -387,6 +390,10 @@ struct WatchlistView: View {
 
     private func extract(_ items: [WatchlistItem]) {
         guard !items.isEmpty else { return }
+        AppStateManager.shared.pendingExtractTitles = Dictionary(
+            items.map { ($0.sourcePageURL, $0.title) },
+            uniquingKeysWith: { first, _ in first }
+        )
         AppStateManager.shared.pendingExtractURL = items.map(\.sourcePageURL).joined(separator: "\n")
         AppStateManager.shared.pendingExtractShouldStart = true
         AppStateManager.shared.select(.home)

@@ -34,19 +34,61 @@ enum ExtractionBatchPolicy {
 struct ExtractionSlot: Identifiable, Equatable {
     let id: UUID
     let url: String
+    var title: String
     var result: ExtractResult?
     var activity: [String]
 }
 
+enum ExtractionTitleSupport {
+    static func title(for urlString: String, hint: String? = nil) -> String {
+        if let hint = normalized(hint) {
+            return hint
+        }
+        guard let url = URL(string: urlString) else { return urlString }
+        let slug = url.lastPathComponent.removingPercentEncoding?
+            .replacingOccurrences(of: "-", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !slug.isEmpty, slug != "/" {
+            return slug.capitalized
+        }
+        return url.host ?? urlString
+    }
+
+    static func resolvedTitle(_ sourceTitle: String?, fallback: String) -> String {
+        normalized(sourceTitle) ?? fallback
+    }
+
+    private static func normalized(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
 enum ExtractionSlotSupport {
-    static func startingSlots(for urls: [String]) -> [ExtractionSlot] {
-        urls.map { ExtractionSlot(id: UUID(), url: $0, result: nil, activity: []) }
+    static func startingSlots(for urls: [String], titleHints: [String: String] = [:]) -> [ExtractionSlot] {
+        urls.map {
+            ExtractionSlot(
+                id: UUID(),
+                url: $0,
+                title: ExtractionTitleSupport.title(for: $0, hint: titleHints[$0]),
+                result: nil,
+                activity: []
+            )
+        }
     }
 
     static func replacingSlot(id: UUID, in slots: [ExtractionSlot], with result: ExtractResult) -> [ExtractionSlot] {
         slots.map { slot in
             guard slot.id == id else { return slot }
-            return ExtractionSlot(id: slot.id, url: slot.url, result: result, activity: slot.activity)
+            return ExtractionSlot(
+                id: slot.id,
+                url: slot.url,
+                title: ExtractionTitleSupport.resolvedTitle(result.source?.title, fallback: slot.title),
+                result: result,
+                activity: slot.activity
+            )
         }
     }
 
@@ -57,7 +99,7 @@ enum ExtractionSlotSupport {
             if activity.last != message {
                 activity.append(message)
             }
-            return ExtractionSlot(id: slot.id, url: slot.url, result: slot.result, activity: Array(activity.suffix(12)))
+            return ExtractionSlot(id: slot.id, url: slot.url, title: slot.title, result: slot.result, activity: Array(activity.suffix(12)))
         }
     }
 
@@ -120,6 +162,7 @@ struct HomeView: View {
     @State private var hadActiveDownloads = false
     @State private var completionBannerToken = UUID()
     @State private var modalAddURLText = ""
+    @State private var extractionTitleHints: [String: String] = [:]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.appShellWindowSize) private var appShellWindowSize
     var megaRemotePath: String
@@ -426,10 +469,12 @@ struct HomeView: View {
     private func consumePendingExtractURL(_ url: String) {
         let shouldStart = appState.pendingExtractShouldStart
         let feedThumbnail = appState.pendingExtractThumbnailURL
+        extractionTitleHints = appState.pendingExtractTitles
         urlText = url
         appState.pendingExtractURL = nil
         appState.pendingExtractShouldStart = false
         appState.pendingExtractThumbnailURL = nil
+        appState.pendingExtractTitles = [:]
         if shouldStart {
             DispatchQueue.main.async {
                 extractAll(feedThumbnailURL: feedThumbnail)
@@ -830,7 +875,8 @@ struct HomeView: View {
         let generation = UUID()
         extractionGeneration = generation
         retryingResultIndices.removeAll()
-        extractionSlots = ExtractionSlotSupport.startingSlots(for: urls)
+        extractionSlots = ExtractionSlotSupport.startingSlots(for: urls, titleHints: extractionTitleHints)
+        extractionTitleHints = [:]
         results = []
         isLoading = true
         showResultsSheet = true
@@ -883,7 +929,9 @@ struct HomeView: View {
                         await MainActor.run {
                             guard extractionGeneration == generation else { return }
                             if res.source == nil {
-                                recordExtractionFailure(res)
+                                let title = extractionSlots.first(where: { $0.id == slotID })?.title
+                                    ?? ExtractionTitleSupport.title(for: res.url)
+                                recordExtractionFailure(res, title: title)
                                 extractionSlots = ExtractionSlotSupport.replacingSlot(id: slotID, in: extractionSlots, with: res)
                             } else {
                                 extractionSlots = ExtractionSlotSupport.replacingSlot(id: slotID, in: extractionSlots, with: res)
@@ -929,7 +977,13 @@ struct HomeView: View {
     private func extractAdditionalURL(_ url: String) {
         let generation = UUID()
         extractionGeneration = generation
-        let slot = ExtractionSlot(id: UUID(), url: url, result: nil, activity: [])
+        let slot = ExtractionSlot(
+            id: UUID(),
+            url: url,
+            title: ExtractionTitleSupport.title(for: url),
+            result: nil,
+            activity: []
+        )
         extractionSlots.append(slot)
         isLoading = true
         loadProgress = "Extracting 1 URL..."
@@ -946,7 +1000,7 @@ struct HomeView: View {
             await MainActor.run {
                 guard extractionGeneration == generation else { return }
                 if result.source == nil {
-                    recordExtractionFailure(result)
+                    recordExtractionFailure(result, title: slot.title)
                     extractionSlots = ExtractionSlotSupport.replacingSlot(id: slot.id, in: extractionSlots, with: result)
                 } else {
                     extractionSlots = ExtractionSlotSupport.replacingSlot(id: slot.id, in: extractionSlots, with: result)
@@ -987,8 +1041,7 @@ struct HomeView: View {
     }
 
     @MainActor
-    private func recordExtractionFailure(_ result: ExtractResult) {
-        let title = URL(string: result.url)?.host ?? result.url
+    private func recordExtractionFailure(_ result: ExtractResult, title: String) {
         DownloadQueue.shared.addFailed(
             url: result.url,
             quality: "Extraction",

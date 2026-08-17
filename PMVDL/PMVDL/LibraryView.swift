@@ -581,12 +581,14 @@ struct LibraryView: View {
     }
 
     private func reExtract(_ item: LibraryItem) {
+        appState.pendingExtractTitles = [item.url: item.title]
         appState.pendingExtractURL = item.url
         appState.pendingExtractShouldStart = true
         appState.select(.home)
     }
 
     private func reExtract(_ item: HistoryItem) {
+        appState.pendingExtractTitles = [item.url: item.title]
         appState.pendingExtractURL = item.url
         appState.pendingExtractShouldStart = true
         appState.select(.home)

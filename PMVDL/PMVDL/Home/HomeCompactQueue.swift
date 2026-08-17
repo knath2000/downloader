@@ -154,6 +154,10 @@ struct HomeCompactQueue: View {
         HomeQueueCounts(items: items)
     }
 
+    private var totalActiveETA: String? {
+        DownloadStatusFormatting.totalETA(for: activeItems)
+    }
+
     private var isModal: Bool {
         displayMode == .activeModal || displayMode == .queuedModal || displayMode == .completedModal
     }
@@ -593,7 +597,7 @@ struct HomeCompactQueue: View {
                                     .contentTransition(.numericText())
                             }
 
-                            Text(activeItems.count == 1 ? "1 transfer in progress" : "\(activeItems.count) transfers in progress")
+                            Text(activeSummaryText)
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(Theme.textSecondary)
                                 .lineLimit(1)
@@ -624,6 +628,12 @@ struct HomeCompactQueue: View {
             HomeQueueProgressBar(progress: counts.activeProgress, tint: Theme.electricLime, height: 5)
                 .accessibilityLabel(Text("Overall download progress"))
         }
+    }
+
+    private var activeSummaryText: String {
+        let transfers = activeItems.count == 1 ? "1 transfer in progress" : "\(activeItems.count) transfers in progress"
+        guard let totalActiveETA else { return transfers }
+        return "\(transfers) · Total ETA \(totalActiveETA)"
     }
 
     private func queueMetric(title: String, value: Int, tint: Color) -> some View {
@@ -728,6 +738,7 @@ struct HomeCompactQueue: View {
     private func retry(_ item: DownloadQueueItem) {
         if item.itemKind == .extraction {
             appState.pendingExtractShouldStart = true
+            appState.pendingExtractTitles = item.displayTitle.map { [item.url: $0] } ?? [:]
             appState.pendingExtractURL = item.url
             appState.select(.home)
             queue.remove(item)

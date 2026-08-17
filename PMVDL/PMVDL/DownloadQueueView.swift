@@ -1612,6 +1612,22 @@ enum DownloadStatusFormatting {
     }
 
     static func eta(for item: DownloadQueueItem) -> String? {
+        guard let seconds = remainingSeconds(for: item) else { return nil }
+        return "\(formatDuration(seconds)) left"
+    }
+
+    static func etaDuration(for item: DownloadQueueItem) -> String? {
+        remainingSeconds(for: item).map(formatDuration)
+    }
+
+    static func totalETA(for items: [DownloadQueueItem]) -> String? {
+        guard !items.isEmpty else { return nil }
+        let estimates = items.compactMap(remainingSeconds(for:))
+        guard estimates.count == items.count, let longest = estimates.max() else { return nil }
+        return formatDuration(longest)
+    }
+
+    private static func remainingSeconds(for item: DownloadQueueItem) -> Double? {
         guard let downloaded = item.bytesDownloaded,
               let total = item.totalBytes,
               let rate = item.bytesPerSecond,
@@ -1619,8 +1635,7 @@ enum DownloadStatusFormatting {
               rate > 0 else {
             return nil
         }
-        let seconds = Double(total - downloaded) / rate
-        return "\(formatDuration(seconds)) left"
+        return Double(total - downloaded) / rate
     }
 
     static func formatBytes(_ bytes: Int64) -> String {

@@ -203,11 +203,21 @@ struct HomeCompactQueueRow: View, Equatable {
 
                 Spacer(minLength: 8)
 
-                Text(String(format: "%.1f%%", item.progress))
-                    .font(.system(size: isModalPresentation ? 13 : 12, weight: .black, design: .monospaced))
-                    .foregroundStyle(tint)
-                    .lineLimit(1)
-                    .frame(width: isModalPresentation ? 68 : 58, alignment: .trailing)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(String(format: "%.1f%%", item.progress))
+                        .font(.system(size: isModalPresentation ? 13 : 12, weight: .black, design: .monospaced))
+                        .foregroundStyle(tint)
+                        .lineLimit(1)
+
+                    if isModalPresentation,
+                       let eta = DownloadStatusFormatting.etaDuration(for: item) {
+                        Text("ETA \(eta)")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(width: isModalPresentation ? 88 : 58, alignment: .trailing)
 
                 HStack(spacing: isModalPresentation ? 8 : 6) {
                     primaryActionButton

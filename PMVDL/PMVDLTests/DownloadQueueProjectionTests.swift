@@ -249,6 +249,30 @@ final class DownloadQueueProjectionTests: XCTestCase {
         )
     }
 
+    func testTotalETAUsesLongestConcurrentTransfer() {
+        var first = queueItem(status: .downloading)
+        first.bytesDownloaded = 50
+        first.totalBytes = 100
+        first.bytesPerSecond = 10
+
+        var second = queueItem(status: .downloading)
+        second.bytesDownloaded = 20
+        second.totalBytes = 100
+        second.bytesPerSecond = 10
+
+        XCTAssertEqual(DownloadStatusFormatting.etaDuration(for: first), "5s")
+        XCTAssertEqual(DownloadStatusFormatting.totalETA(for: [first, second]), "8s")
+    }
+
+    func testTotalETAWaitsUntilEveryActiveTransferHasMetrics() {
+        var measured = queueItem(status: .downloading)
+        measured.bytesDownloaded = 50
+        measured.totalBytes = 100
+        measured.bytesPerSecond = 10
+
+        XCTAssertNil(DownloadStatusFormatting.totalETA(for: [measured, queueItem(status: .downloading)]))
+    }
+
     func testHomeTransferLocationUsesRemoteTargetsFromRetryPayload() {
         let payload = DownloadRetryPayload(
             resolution: makeRetryTestResolution(),

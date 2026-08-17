@@ -147,6 +147,7 @@ struct HistoryView: View {
     }
 
     private func extractAgain(_ item: HistoryItem) {
+        AppStateManager.shared.pendingExtractTitles = [item.url: item.title]
         AppStateManager.shared.pendingExtractURL = item.url
         AppStateManager.shared.select(.home)
     }

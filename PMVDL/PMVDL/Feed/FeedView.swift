@@ -379,6 +379,7 @@ struct FeedView: View {
 
     private func extract(_ item: FeedItem) {
         AppStateManager.shared.pendingExtractThumbnailURL = item.thumbnailURL
+        AppStateManager.shared.pendingExtractTitles = [item.url: item.title]
         AppStateManager.shared.pendingExtractShouldStart = true
         AppStateManager.shared.pendingExtractURL = item.url
         AppStateManager.shared.select(.home)
@@ -393,6 +394,10 @@ struct FeedView: View {
             }
             guard !urls.isEmpty else { return }
             AppStateManager.shared.pendingExtractThumbnailURL = nil
+            AppStateManager.shared.pendingExtractTitles = Dictionary(
+                items.map { ($0.url, $0.title) },
+                uniquingKeysWith: { first, _ in first }
+            )
             AppStateManager.shared.pendingExtractShouldStart = true
             AppStateManager.shared.pendingExtractURL = urls.joined(separator: "\n")
             AppStateManager.shared.select(.home)
@@ -408,6 +413,10 @@ struct FeedView: View {
         guard !selected.isEmpty else { return }
 
         AppStateManager.shared.pendingExtractThumbnailURL = nil
+        AppStateManager.shared.pendingExtractTitles = Dictionary(
+            selected.map { ($0.url, $0.title) },
+            uniquingKeysWith: { first, _ in first }
+        )
         AppStateManager.shared.pendingExtractShouldStart = true
         AppStateManager.shared.pendingExtractURL = selected.map(\.url).joined(separator: "\n")
         selectionStore.clear()

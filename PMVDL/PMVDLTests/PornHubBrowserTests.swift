@@ -173,6 +173,29 @@ final class PornHubBrowserTests: XCTestCase {
         XCTAssertNil(PornHubBrowserFeedMapper.pornHubViewkey(from: "https://example.com/view_video.php?viewkey=ABC123"))
     }
 
+    func testFeedContextPrefersVisibleFeedTitleForProviderURL() throws {
+        let url = try XCTUnwrap(URL(string: "https://playmogo.com/e/fixture"))
+        let visibleItem = FeedItem(
+            id: "fixture",
+            title: "Title shown on OnlyFan420",
+            url: url.absoluteString,
+            thumbnailURL: nil,
+            uploadDate: Date(),
+            viewCount: 0,
+            siteName: RentryFeedScraper.supportedHost,
+            studio: nil
+        )
+
+        let item = PornHubBrowserFeedMapper.preferredItem(
+            title: "Playmogo",
+            url: url,
+            detectedItems: [visibleItem],
+            site: .rentry
+        )
+
+        XCTAssertEqual(item?.title, "Title shown on OnlyFan420")
+    }
+
     func testDetectedItemsMapToStableFeedItems() {
         let items = PornHubBrowserFeedMapper.items(from: [
             [
