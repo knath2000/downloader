@@ -1,4 +1,8 @@
-# Latest Session - 2026-07-18 Provider Resolution Observability and MixDrop Fallback
+# Latest Session - 2026-08-17 Agent-Owned Downloads, Titles, ETAs, and Queue Priority
+
+See `docs/SESSION_2026_08_16_AGENT_WATCHLIST_QUEUE.md` for the persistent Lustre Agent migration, local Watchlist and per-video extraction, authoritative Feed/extraction titles, three-download cap, total and individual ETAs, persisted editable queue priorities, durable removal/retry recovery, commits, validation, and the latest verified installer.
+
+# Previous Session - 2026-07-18 Provider Resolution Observability and MixDrop Fallback
 
 See `docs/SESSION_2026_07_18_PROVIDER_RESOLUTION_OBSERVABILITY.md` for per-result resolver-method labels, trusted Dood provider canonicalization, challenge-only verification behavior, and the MixDrop WebView media-capture fallback for browser-only provider pages.
 
@@ -566,3 +570,14 @@ For normal DoodStream domains:
 - Keep static extraction first.
 - Use WebView fallback when needed.
 - Resolve valid CDN intermediates to tokenized `dood.video` URLs when that is the normal direct-download path.
+
+## 2026-08-20 — Current StreamTape resolver and pinned installer
+
+- The persistent Agent now evaluates current StreamTape player assignments instead of selecting intentionally invalid hidden tokens.
+- Evaluation is bounded to quoted strings, concatenation, and chained integer-only `.substring(...)`; evaluated assignments outrank static values.
+- `/get_video` candidates receive `stream=1` and use HEAD with a one-byte Range fallback. Only public HTTPS `tapecontent.net` MP4 redirects are accepted.
+- The original AllPornStream post remains the durable queued source so expiring tokens refresh at execution time.
+- Agent commit: `0e16730c29940c1ec547c1edfea72ba1ddac7d4d`; LustreStudio pin commit: `604abf1`.
+- Focused tests passed 33/33. Live extraction resolved `STREAMTAPE · Video`; the one-byte media probe returned HTTP 206 and `video/mp4`.
+- Verified installer: `LustreStudio-2.2.7-build10-unsigned.dmg`, SHA-256 `5c43314f4fdb0ea07e66f903d302f053c0c738b10216a9d8cddc8ea406855870`.
+- Full details: `docs/SESSION_2026_08_20_STREAMTAPE_RESOLUTION_DMG.md`.
