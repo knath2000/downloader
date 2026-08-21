@@ -6,14 +6,13 @@ final class HistoryManager: ObservableObject {
 
     @Published private(set) var items: [HistoryItem] = []
     @Published private(set) var completedUploads: [CompletedUploadItem] = []
+    @Published private(set) var isRestoring = true
 
     private let userDefaultsKey = "linkHistory"
     private let completedUploadsKey = "completedUploadHistory"
     private let limit = 100
 
-    private init() {
-        load()
-    }
+    private init() {}
 
     func record(url: String, source: VideoSource) {
         let normalizedURL = url.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -67,15 +66,27 @@ final class HistoryManager: ObservableObject {
         saveCompletedUploads()
     }
 
-    func load() {
-        if let data = UserDefaults.standard.data(forKey: userDefaultsKey),
-           let decoded = try? JSONDecoder().decode([HistoryItem].self, from: data) {
-            items = decoded.sorted { $0.recordedAt > $1.recordedAt }
-        }
-        if let data = UserDefaults.standard.data(forKey: completedUploadsKey),
-           let decoded = try? JSONDecoder().decode([CompletedUploadItem].self, from: data) {
-            completedUploads = decoded.sorted { $0.completedAt > $1.completedAt }
-        }
+    func restorePersistedHistory() async {
+        guard isRestoring else { return }
+        let historyData = UserDefaults.standard.data(forKey: userDefaultsKey)
+        let uploadsData = UserDefaults.standard.data(forKey: completedUploadsKey)
+        let restored = await Task.detached(priority: .userInitiated) {
+            let history = historyData.flatMap {
+                try? JSONDecoder().decode([HistoryItem].self, from: $0)
+            } ?? []
+            let uploads = uploadsData.flatMap {
+                try? JSONDecoder().decode([CompletedUploadItem].self, from: $0)
+            } ?? []
+            return (
+                history.sorted { $0.recordedAt > $1.recordedAt },
+                uploads.sorted { $0.completedAt > $1.completedAt }
+            )
+        }.value
+        let currentItemURLs = Set(items.map(\.url))
+        let currentUploadIDs = Set(completedUploads.map(\.id))
+        items = restored.0.filter { !currentItemURLs.contains($0.url) } + items
+        completedUploads = restored.1.filter { !currentUploadIDs.contains($0.id) } + completedUploads
+        isRestoring = false
     }
 
     private func save() {

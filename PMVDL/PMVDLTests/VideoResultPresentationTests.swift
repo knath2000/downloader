@@ -102,11 +102,14 @@ final class VideoResultPresentationTests: XCTestCase {
             "https://example.test/two"
         ], titleHints: [
             "https://example.test/one": "Known Video"
+        ], thumbnailHints: [
+            "https://example.test/one": "https://images.example.test/one.jpg"
         ])
 
         XCTAssertEqual(slots.count, 2)
         XCTAssertEqual(slots.map(\.url), ["https://example.test/one", "https://example.test/two"])
         XCTAssertEqual(slots.map(\.title), ["Known Video", "Two"])
+        XCTAssertEqual(slots.map(\.thumbnailURL), ["https://images.example.test/one.jpg", nil])
         XCTAssertTrue(slots.allSatisfy { $0.result == nil })
         XCTAssertNotEqual(slots[0].id, slots[1].id)
     }

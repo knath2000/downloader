@@ -17,12 +17,12 @@ struct VideoResultPresentation: Equatable {
     let recommendedQualityID: String?
     let resolutionMethod: String?
 
-    init(result: ExtractResult) {
+    init(result: ExtractResult, fallbackThumbnailURL: String? = nil) {
         let source = result.source
         let sourceTitle = source?.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         title = sourceTitle.isEmpty ? "Untitled Video" : sourceTitle
         siteName = source?.displaySiteName ?? "Video Site"
-        thumbnailURL = source?.thumbnail
+        thumbnailURL = source?.thumbnail ?? fallbackThumbnailURL
         qualities = Self.qualities(from: source)
         recommendedQualityID = qualities.first?.id
         resolutionMethod = qualities.first?.resolutionMethod ?? source?.resolutionMethod

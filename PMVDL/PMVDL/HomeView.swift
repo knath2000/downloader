@@ -35,6 +35,7 @@ struct ExtractionSlot: Identifiable, Equatable {
     let id: UUID
     let url: String
     var title: String
+    let thumbnailURL: String?
     var result: ExtractResult?
     var activity: [String]
 }
@@ -67,12 +68,17 @@ enum ExtractionTitleSupport {
 }
 
 enum ExtractionSlotSupport {
-    static func startingSlots(for urls: [String], titleHints: [String: String] = [:]) -> [ExtractionSlot] {
+    static func startingSlots(
+        for urls: [String],
+        titleHints: [String: String] = [:],
+        thumbnailHints: [String: String] = [:]
+    ) -> [ExtractionSlot] {
         urls.map {
             ExtractionSlot(
                 id: UUID(),
                 url: $0,
                 title: ExtractionTitleSupport.title(for: $0, hint: titleHints[$0]),
+                thumbnailURL: thumbnailHints[$0],
                 result: nil,
                 activity: []
             )
@@ -86,6 +92,7 @@ enum ExtractionSlotSupport {
                 id: slot.id,
                 url: slot.url,
                 title: ExtractionTitleSupport.resolvedTitle(result.source?.title, fallback: slot.title),
+                thumbnailURL: slot.thumbnailURL,
                 result: result,
                 activity: slot.activity
             )
@@ -99,7 +106,14 @@ enum ExtractionSlotSupport {
             if activity.last != message {
                 activity.append(message)
             }
-            return ExtractionSlot(id: slot.id, url: slot.url, title: slot.title, result: slot.result, activity: Array(activity.suffix(12)))
+            return ExtractionSlot(
+                id: slot.id,
+                url: slot.url,
+                title: slot.title,
+                thumbnailURL: slot.thumbnailURL,
+                result: slot.result,
+                activity: Array(activity.suffix(12))
+            )
         }
     }
 
@@ -163,6 +177,7 @@ struct HomeView: View {
     @State private var completionBannerToken = UUID()
     @State private var modalAddURLText = ""
     @State private var extractionTitleHints: [String: String] = [:]
+    @State private var extractionThumbnailHints: [String: String] = [:]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.appShellWindowSize) private var appShellWindowSize
     var megaRemotePath: String
@@ -470,10 +485,15 @@ struct HomeView: View {
         let shouldStart = appState.pendingExtractShouldStart
         let feedThumbnail = appState.pendingExtractThumbnailURL
         extractionTitleHints = appState.pendingExtractTitles
+        extractionThumbnailHints = appState.pendingExtractThumbnailURLs
+        if extractionThumbnailHints[url] == nil, let feedThumbnail {
+            extractionThumbnailHints[url] = feedThumbnail
+        }
         urlText = url
         appState.pendingExtractURL = nil
         appState.pendingExtractShouldStart = false
         appState.pendingExtractThumbnailURL = nil
+        appState.pendingExtractThumbnailURLs = [:]
         appState.pendingExtractTitles = [:]
         if shouldStart {
             DispatchQueue.main.async {
@@ -875,8 +895,13 @@ struct HomeView: View {
         let generation = UUID()
         extractionGeneration = generation
         retryingResultIndices.removeAll()
-        extractionSlots = ExtractionSlotSupport.startingSlots(for: urls, titleHints: extractionTitleHints)
+        extractionSlots = ExtractionSlotSupport.startingSlots(
+            for: urls,
+            titleHints: extractionTitleHints,
+            thumbnailHints: extractionThumbnailHints
+        )
         extractionTitleHints = [:]
+        extractionThumbnailHints = [:]
         results = []
         isLoading = true
         showResultsSheet = true
@@ -915,7 +940,7 @@ struct HomeView: View {
                                     loadProgress = message
                                 }
                             }
-                            do { src = try await ScraperEngine.extractWithProgress(from: url, onProgress: progress) }
+                            do { src = try await ExtractionCoordinator.extractWithProgress(from: url, onProgress: progress) }
                             catch {
                                 err = error.localizedDescription
                                 progress("Source failed • stage: page extraction • source: \(url) • reason: \(err ?? "Unknown error")")
@@ -981,6 +1006,7 @@ struct HomeView: View {
             id: UUID(),
             url: url,
             title: ExtractionTitleSupport.title(for: url),
+            thumbnailURL: nil,
             result: nil,
             activity: []
         )
@@ -1053,7 +1079,7 @@ struct HomeView: View {
 
     private func extractResult(for url: String, onProgress: (@Sendable (String) -> Void)? = nil) async -> ExtractResult {
         do {
-            return ExtractResult(url: url, source: try await ScraperEngine.extractWithProgress(from: url, onProgress: onProgress), error: nil)
+            return ExtractResult(url: url, source: try await ExtractionCoordinator.extractWithProgress(from: url, onProgress: onProgress), error: nil)
         } catch {
             onProgress?("Source failed • stage: page extraction • source: \(url) • reason: \(error.localizedDescription)")
             return ExtractResult(url: url, source: nil, error: error.localizedDescription)

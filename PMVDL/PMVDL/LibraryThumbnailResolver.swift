@@ -148,7 +148,7 @@ struct LibraryThumbnailResolver {
 
     static let live = LibraryThumbnailResolver(
         fetchHTML: Self.liveFetchHTML,
-        extractSource: { try await ScraperEngine.extract(from: $0) },
+        extractSource: { try await ExtractionCoordinator.extract(from: $0) },
         downloadImage: { imageURL, identity, referer in
             try await ThumbnailCache.downloadAndCacheImage(
                 fromImageURL: imageURL,

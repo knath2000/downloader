@@ -89,6 +89,7 @@ class VideoLibrary: ObservableObject {
     static let shared = VideoLibrary()
 
     @Published var items: [LibraryItem] = []
+    @Published private(set) var isRestoring = true
 
     /// Default: 30 days
     var retentionDays: Int {
@@ -98,16 +99,21 @@ class VideoLibrary: ObservableObject {
 
     private let userDefaultsKey = "videoLibrary"
 
-    private init() {
-        load()
-        purgeExpired()
-    }
+    private init() {}
 
-    func load() {
-        if let data = UserDefaults.standard.data(forKey: userDefaultsKey),
-           let decoded = try? JSONDecoder().decode([LibraryItem].self, from: data) {
-            items = decoded.sorted { $0.extractedAt > $1.extractedAt }
-        }
+    func restorePersistedLibrary() async {
+        guard isRestoring else { return }
+        let data = UserDefaults.standard.data(forKey: userDefaultsKey)
+        let restored = await Task.detached(priority: .userInitiated) {
+            let decoded = data.flatMap {
+                try? JSONDecoder().decode([LibraryItem].self, from: $0)
+            } ?? []
+            return decoded.sorted { $0.extractedAt > $1.extractedAt }
+        }.value
+        let currentIDs = Set(items.map(\.id))
+        items = restored.filter { !currentIDs.contains($0.id) } + items
+        isRestoring = false
+        purgeExpired()
     }
 
     func save() {

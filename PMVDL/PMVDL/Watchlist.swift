@@ -394,6 +394,10 @@ struct WatchlistView: View {
             items.map { ($0.sourcePageURL, $0.title) },
             uniquingKeysWith: { first, _ in first }
         )
+        AppStateManager.shared.pendingExtractThumbnailURLs = Dictionary(
+            items.compactMap { item in item.thumbnailURL.map { (item.sourcePageURL, $0) } },
+            uniquingKeysWith: { first, _ in first }
+        )
         AppStateManager.shared.pendingExtractURL = items.map(\.sourcePageURL).joined(separator: "\n")
         AppStateManager.shared.pendingExtractShouldStart = true
         AppStateManager.shared.select(.home)

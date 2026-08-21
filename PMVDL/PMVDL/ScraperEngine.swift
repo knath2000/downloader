@@ -109,3 +109,58 @@ struct ScraperEngine {
 
  static var isFFmpegAvailable: Bool { VideoProcessor.findFFmpeg() != nil }
 }
+
+struct ExtractionCoordinator {
+ static func extract(from urlString: String) async throws -> VideoSource {
+  try await extractWithProgress(from: urlString, onProgress: nil)
+ }
+
+ static func extractWithProgress(from urlString: String, onProgress: (@Sendable (String) -> Void)?) async throws -> VideoSource {
+  guard let url = URLTrustPolicy.validated(urlString) else { throw VideoExtractorError.invalidURL }
+  onProgress?("Trying cloud extraction…")
+  do {
+   let result = try await LustreAgentController.shared.preview(url: url)
+   try Task.checkCancellation()
+   if result.resolutionState == "resolved",
+      let resolution = result.resolution,
+      !resolution.qualities.isEmpty {
+    let source = videoSource(from: resolution)
+    let provenance = resolution.qualities.contains { $0.resolutionMethod.localizedCaseInsensitiveContains("cloud") }
+      ? "cloud"
+      : "local Agent"
+    onProgress?("Resolved with \(provenance) extraction.")
+    return source
+   }
+   onProgress?("Agent could not resolve this page — trying native extraction…")
+  } catch is CancellationError {
+   throw CancellationError()
+  } catch {
+   try Task.checkCancellation()
+   onProgress?("Cloud or Agent unavailable — trying native extraction…")
+  }
+  return try await ScraperEngine.extractWithProgress(from: urlString, onProgress: onProgress)
+ }
+
+ private static func videoSource(from resolution: LustreAgentResolution) -> VideoSource {
+  let qualities = resolution.qualities.map { quality in
+   VideoSource.Quality(
+    label: quality.label,
+    url: quality.url.absoluteString,
+    kind: quality.mediaKind == .hls ? .hlsManifest : quality.mediaKind == .ytDlp ? .pageUrl : .direct,
+    headers: quality.headers.isEmpty ? nil : quality.headers,
+    sourcePageUrl: resolution.sourcePageURL.absoluteString,
+    resolutionMethod: quality.resolutionMethod
+   )
+  }
+  let direct = qualities.first(where: { $0.kind == .direct })?.url
+  return VideoSource(
+   mp4: direct,
+   hls: qualities,
+   title: resolution.title,
+   thumbnail: resolution.thumbnailURL?.absoluteString,
+   siteName: resolution.provider,
+   headers: qualities.first?.headers,
+   resolutionMethod: qualities.first?.resolutionMethod
+  )
+ }
+}

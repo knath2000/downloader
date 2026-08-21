@@ -62,6 +62,7 @@ struct ExtractionModalView: View {
                     id: slot.id,
                     url: slot.url,
                     title: slot.title,
+                    thumbnailURL: slot.thumbnailURL,
                     resultIndex: completedIndex,
                     result: result,
                     activity: slot.activity
@@ -69,12 +70,20 @@ struct ExtractionModalView: View {
                 completedIndex += 1
                 return row
             }
-            return ExtractionDisplayRow(id: slot.id, url: slot.url, title: slot.title, resultIndex: nil, result: nil, activity: slot.activity)
+            return ExtractionDisplayRow(
+                id: slot.id,
+                url: slot.url,
+                title: slot.title,
+                thumbnailURL: slot.thumbnailURL,
+                resultIndex: nil,
+                result: nil,
+                activity: slot.activity
+            )
         }
     }
 
     private var usesLightweightResultRows: Bool {
-        !isLoading && results.count >= 8
+        false
     }
 
     var body: some View {
@@ -137,7 +146,14 @@ struct ExtractionModalView: View {
                         ) {
                             if let result = row.result, let resultIndex = row.resultIndex {
                                 ExtractionResultRow(
-                                    row: ExtractionResultRowModel(id: row.id, index: resultIndex, title: row.title, result: result, activity: row.activity),
+                                    row: ExtractionResultRowModel(
+                                        id: row.id,
+                                        index: resultIndex,
+                                        title: row.title,
+                                        thumbnailURL: row.thumbnailURL,
+                                        result: result,
+                                        activity: row.activity
+                                    ),
                                     isRetrying: retryingResultIndices.contains(resultIndex),
                                     usesLightweightThumbnail: usesLightweightResultRows,
                                     localState: localState,
@@ -294,6 +310,7 @@ private struct ExtractionDisplayRow: Identifiable, Equatable {
     let id: UUID
     let url: String
     let title: String
+    let thumbnailURL: String?
     let resultIndex: Int?
     let result: ExtractResult?
     let activity: [String]
@@ -397,17 +414,19 @@ private struct ExtractionResultRowModel: Identifiable, Equatable {
     let id: UUID
     let index: Int
     let title: String
+    let thumbnailURL: String?
     let result: ExtractResult
     let activity: [String]
     let presentation: VideoResultPresentation
 
-    init(id: UUID, index: Int, title: String, result: ExtractResult, activity: [String]) {
+    init(id: UUID, index: Int, title: String, thumbnailURL: String?, result: ExtractResult, activity: [String]) {
         self.id = id
         self.index = index
         self.title = title
+        self.thumbnailURL = thumbnailURL
         self.result = result
         self.activity = activity
-        self.presentation = VideoResultPresentation(result: result)
+        self.presentation = VideoResultPresentation(result: result, fallbackThumbnailURL: thumbnailURL)
     }
 }
 
@@ -520,22 +539,7 @@ private struct ExtractionResultRow: View {
                let value = presentation.thumbnailURL,
                let url = URL(string: value),
                result.error == nil {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .failure:
-                        fallbackThumbnail
-                    case .empty:
-                        ProgressView()
-                            .controlSize(.small)
-                            .scaleEffect(0.7)
-                    @unknown default:
-                        fallbackThumbnail
-                    }
-                }
+                ExtractionThumbnailImage(url: url, referer: row.result.url)
                 .frame(width: 128, height: 86)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             } else {
@@ -827,6 +831,45 @@ private struct ExtractionResultRow: View {
             return Theme.success
         case .failed:
             return Theme.error
+        }
+    }
+}
+
+private struct ExtractionThumbnailImage: View {
+    let url: URL
+    let referer: String
+
+    @State private var image: NSImage?
+    @State private var didFail = false
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else if didFail {
+                Color.clear
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.7)
+            }
+        }
+        .task(id: url.absoluteString) {
+            if let cached = await ThumbnailCache.shared.cachedImage(forIdentity: url.absoluteString) {
+                image = cached
+                return
+            }
+            do {
+                image = try await ThumbnailCache.downloadAndCacheImage(
+                    fromImageURL: url.absoluteString,
+                    cacheIdentity: url.absoluteString,
+                    referer: referer
+                )
+            } catch {
+                didFail = true
+            }
         }
     }
 }

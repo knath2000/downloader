@@ -158,6 +158,7 @@ class DownloadQueue: ObservableObject {
     static let shared = DownloadQueue()
 
     @Published var queue: [DownloadQueueItem] = []
+    @Published private(set) var isRestoring = true
     private var maxConcurrent: Int { ProFeatureGate.concurrentDownloadLimit }
     private var seedboxConcurrentLimit: Int {
         guard ProFeatureGate.isPro,
@@ -180,31 +181,32 @@ class DownloadQueue: ObservableObject {
         DownloadQueueCapacity(items: queue, limit: concurrentLimit)
     }
 
-    private init() {
-        load()
-        let didNormalize = normalizeInterruptedItemsForLaunch()
-        if didNormalize {
-            persistQueueSnapshot()
-        }
-    }
+    private init() {}
 
-    private func load() {
-        if let data = UserDefaults.standard.data(forKey: userDefaultsKey),
-           let decoded = try? JSONDecoder().decode([DownloadQueueItem].self, from: data) {
-            var didNormalize = false
-            queue = decoded.map { item in
-                guard item.itemKind != .extraction,
-                      let sourcePageURL = item.retryPayload?.sourcePageURL,
-                      item.url != sourcePageURL else { return item }
-                var normalized = item
-                normalized.url = sourcePageURL
-                normalized.filename = URL(string: sourcePageURL)?.lastPathComponent ?? "video.mp4"
-                didNormalize = true
-                return normalized
-            }
-            if didNormalize {
-                persistQueueSnapshot()
-            }
+    func restorePersistedQueue() async {
+        guard isRestoring else { return }
+        let data = UserDefaults.standard.data(forKey: userDefaultsKey)
+        let decoded = await Task.detached(priority: .userInitiated) {
+            data.flatMap { try? JSONDecoder().decode([DownloadQueueItem].self, from: $0) } ?? []
+        }.value
+
+        var didNormalizeURLs = false
+        let restored = decoded.map { item in
+            guard item.itemKind != .extraction,
+                  let sourcePageURL = item.retryPayload?.sourcePageURL,
+                  item.url != sourcePageURL else { return item }
+            var normalized = item
+            normalized.url = sourcePageURL
+            normalized.filename = URL(string: sourcePageURL)?.lastPathComponent ?? "video.mp4"
+            didNormalizeURLs = true
+            return normalized
+        }
+        let currentIDs = Set(queue.map(\.id))
+        queue = restored.filter { !currentIDs.contains($0.id) } + queue
+        let didNormalize = normalizeInterruptedItemsForLaunch()
+        isRestoring = false
+        if didNormalizeURLs || didNormalize {
+            persistQueueSnapshot()
         }
     }
 

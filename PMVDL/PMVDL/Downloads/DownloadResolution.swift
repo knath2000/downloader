@@ -53,7 +53,7 @@ enum DownloadResolver {
     static func resolve(
         requestedUrl url: String,
         in results: [ExtractResult],
-        extractor: @escaping SourceExtractor = ScraperEngine.extract
+        extractor: @escaping SourceExtractor = ExtractionCoordinator.extract
     ) async throws -> DownloadResolution {
         guard let result = results.first(where: { candidate in
             candidate.source?.mp4 == url || candidate.source?.hls.contains(where: { $0.url == url }) == true
@@ -120,7 +120,7 @@ enum DownloadResolver {
         sourcePageURL: String,
         preferredQualityLabel: String?,
         preferredQualityURL: String? = nil,
-        extractor: @escaping SourceExtractor = ScraperEngine.extract
+        extractor: @escaping SourceExtractor = ExtractionCoordinator.extract
     ) async throws -> DownloadResolution {
         let source = try await extractor(sourcePageURL)
         let result = ExtractResult(url: sourcePageURL, source: source, error: nil)
@@ -140,7 +140,7 @@ enum DownloadResolver {
 
     static func refreshForDownloadIfNeeded(
         _ resolution: DownloadResolution,
-        extractor: @escaping SourceExtractor = ScraperEngine.extract
+        extractor: @escaping SourceExtractor = ExtractionCoordinator.extract
     ) async throws -> DownloadResolution {
         guard needsDownloadTimeRefresh(resolution),
               let pageURL = pornHubRefreshPageURL(for: resolution) else {
@@ -167,7 +167,7 @@ enum DownloadResolver {
 
     static func refreshForRetry(
         _ resolution: DownloadResolution,
-        extractor: @escaping SourceExtractor = ScraperEngine.extract
+        extractor: @escaping SourceExtractor = ExtractionCoordinator.extract
     ) async throws -> DownloadResolution {
         guard let pageURL = sourcePageURL(for: resolution) else {
             return resolution

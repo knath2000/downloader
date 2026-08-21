@@ -1310,6 +1310,7 @@ struct PornHubBrowserWebView: NSViewRepresentable {
             guard let item = feedItem(for: context) else { return }
             Task { @MainActor in
                 AppStateManager.shared.pendingExtractThumbnailURL = item.thumbnailURL
+                AppStateManager.shared.pendingExtractThumbnailURLs = item.thumbnailURL.map { [item.url: $0] } ?? [:]
                 AppStateManager.shared.pendingExtractTitles = [item.url: item.title]
                 AppStateManager.shared.pendingExtractShouldStart = true
                 AppStateManager.shared.pendingExtractURL = item.url

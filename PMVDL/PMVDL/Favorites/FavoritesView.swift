@@ -9,6 +9,7 @@ enum LibraryFavoritesActions {
 
     static func extract(_ item: FeedFavoriteItem, appState: AppStateManager) {
         appState.pendingExtractTitles = [item.url: item.title]
+        appState.pendingExtractThumbnailURLs = item.thumbnailURL.map { [item.url: $0] } ?? [:]
         appState.pendingExtractURL = item.url
         appState.pendingExtractShouldStart = true
         appState.select(.home)

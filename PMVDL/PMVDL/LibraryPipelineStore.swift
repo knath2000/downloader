@@ -49,23 +49,25 @@ final class LibraryPipelineStore: ObservableObject {
     static let shared = LibraryPipelineStore()
 
     @Published private(set) var snapshot = LibraryPipelineSnapshot(entries: [:])
+    @Published private(set) var isRestoring = true
 
     private let userDefaultsKey = "libraryPipelineSnapshot"
     private var cachedLibraryItems: [LibraryItem] = []
     private var cachedCompletedUploads: [CompletedUploadItem] = []
     private var cachedQueueItems: [DownloadQueueItem] = []
 
-    private init() {
-        load()
-    }
+    private init() {}
 
-    func load() {
-        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey),
-              let decoded = try? JSONDecoder().decode(LibraryPipelineSnapshot.self, from: data) else {
-            snapshot = LibraryPipelineSnapshot(entries: [:])
-            return
-        }
-        snapshot = decoded
+    func restorePersistedSnapshot() async {
+        guard isRestoring else { return }
+        let data = UserDefaults.standard.data(forKey: userDefaultsKey)
+        let restored = await Task.detached(priority: .userInitiated) {
+            data.flatMap {
+                try? JSONDecoder().decode(LibraryPipelineSnapshot.self, from: $0)
+            } ?? LibraryPipelineSnapshot(entries: [:])
+        }.value
+        snapshot = restored
+        isRestoring = false
     }
 
     func rebuild(
@@ -83,7 +85,47 @@ final class LibraryPipelineStore: ObservableObject {
             cachedQueueItems = queueItems
         }
 
-        var records: [String: LibraryPipelineRecord] = snapshot.entries
+        snapshot = Self.rebuiltSnapshot(
+            from: snapshot,
+            libraryItems: cachedLibraryItems,
+            completedUploads: cachedCompletedUploads,
+            queueItems: cachedQueueItems
+        )
+        save()
+    }
+
+    func hydrateFromStores(
+        libraryItems: [LibraryItem],
+        completedUploads: [CompletedUploadItem],
+        queueItems: [DownloadQueueItem]
+    ) async {
+        cachedLibraryItems = libraryItems
+        cachedCompletedUploads = completedUploads
+        cachedQueueItems = queueItems
+        let currentSnapshot = snapshot
+        let rebuilt = await Task.detached(priority: .userInitiated) {
+            Self.rebuiltSnapshot(
+                from: currentSnapshot,
+                libraryItems: libraryItems,
+                completedUploads: completedUploads,
+                queueItems: queueItems
+            )
+        }.value
+        snapshot = rebuilt
+        let userDefaultsKey = userDefaultsKey
+        Task.detached(priority: .utility) {
+            guard let encoded = try? JSONEncoder().encode(rebuilt) else { return }
+            UserDefaults.standard.set(encoded, forKey: userDefaultsKey)
+        }
+    }
+
+    nonisolated private static func rebuiltSnapshot(
+        from snapshot: LibraryPipelineSnapshot,
+        libraryItems: [LibraryItem],
+        completedUploads: [CompletedUploadItem],
+        queueItems: [DownloadQueueItem]
+    ) -> LibraryPipelineSnapshot {
+        var records = snapshot.entries
 
         func ensure(_ rawURL: String) -> String {
             let key = Self.normalizedURL(rawURL)
@@ -93,7 +135,7 @@ final class LibraryPipelineStore: ObservableObject {
             return key
         }
 
-        for item in cachedLibraryItems {
+        for item in libraryItems {
             let key = ensure(item.url)
             for destination in LibraryPipelineDestination.allCases {
                 if let path = item.remotePaths[destination.rawValue], !path.isEmpty {
@@ -104,13 +146,13 @@ final class LibraryPipelineStore: ObservableObject {
             }
         }
 
-        for item in cachedCompletedUploads {
+        for item in completedUploads {
             let key = ensure(item.url)
             let destination = Self.destination(for: item.destination)
             records[key]?.stages[destination.rawValue] = .succeeded(path: item.remotePath, date: item.completedAt)
         }
 
-        for item in cachedQueueItems {
+        for item in queueItems {
             let key = ensure(item.url)
             let destination = Self.destination(for: item.targetCloud.rawValue)
             switch item.status {
@@ -131,20 +173,7 @@ final class LibraryPipelineStore: ObservableObject {
             }
         }
 
-        snapshot = LibraryPipelineSnapshot(entries: records)
-        save()
-    }
-
-    func hydrateFromStores(
-        libraryItems: [LibraryItem],
-        completedUploads: [CompletedUploadItem],
-        queueItems: [DownloadQueueItem]
-    ) {
-        rebuild(
-            libraryItems: libraryItems,
-            completedUploads: completedUploads,
-            queueItems: queueItems
-        )
+        return LibraryPipelineSnapshot(entries: records)
     }
 
     func record(for rawURL: String) -> LibraryPipelineRecord {
@@ -178,11 +207,11 @@ final class LibraryPipelineStore: ObservableObject {
         UserDefaults.standard.set(encoded, forKey: userDefaultsKey)
     }
 
-    static func normalizedURL(_ raw: String) -> String {
+    nonisolated static func normalizedURL(_ raw: String) -> String {
         DownloadedFeedIndex.normalizedURL(raw).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    static func destination(for raw: String) -> LibraryPipelineDestination {
+    nonisolated static func destination(for raw: String) -> LibraryPipelineDestination {
         let lower = raw.lowercased()
         if lower.contains("mega") { return .mega }
         if lower.contains("drive") || lower.contains("gdrive") { return .gdrive }

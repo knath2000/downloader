@@ -68,33 +68,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
-        MegaManager.cleanupTempFiles()
+        Task.detached(priority: .utility) {
+            MegaManager.cleanupTempFiles()
+        }
         NotificationManager.shared.requestAuthorization()
-        Task {
+        Task { @MainActor in
             await MainActor.run {
                 _ = LicenseManager.shared
             }
             await LicenseManager.shared.bootstrap()
             await SeedboxManager.reconnectConfiguredWebDAV()
         }
-        Task { @MainActor in
-            await Task.yield()
-            LibraryPipelineStore.shared.hydrateFromStores(
+        Task {
+            async let queueRestore: Void = DownloadQueue.shared.restorePersistedQueue()
+            async let libraryRestore: Void = VideoLibrary.shared.restorePersistedLibrary()
+            async let historyRestore: Void = HistoryManager.shared.restorePersistedHistory()
+            async let pipelineRestore: Void = LibraryPipelineStore.shared.restorePersistedSnapshot()
+            _ = await (queueRestore, libraryRestore, historyRestore, pipelineRestore)
+
+            await LibraryPipelineStore.shared.hydrateFromStores(
                 libraryItems: VideoLibrary.shared.items,
                 completedUploads: HistoryManager.shared.completedUploads,
                 queueItems: DownloadQueue.shared.queue
             )
+            let seedboxWebdavPassword = SecureStore.string(forKey: "seedboxWebdavPassword") ?? ""
+            DownloadQueue.shared.resumeInterruptedOnLaunch(seedboxWebdavPassword: seedboxWebdavPassword)
         }
         SleepPreventionManager.shared.start()
         Task { @MainActor in
             LustreAgentController.shared.start()
         }
-        Task { @MainActor in
-            await Task.yield()
-            let seedboxWebdavPassword = SecureStore.string(forKey: "seedboxWebdavPassword") ?? ""
-            DownloadQueue.shared.resumeInterruptedOnLaunch(seedboxWebdavPassword: seedboxWebdavPassword)
-        }
-
         // Register app for NSAppleEventsDescriptor-based URL scheme
         NSAppleEventManager.shared().setEventHandler(self,
             andSelector: #selector(handleGetURLEvent(_:withReplyEvent:)),

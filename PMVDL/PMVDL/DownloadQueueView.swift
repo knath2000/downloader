@@ -138,7 +138,10 @@ struct DownloadQueueViewNew: View {
 
     @ViewBuilder
     private var content: some View {
-        if downloadItems.isEmpty {
+        if queue.isRestoring && downloadItems.isEmpty {
+            DownloadsRestoringState()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if downloadItems.isEmpty {
             DownloadsEmptyState {
                 AppStateManager.shared.select(.home)
             }
@@ -1144,6 +1147,16 @@ private struct DownloadSelectionButton: View {
                 .foregroundStyle(tint)
         }
         .buttonStyle(.borderless)
+    }
+}
+
+private struct DownloadsRestoringState: View {
+    var body: some View {
+        ContentUnavailableView {
+            Label("Restoring Downloads", systemImage: "clock.arrow.circlepath")
+        } description: {
+            Text("Your queue will appear here in a moment. You can keep using the rest of the app.")
+        }
     }
 }
 
