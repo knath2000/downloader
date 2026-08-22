@@ -325,7 +325,7 @@ class DownloadQueue: ObservableObject {
         case .running:
             switch job.transferPhase {
             case "uploading": status = .uploading
-            case "materializing", "postProcessing": status = .processing
+            case "cloudStaging", "materializing", "postProcessing": status = .processing
             case "verifying": status = .verifying
             default: status = .downloading
             }
