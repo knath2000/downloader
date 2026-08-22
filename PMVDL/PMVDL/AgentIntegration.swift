@@ -78,6 +78,11 @@ struct LustreAgentHealth: Codable, Equatable {
     }
 }
 
+struct LustreAgentJobHistoryPage: Codable {
+    let jobs: [LustreAgentJob]
+    let nextCursor: Int?
+}
+
 struct LustreAgentExtractionResult: Codable {
     let sourcePageURL: URL
     let resolutionState: String
@@ -157,8 +162,47 @@ struct LustreAgentClient {
         try await request(path: "/health", method: "GET", body: nil, authenticated: false)
     }
 
-    func jobs() async throws -> [LustreAgentJob] {
-        try await request(path: "/v1/jobs", method: "GET", body: nil)
+    func operationalSnapshot() async throws -> LustreAgentPollSnapshot {
+        do {
+            return try await request(path: "/v1/snapshot?terminalLimit=25", method: "GET", body: nil)
+        } catch LustreAgentClientError.http(404, _) {
+            async let health = health()
+            async let jobs = jobs(scope: "active")
+            return try await LustreAgentPollSnapshot(health: health, jobs: jobs)
+        }
+    }
+
+    func jobs(scope: String? = nil) async throws -> [LustreAgentJob] {
+        let path = scope.map { "/v1/jobs?scope=\($0)&terminalLimit=25" } ?? "/v1/jobs"
+        do {
+            return try await request(path: path, method: "GET", body: nil)
+        } catch LustreAgentClientError.http(404, _) where scope != nil {
+            return try await request(path: "/v1/jobs", method: "GET", body: nil)
+        }
+    }
+
+    func completedJobHistory(cursor: Int = 0, limit: Int = 50) async throws -> LustreAgentJobHistoryPage {
+        try await request(path: "/v1/job-history?cursor=\(cursor)&limit=\(limit)", method: "GET", body: nil)
+    }
+
+    func collections() async throws -> AgentCollectionSnapshot {
+        try await request(path: "/v1/collections", method: "GET", body: nil)
+    }
+
+    func saveWatchlist(_ item: WatchlistItem) async throws -> AgentCollectionSnapshot {
+        try await request(path: "/v1/collections/watchlist", method: "POST", body: try encoder.encode(item))
+    }
+
+    func removeWatchlist(sourcePageURL: String) async throws -> AgentCollectionSnapshot {
+        try await request(path: "/v1/collections/watchlist", method: "DELETE", body: try encoder.encode(["sourcePageURL": sourcePageURL]))
+    }
+
+    func organizeLibrary(sourcePageURL: String, tags: [String], collection: String?, favorite: Bool) async throws -> AgentCollectionSnapshot {
+        try await request(path: "/v1/collections/library", method: "PATCH", body: try encoder.encode(AgentLibraryOrganization(sourcePageURL: sourcePageURL, tags: tags, collection: collection, favorite: favorite)))
+    }
+
+    func removeLibrary(sourcePageURL: String) async throws -> AgentCollectionSnapshot {
+        try await request(path: "/v1/collections/library", method: "DELETE", body: try encoder.encode(["sourcePageURL": sourcePageURL]))
     }
 
     func setMaximumConcurrentDownloads(_ limit: Int) async throws {
@@ -242,7 +286,43 @@ struct LustreAgentClient {
     private struct EmptyEnvelope: Codable {}
 }
 
-private struct LustreAgentPollSnapshot {
+struct AgentCollectionSnapshot: Decodable {
+    let watchlist: [WatchlistItem]
+    let library: [AgentLibraryItem]
+    let cursor: Int64
+    let pendingChanges: Int
+}
+
+struct AgentLibraryItem: Decodable {
+    let id: UUID
+    let sourcePageURL: URL
+    let title: String
+    let provider: String
+    let thumbnailURL: URL?
+    let mediaKind: String
+    let completedAt: Date
+    let tags: [String]
+    let collection: String?
+    let favorite: Bool
+
+    var libraryItem: LibraryItem {
+        LibraryItem(
+            id: id, url: sourcePageURL.absoluteString, title: title,
+            mp4Url: nil, hlsUrls: [], extractedAt: completedAt,
+            thumbnailURL: thumbnailURL?.absoluteString, sourceSiteName: provider,
+            remotePaths: [:], tags: tags.isEmpty ? nil : tags, collectionName: collection
+        )
+    }
+}
+
+private struct AgentLibraryOrganization: Encodable {
+    let sourcePageURL: String
+    let tags: [String]
+    let collection: String?
+    let favorite: Bool
+}
+
+struct LustreAgentPollSnapshot: Codable {
     let health: LustreAgentHealth
     let jobs: [LustreAgentJob]
 }
@@ -263,6 +343,9 @@ final class LustreAgentController: ObservableObject {
     private var lastEntitlementLimit: Int?
     private var lastEntitlementSyncAttempt: Date?
     private var activeRemovalIDs = Set<UUID>()
+    private var completedHistoryCursor: Int? = 0
+    private var completedHistoryLoaded = false
+    private var completedHistoryLoading = false
     private var pendingRemovalIDs: Set<UUID> = Set(
         UserDefaults.standard.stringArray(forKey: "lustreAgentPendingRemovalIDs")?
             .compactMap(UUID.init(uuidString:)) ?? []
@@ -302,9 +385,7 @@ final class LustreAgentController: ObservableObject {
                 if shouldSyncEntitlement {
                     try? await client.setMaximumConcurrentDownloads(entitlementLimit)
                 }
-                async let nextHealth = client.health()
-                async let nextJobs = client.jobs()
-                return try await LustreAgentPollSnapshot(health: nextHealth, jobs: nextJobs)
+                return try await client.operationalSnapshot()
             }.value
             if shouldSyncEntitlement {
                 lastEntitlementLimit = entitlementLimit
@@ -332,6 +413,38 @@ final class LustreAgentController: ObservableObject {
             if lastError != message {
                 lastError = message
             }
+        }
+    }
+
+    func loadCompletedHistoryIfNeeded() async {
+        guard !completedHistoryLoaded else { return }
+        await loadMoreCompletedHistory()
+    }
+
+    func loadMoreCompletedHistory() async {
+        guard !completedHistoryLoading, let cursor = completedHistoryCursor else { return }
+        completedHistoryLoading = true
+        defer { completedHistoryLoading = false }
+        do {
+            let page = try await Task.detached(priority: .utility) {
+                try await LustreAgentClient().completedJobHistory(cursor: cursor)
+            }.value
+            project(page.jobs)
+            completedHistoryCursor = page.nextCursor
+            completedHistoryLoaded = true
+        } catch LustreAgentClientError.http(404, _) {
+            do {
+                let completed = try await Task.detached(priority: .utility) {
+                    try await LustreAgentClient().jobs().filter { $0.status == .completed }
+                }.value
+                project(Array(completed.prefix(50)))
+                completedHistoryCursor = completed.count > 50 ? 50 : nil
+                completedHistoryLoaded = true
+            } catch {
+                lastError = error.localizedDescription
+            }
+        } catch {
+            lastError = error.localizedDescription
         }
     }
 
@@ -477,15 +590,17 @@ final class LustreAgentController: ObservableObject {
     }
 
     private func project(_ jobs: [LustreAgentJob]) {
+        var changed: [LustreAgentJob] = []
         for job in jobs {
             guard !pendingRemovalIDs.contains(job.id) else { continue }
             guard projectedJobUpdates[job.id] != job.updatedAt else { continue }
             projectedJobUpdates[job.id] = job.updatedAt
-            DownloadQueue.shared.projectAgentJob(job)
-            if job.status == .completed, importedCompletions.insert(job.id).inserted {
-                importCompletion(job)
+            changed.append(job)
+            if job.status == .completed {
+                importedCompletions.insert(job.id)
             }
         }
+        DownloadQueue.shared.projectAgentJobs(changed)
     }
 
     private func reconcilePendingRemovals() async {
@@ -544,8 +659,7 @@ final class LustreAgentController: ObservableObject {
         let executable = support.appendingPathComponent("lustre-agent")
         let runningClient = try? LustreAgentClient()
         let runningHealth = try? await runningClient?.health()
-        let runningJobs = try? await runningClient?.jobs()
-        let activeJobCount = runningJobs?.filter { $0.status == .running }.count ?? runningHealth?.activeJobs ?? 0
+        let activeJobCount = runningHealth?.activeJobs ?? 0
         if let runningHealth, runningHealth.runtimeVersion != version, activeJobCount > 0 {
             isUpdatePending = true
             return

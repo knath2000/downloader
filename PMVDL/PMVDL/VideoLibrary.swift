@@ -103,6 +103,12 @@ class VideoLibrary: ObservableObject {
 
     func restorePersistedLibrary() async {
         guard isRestoring else { return }
+        if let snapshot = try? await LustreAgentClient().collections(), !snapshot.library.isEmpty {
+            items = snapshot.library.map(\.libraryItem)
+            isRestoring = false
+            LibraryPipelineStore.shared.rebuild(libraryItems: items)
+            return
+        }
         let data = UserDefaults.standard.data(forKey: userDefaultsKey)
         let restored = await Task.detached(priority: .userInitiated) {
             let decoded = data.flatMap {
@@ -170,6 +176,7 @@ class VideoLibrary: ObservableObject {
     func remove(_ item: LibraryItem) {
         items.removeAll { $0.id == item.id }
         save()
+        Task { try? await LustreAgentClient().removeLibrary(sourcePageURL: item.url) }
     }
 
     func updateRemotePaths(for item: LibraryItem, cloud: CloudTarget, path: String) {
@@ -225,5 +232,12 @@ class VideoLibrary: ObservableObject {
         items[idx].tags = tags.isEmpty ? nil : tags
         items[idx].collectionName = collection?.isEmpty == true ? nil : collection
         save()
+        let item = items[idx]
+        Task {
+            try? await LustreAgentClient().organizeLibrary(
+                sourcePageURL: item.url, tags: item.tags ?? [],
+                collection: item.collectionName, favorite: false
+            )
+        }
     }
 }

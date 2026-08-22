@@ -153,6 +153,21 @@ final class DownloadQueueProjectionTests: XCTestCase {
         XCTAssertFalse(item.canRetry)
     }
 
+    @MainActor
+    func testIdenticalTerminalProjectionDoesNotPublishAgain() {
+        let queue = DownloadQueue.shared
+        let original = queue.queue
+        queue.queue = []
+        defer {
+            queue.queue = original
+            queue.save()
+        }
+
+        let id = queue.add(url: "https://example.test/completed.mp4", quality: "Video", targetCloud: .local)
+        XCTAssertTrue(queue.update(id: id, status: .completed, progress: 100, message: "Completed."))
+        XCTAssertFalse(queue.update(id: id, status: .completed, progress: 100, message: "Completed."))
+    }
+
     func testManualStartRequiresProPendingStatusAndPayload() {
         let payload = DownloadRetryPayload(
             resolution: makeRetryTestResolution(),

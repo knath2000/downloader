@@ -174,6 +174,8 @@ class DownloadQueue: ObservableObject {
     private let progressPersistDelay: UInt64 = 1_000_000_000
     private var lastProgressUpdateAt: [UUID: Date] = [:]
     private var pendingProgressSaveTask: Task<Void, Never>?
+    private var isBatchingAgentProjection = false
+    private var agentProjectionNeedsSave = false
 
     var concurrentLimit: Int { max(maxConcurrent, seedboxConcurrentLimit) }
 
@@ -211,8 +213,25 @@ class DownloadQueue: ObservableObject {
     }
 
     func save() {
+        if isBatchingAgentProjection {
+            agentProjectionNeedsSave = true
+            return
+        }
         persistQueueSnapshot()
         LibraryPipelineStore.shared.rebuild(queueItems: queue)
+    }
+
+    func projectAgentJobs(_ jobs: [LustreAgentJob]) {
+        guard !jobs.isEmpty else { return }
+        isBatchingAgentProjection = true
+        agentProjectionNeedsSave = false
+        for job in jobs {
+            projectAgentJob(job)
+        }
+        isBatchingAgentProjection = false
+        guard agentProjectionNeedsSave else { return }
+        agentProjectionNeedsSave = false
+        save()
     }
 
     private func persistQueueSnapshot() {
@@ -638,7 +657,7 @@ class DownloadQueue: ObservableObject {
         let enoughTimeElapsed = now.timeIntervalSince(lastUpdate) >= progressPublishInterval
         let shouldPublish = statusChanged ||
             uploadStartedChanged ||
-            status.isTerminal ||
+            (status.isTerminal && (progressDelta > 0 || messageChanged || metricsChanged)) ||
             progressDelta >= 1 ||
             (enoughTimeElapsed && (progressDelta > 0 || messageChanged || metricsChanged))
         guard shouldPublish else { return false }

@@ -55,6 +55,7 @@ final class WatchlistStore: ObservableObject {
             .appendingPathComponent("LustreStudio", isDirectory: true)
         self.fileURL = fileURL ?? support.appendingPathComponent("watchlist.json")
         load()
+        Task { await synchronizeWithAgent() }
     }
 
     func contains(_ rawURL: String) -> Bool {
@@ -72,6 +73,7 @@ final class WatchlistStore: ObservableObject {
             items.insert(item, at: 0)
         }
         save()
+        Task { try? await LustreAgentClient().saveWatchlist(itemForSync(item.sourcePageURL)) }
     }
 
     func add(feedItem: FeedItem) {
@@ -92,6 +94,8 @@ final class WatchlistStore: ObservableObject {
         items[index].watchedAt = items[index].watched ? .now : nil
         items[index].updatedAt = .now
         save()
+        let item = items[index]
+        Task { try? await LustreAgentClient().saveWatchlist(item) }
     }
 
     @discardableResult
@@ -99,13 +103,16 @@ final class WatchlistStore: ObservableObject {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return nil }
         let removed = items.remove(at: index)
         save()
+        Task { try? await LustreAgentClient().removeWatchlist(sourcePageURL: removed.sourcePageURL) }
         return removed
     }
 
     func remove(sourcePageURL: String) {
         let normalized = WatchlistItem.normalizedURL(sourcePageURL)
+        let removed = items.first { $0.sourcePageURL == normalized }
         items.removeAll { $0.sourcePageURL == normalized }
         save()
+        if let removed { Task { try? await LustreAgentClient().removeWatchlist(sourcePageURL: removed.sourcePageURL) } }
     }
 
     private func load() {
@@ -127,6 +134,23 @@ final class WatchlistStore: ObservableObject {
         } catch {
             AppStateManager.shared.transientMessage = AppTransientMessage(text: "Watchlist could not be saved.")
         }
+    }
+
+    private func itemForSync(_ sourcePageURL: String) -> WatchlistItem {
+        items.first { $0.sourcePageURL == sourcePageURL }!
+    }
+
+    private func synchronizeWithAgent() async {
+        guard let client = try? LustreAgentClient() else { return }
+        do {
+            if !UserDefaults.standard.bool(forKey: "cloudCollectionsWatchlistMigrated") {
+                for item in items { _ = try await client.saveWatchlist(item) }
+                UserDefaults.standard.set(true, forKey: "cloudCollectionsWatchlistMigrated")
+            }
+            let snapshot = try await client.collections()
+            items = snapshot.watchlist.sorted { $0.updatedAt > $1.updatedAt }
+            save()
+        } catch {}
     }
 }
 
