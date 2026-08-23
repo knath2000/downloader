@@ -80,7 +80,7 @@ struct AboutView: View {
                                       "Keyboard shortcuts (⌘1-4, ⌘N)"])
                         ChangelogEntry(version: "v1.2.0", date: "Apr 2026",
                             changes: ["Batch MP4 download to Mega",
-                                      "Google Drive support via rclone",
+                                      "Local and Mega download destinations",
                                       "Transfer polling view"])
                         ChangelogEntry(version: "v1.0.0", date: "Apr 2026",
                             changes: ["Initial release — menubar + window app",

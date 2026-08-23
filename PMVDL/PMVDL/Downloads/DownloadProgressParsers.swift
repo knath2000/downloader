@@ -47,18 +47,6 @@ enum DownloadProgressParsers {
         return nil
     }
 
-    static func rclonePercent(from text: String) -> Int? {
-        guard let match = try? NSRegularExpression(
-            pattern: "Transferred:[^\\n]*?(\\d+)%"
-        ).firstMatch(in: text, range: NSRange(location: 0, length: text.utf16.count)),
-              let range = Range(match.range(at: 1), in: text),
-              let pct = Double(text[range]),
-              pct >= 0 else {
-            return nil
-        }
-        return Int(pct)
-    }
-
     static func megaTransferPercent(from text: String) -> Int? {
         guard let match = try? NSRegularExpression(
             pattern: "([\\d.]+)%\\s+of"

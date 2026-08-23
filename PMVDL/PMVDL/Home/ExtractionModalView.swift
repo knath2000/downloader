@@ -17,15 +17,11 @@ struct ExtractionModalView: View {
     let isYtDlpReady: Bool
     let localState: (String) -> UploadState?
     let megaState: (String) -> UploadState?
-    let gdriveState: (String) -> UploadState?
-    let seedboxState: (String) -> UploadState?
     let onAddURL: () -> Void
     let onRetryFailed: () -> Void
     let onRetry: (Int) -> Void
     let onLocal: (String) -> Void
     let onMega: (String) -> Void
-    let onGDrive: (String) -> Void
-    let onSeedbox: (String) -> Void
     let onMultiple: (String, Set<CloudTarget>) -> Void
     let onQueue: (String, CloudTarget) -> Void
     let onBatchDownload: () -> Void
@@ -158,13 +154,9 @@ struct ExtractionModalView: View {
                                     usesLightweightThumbnail: usesLightweightResultRows,
                                     localState: localState,
                                     megaState: megaState,
-                                    gdriveState: gdriveState,
-                                    seedboxState: seedboxState,
                                     onRetry: { onRetry(resultIndex) },
                                     onLocal: onLocal,
                                     onMega: onMega,
-                                    onGDrive: onGDrive,
-                                    onSeedbox: onSeedbox,
                                     onMultiple: onMultiple,
                                     onQueue: onQueue
                                 )
@@ -436,13 +428,9 @@ private struct ExtractionResultRow: View {
     let usesLightweightThumbnail: Bool
     let localState: (String) -> UploadState?
     let megaState: (String) -> UploadState?
-    let gdriveState: (String) -> UploadState?
-    let seedboxState: (String) -> UploadState?
     let onRetry: () -> Void
     let onLocal: (String) -> Void
     let onMega: (String) -> Void
-    let onGDrive: (String) -> Void
-    let onSeedbox: (String) -> Void
     let onMultiple: (String, Set<CloudTarget>) -> Void
     let onQueue: (String, CloudTarget) -> Void
 
@@ -468,8 +456,7 @@ private struct ExtractionResultRow: View {
         switch selectedTarget {
         case .local: return localState(url)
         case .mega: return megaState(url)
-        case .gdrive: return gdriveState(url)
-        case .seedbox: return seedboxState(url)
+        case .gdrive, .seedbox: return nil
         }
     }
 
@@ -672,8 +659,7 @@ private struct ExtractionResultRow: View {
             switch selectedTarget {
             case .local: onLocal(url)
             case .mega: onMega(url)
-            case .gdrive: onGDrive(url)
-            case .seedbox: onSeedbox(url)
+            case .gdrive, .seedbox: return
             }
         } label: {
             Label(selectedTarget.homeActionTitle, systemImage: selectedTarget.icon)

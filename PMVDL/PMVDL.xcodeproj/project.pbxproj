@@ -17,8 +17,6 @@
 	A10043 /* WidgetDataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20043; };
 	A10047 /* ActiveWorkTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20047; };
 		A10008 /* MegaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20009; };
-		A10011 /* GDriveManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20011; };
-		A10086 /* SeedboxManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20086 /* SeedboxManager.swift */; };
 	A10010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20010; };
 	A10013 /* AppStateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20013; };
 	A10014 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20014; };
@@ -42,7 +40,6 @@
 	A10030 /* YtDlpExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20030; };
 	A10031 /* M3U8Extractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20031; };
 	A10032 /* ScraperErrors.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20032; };
-	A10033 /* CloudHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20033; };
 	A10038 /* VideoProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20038; };
 	A10041 /* CloudKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20041; };
 	A10053 /* VidaraExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20053; };
@@ -63,10 +60,6 @@
 	A10068 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20068 /* HistoryView.swift */; };
 	A10071 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20071 /* SettingsView.swift */; };
 	A10145 /* SettingsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20145 /* SettingsComponents.swift */; };
-	A10147 /* WebDAVFolderPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20147 /* WebDAVFolderPickerView.swift */; };
-	A10087 /* SettingsDependencyState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20087 /* SettingsDependencyState.swift */; };
-	A10088 /* SettingsDependencyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20088 /* SettingsDependencyStore.swift */; };
-	A10129 /* RcloneRemoteSetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20129 /* RcloneRemoteSetup.swift */; };
 	A10072 /* DependencySetupPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20072 /* DependencySetupPanel.swift */; };
 	A10073 /* VideoResultRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20073 /* VideoResultRow.swift */; };
 	A10090 /* HomeLayoutMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20090 /* HomeLayoutMetrics.swift */; };
@@ -99,16 +92,6 @@
 	A10105 /* FavoritesDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20105 /* FavoritesDisplay.swift */; };
 	A10106 /* FavoritesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20106 /* FavoritesView.swift */; };
 	A10107 /* FavoriteCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20107 /* FavoriteCardView.swift */; };
-	A10108 /* RemoteFileModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20108 /* RemoteFileModels.swift */; };
-	A10109 /* RemotePath.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20109 /* RemotePath.swift */; };
-	A10110 /* RemoteFileClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20110 /* RemoteFileClient.swift */; };
-	A10111 /* RemoteFileTextPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20111 /* RemoteFileTextPolicy.swift */; };
-	A10112 /* RcloneRemoteFileClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20112 /* RcloneRemoteFileClient.swift */; };
-	A10113 /* WebDAVRemoteFileClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20113 /* WebDAVRemoteFileClient.swift */; };
-	A10114 /* SeedboxRemoteFileClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20114 /* SeedboxRemoteFileClient.swift */; };
-	A10115 /* RemoteFilesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20115 /* RemoteFilesViewModel.swift */; };
-	A10117 /* RemoteFileEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20117 /* RemoteFileEditorView.swift */; };
-	A10118 /* RemoteFilesDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20118 /* RemoteFilesDisplay.swift */; };
 	A10074 /* String+Parsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20074 /* String+Parsing.swift */; };
 	A10075 /* NetworkConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20075 /* NetworkConstants.swift */; };
 	A10076 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20076 /* Logging.swift */; };
@@ -119,8 +102,6 @@
 	A10081 /* DownloadJobs.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20081 /* DownloadJobs.swift */; };
 	A10140 /* LocalDownloadJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20140 /* LocalDownloadJob.swift */; };
 	A10141 /* MegaDownloadJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20141 /* MegaDownloadJob.swift */; };
-	A10142 /* GDriveDownloadJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20142 /* GDriveDownloadJob.swift */; };
-	A10143 /* SeedboxDownloadJob.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20143 /* SeedboxDownloadJob.swift */; };
 	A10082 /* DirectDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20082 /* DirectDownloader.swift */; };
 	A10083 /* YtDlpRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20083 /* YtDlpRunner.swift */; };
 	A10084 /* HLSDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20084 /* HLSDownloader.swift */; };
@@ -129,7 +110,6 @@
 	T10002 /* DownloadResolutionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20002 /* DownloadResolutionTests.swift */; };
 	T10003 /* DownloadQueueProjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20003 /* DownloadQueueProjectionTests.swift */; };
 	T10004 /* ProgressParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20004 /* ProgressParserTests.swift */; };
-	T10005 /* SettingsDependencyStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20005 /* SettingsDependencyStateTests.swift */; };
 	T10006 /* ThumbnailCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20006 /* ThumbnailCacheTests.swift */; };
 	T10007 /* LibraryThumbnailResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20007 /* LibraryThumbnailResolverTests.swift */; };
 	T10008 /* HomeURLInputModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20008 /* HomeURLInputModelTests.swift */; };
@@ -140,17 +120,11 @@
 	T10013 /* DownloadQueueResumeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20013 /* DownloadQueueResumeTests.swift */; };
 	T10033 /* ExtractionPulseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20033 /* ExtractionPulseTests.swift */; };
 	T10014 /* FeedFavoritesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20014 /* FeedFavoritesTests.swift */; };
-	T10015 /* RemotePathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20015 /* RemotePathTests.swift */; };
-	T10016 /* RcloneRemoteFileParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20016 /* RcloneRemoteFileParserTests.swift */; };
-	T10017 /* WebDAVRemoteFileParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20017 /* WebDAVRemoteFileParserTests.swift */; };
-	T10018 /* RemoteFileTextPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20018 /* RemoteFileTextPolicyTests.swift */; };
-	T10019 /* RemoteFilesDisplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20019 /* RemoteFilesDisplayTests.swift */; };
 	T10020 /* VideoProcessingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20020 /* VideoProcessingTests.swift */; };
 	T10021 /* ProfileNarrativeFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20021 /* ProfileNarrativeFormatterTests.swift */; };
 	T10022 /* NavigationGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20022 /* NavigationGateTests.swift */; };
 	T10023 /* PornHubBrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20023 /* PornHubBrowserTests.swift */; };
 	T10024 /* DownloadPathsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20024 /* DownloadPathsTests.swift */; };
-	T10025 /* RcloneRemoteSetupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20025 /* RcloneRemoteSetupTests.swift */; };
 	T10034 /* AppModalLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20034 /* AppModalLayoutTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -165,8 +139,6 @@
 	A20010 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 	A20008 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20009 /* MegaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MegaManager.swift; sourceTree = "<group>"; };
-		A20011 /* GDriveManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GDriveManager.swift; sourceTree = "<group>"; };
-		A20086 /* SeedboxManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeedboxManager.swift; sourceTree = "<group>"; };
 	A20013 /* AppStateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStateManager.swift; sourceTree = "<group>"; };
 	A20014 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 	A20015 /* ThumbnailCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailCache.swift; sourceTree = "<group>"; };
@@ -192,7 +164,6 @@
 	A20055 /* LuluStreamExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LuluStreamExtractor.swift; sourceTree = "<group>"; };
 	A20056 /* ProviderLinkExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderLinkExtractor.swift; sourceTree = "<group>"; };
 	A20054 /* DownloadProgressDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadProgressDelegate.swift; sourceTree = "<group>"; };
-	A20033 /* CloudHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudHub.swift; sourceTree = "<group>"; };
 	A20038 /* VideoProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoProcessor.swift; sourceTree = "<group>"; };
 	A20041 /* CloudKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitManager.swift; sourceTree = "<group>"; };
 	A20042 /* CloudSyncScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncScheduler.swift; sourceTree = "<group>"; };
@@ -215,10 +186,6 @@
 	A20068 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 	A20071 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 	A20145 /* SettingsComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsComponents.swift; sourceTree = "<group>"; };
-	A20147 /* WebDAVFolderPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebDAVFolderPickerView.swift; sourceTree = "<group>"; };
-	A20087 /* SettingsDependencyState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDependencyState.swift; sourceTree = "<group>"; };
-	A20088 /* SettingsDependencyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDependencyStore.swift; sourceTree = "<group>"; };
-	A20129 /* RcloneRemoteSetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RcloneRemoteSetup.swift; sourceTree = "<group>"; };
 	A20072 /* DependencySetupPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DependencySetupPanel.swift; sourceTree = "<group>"; };
 	A20073 /* VideoResultRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoResultRow.swift; sourceTree = "<group>"; };
 	A20090 /* HomeLayoutMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeLayoutMetrics.swift; sourceTree = "<group>"; };
@@ -251,16 +218,6 @@
 	A20105 /* FavoritesDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesDisplay.swift; sourceTree = "<group>"; };
 	A20106 /* FavoritesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesView.swift; sourceTree = "<group>"; };
 	A20107 /* FavoriteCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoriteCardView.swift; sourceTree = "<group>"; };
-	A20108 /* RemoteFileModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileModels.swift; sourceTree = "<group>"; };
-	A20109 /* RemotePath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePath.swift; sourceTree = "<group>"; };
-	A20110 /* RemoteFileClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileClient.swift; sourceTree = "<group>"; };
-	A20111 /* RemoteFileTextPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileTextPolicy.swift; sourceTree = "<group>"; };
-	A20112 /* RcloneRemoteFileClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RcloneRemoteFileClient.swift; sourceTree = "<group>"; };
-	A20113 /* WebDAVRemoteFileClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebDAVRemoteFileClient.swift; sourceTree = "<group>"; };
-	A20114 /* SeedboxRemoteFileClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeedboxRemoteFileClient.swift; sourceTree = "<group>"; };
-	A20115 /* RemoteFilesViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesViewModel.swift; sourceTree = "<group>"; };
-	A20117 /* RemoteFileEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileEditorView.swift; sourceTree = "<group>"; };
-	A20118 /* RemoteFilesDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesDisplay.swift; sourceTree = "<group>"; };
 	A20074 /* String+Parsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Parsing.swift"; sourceTree = "<group>"; };
 	A20075 /* NetworkConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkConstants.swift; sourceTree = "<group>"; };
 	A20076 /* Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logging.swift; sourceTree = "<group>"; };
@@ -271,8 +228,6 @@
 	A20081 /* DownloadJobs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadJobs.swift; sourceTree = "<group>"; };
 	A20140 /* LocalDownloadJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalDownloadJob.swift; sourceTree = "<group>"; };
 	A20141 /* MegaDownloadJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MegaDownloadJob.swift; sourceTree = "<group>"; };
-	A20142 /* GDriveDownloadJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GDriveDownloadJob.swift; sourceTree = "<group>"; };
-	A20143 /* SeedboxDownloadJob.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeedboxDownloadJob.swift; sourceTree = "<group>"; };
 	A20082 /* DirectDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectDownloader.swift; sourceTree = "<group>"; };
 	A20083 /* YtDlpRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YtDlpRunner.swift; sourceTree = "<group>"; };
 	A20084 /* HLSDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HLSDownloader.swift; sourceTree = "<group>"; };
@@ -282,7 +237,6 @@
 	T20002 /* DownloadResolutionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadResolutionTests.swift; sourceTree = "<group>"; };
 	T20003 /* DownloadQueueProjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadQueueProjectionTests.swift; sourceTree = "<group>"; };
 	T20004 /* ProgressParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressParserTests.swift; sourceTree = "<group>"; };
-	T20005 /* SettingsDependencyStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDependencyStateTests.swift; sourceTree = "<group>"; };
 	T20006 /* ThumbnailCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbnailCacheTests.swift; sourceTree = "<group>"; };
 	T20007 /* LibraryThumbnailResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryThumbnailResolverTests.swift; sourceTree = "<group>"; };
 	T20008 /* HomeURLInputModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeURLInputModelTests.swift; sourceTree = "<group>"; };
@@ -293,17 +247,11 @@
 	T20013 /* DownloadQueueResumeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadQueueResumeTests.swift; sourceTree = "<group>"; };
 	T20033 /* ExtractionPulseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtractionPulseTests.swift; sourceTree = "<group>"; };
 	T20014 /* FeedFavoritesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedFavoritesTests.swift; sourceTree = "<group>"; };
-	T20015 /* RemotePathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePathTests.swift; sourceTree = "<group>"; };
-	T20016 /* RcloneRemoteFileParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RcloneRemoteFileParserTests.swift; sourceTree = "<group>"; };
-	T20017 /* WebDAVRemoteFileParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebDAVRemoteFileParserTests.swift; sourceTree = "<group>"; };
-	T20018 /* RemoteFileTextPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileTextPolicyTests.swift; sourceTree = "<group>"; };
-	T20019 /* RemoteFilesDisplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesDisplayTests.swift; sourceTree = "<group>"; };
 	T20020 /* VideoProcessingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoProcessingTests.swift; sourceTree = "<group>"; };
 	T20021 /* ProfileNarrativeFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileNarrativeFormatterTests.swift; sourceTree = "<group>"; };
 	T20022 /* NavigationGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationGateTests.swift; sourceTree = "<group>"; };
 	T20023 /* PornHubBrowserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PornHubBrowserTests.swift; sourceTree = "<group>"; };
 	T20024 /* DownloadPathsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadPathsTests.swift; sourceTree = "<group>"; };
-	T20025 /* RcloneRemoteSetupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RcloneRemoteSetupTests.swift; sourceTree = "<group>"; };
 	T20034 /* AppModalLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModalLayoutTests.swift; sourceTree = "<group>"; };
 	T30001 /* VidDLTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VidDLTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -364,9 +312,6 @@
 			A50010 /* Extractors */,
 			A20013 /* AppStateManager.swift */,
 				A20009 /* MegaManager.swift */,
-				A20011 /* GDriveManager.swift */,
-				A20086 /* SeedboxManager.swift */,
-				A20033 /* CloudHub.swift */,
 			A20017 /* DownloadQueue.swift */,
 			A20016 /* VideoLibrary.swift */,
 			A20015 /* ThumbnailCache.swift */,
@@ -443,16 +388,6 @@
 	A50021 /* RemoteFiles */ = {
 		isa = PBXGroup;
 		children = (
-			A20108 /* RemoteFileModels.swift */,
-			A20109 /* RemotePath.swift */,
-			A20110 /* RemoteFileClient.swift */,
-			A20111 /* RemoteFileTextPolicy.swift */,
-			A20112 /* RcloneRemoteFileClient.swift */,
-			A20113 /* WebDAVRemoteFileClient.swift */,
-			A20114 /* SeedboxRemoteFileClient.swift */,
-			A20115 /* RemoteFilesViewModel.swift */,
-			A20117 /* RemoteFileEditorView.swift */,
-			A20118 /* RemoteFilesDisplay.swift */,
 		);
 		path = RemoteFiles;
 		sourceTree = "<group>";
@@ -462,10 +397,6 @@
 		children = (
 			A20071 /* SettingsView.swift */,
 			A20145 /* SettingsComponents.swift */,
-			A20147 /* WebDAVFolderPickerView.swift */,
-			A20087 /* SettingsDependencyState.swift */,
-			A20088 /* SettingsDependencyStore.swift */,
-			A20129 /* RcloneRemoteSetup.swift */,
 		);
 		path = Settings;
 		sourceTree = "<group>";
@@ -507,8 +438,6 @@
 			A20081 /* DownloadJobs.swift */,
 			A20140 /* LocalDownloadJob.swift */,
 			A20141 /* MegaDownloadJob.swift */,
-			A20142 /* GDriveDownloadJob.swift */,
-			A20143 /* SeedboxDownloadJob.swift */,
 			A20082 /* DirectDownloader.swift */,
 			A20083 /* YtDlpRunner.swift */,
 			A20084 /* HLSDownloader.swift */,
@@ -541,7 +470,6 @@
 			T20002 /* DownloadResolutionTests.swift */,
 			T20003 /* DownloadQueueProjectionTests.swift */,
 			T20004 /* ProgressParserTests.swift */,
-			T20005 /* SettingsDependencyStateTests.swift */,
 			T20006 /* ThumbnailCacheTests.swift */,
 			T20007 /* LibraryThumbnailResolverTests.swift */,
 			T20008 /* HomeURLInputModelTests.swift */,
@@ -552,17 +480,11 @@
 			T20013 /* DownloadQueueResumeTests.swift */,
 			T20033 /* ExtractionPulseTests.swift */,
 			T20014 /* FeedFavoritesTests.swift */,
-			T20015 /* RemotePathTests.swift */,
-			T20016 /* RcloneRemoteFileParserTests.swift */,
-			T20017 /* WebDAVRemoteFileParserTests.swift */,
-			T20018 /* RemoteFileTextPolicyTests.swift */,
-			T20019 /* RemoteFilesDisplayTests.swift */,
 			T20020 /* VideoProcessingTests.swift */,
 			T20021 /* ProfileNarrativeFormatterTests.swift */,
 			T20022 /* NavigationGateTests.swift */,
 			T20023 /* PornHubBrowserTests.swift */,
 			T20024 /* DownloadPathsTests.swift */,
-			T20025 /* RcloneRemoteSetupTests.swift */,
 			T20034 /* AppModalLayoutTests.swift */,
 		);
 		path = PMVDLTests;
@@ -748,15 +670,12 @@
 			A10053 /* VidaraExtractor.swift in Sources */,
 			A10055 /* LuluStreamExtractor.swift in Sources */,
 			A10056 /* ProviderLinkExtractor.swift in Sources */,
-			A10033 /* CloudHub.swift in Sources */,
 			A10038 /* VideoProcessor.swift in Sources */,
 			A10041 /* CloudKitManager.swift in Sources */,
 			A10042 /* CloudSyncScheduler.swift in Sources */,
 			A10043 /* WidgetDataStore.swift in Sources */,
 			A10047 /* ActiveWorkTracker.swift in Sources */,
 				A10008 /* MegaManager.swift in Sources */,
-				A10011 /* GDriveManager.swift in Sources */,
-				A10086 /* SeedboxManager.swift in Sources */,
 			A10052 /* DownloadManager.swift in Sources */,
 			A10054 /* DownloadProgressDelegate.swift in Sources */,
 			A10057 /* StreamTapeExtractor.swift in Sources */,
@@ -773,10 +692,6 @@
 			A10068 /* HistoryView.swift in Sources */,
 			A10071 /* SettingsView.swift in Sources */,
 			A10145 /* SettingsComponents.swift in Sources */,
-			A10147 /* WebDAVFolderPickerView.swift in Sources */,
-			A10087 /* SettingsDependencyState.swift in Sources */,
-			A10088 /* SettingsDependencyStore.swift in Sources */,
-			A10129 /* RcloneRemoteSetup.swift in Sources */,
 				A10072 /* DependencySetupPanel.swift in Sources */,
 				A10073 /* VideoResultRow.swift in Sources */,
 				A10090 /* HomeLayoutMetrics.swift in Sources */,
@@ -809,16 +724,6 @@
 			A10105 /* FavoritesDisplay.swift in Sources */,
 			A10106 /* FavoritesView.swift in Sources */,
 			A10107 /* FavoriteCardView.swift in Sources */,
-			A10108 /* RemoteFileModels.swift in Sources */,
-			A10109 /* RemotePath.swift in Sources */,
-			A10110 /* RemoteFileClient.swift in Sources */,
-			A10111 /* RemoteFileTextPolicy.swift in Sources */,
-			A10112 /* RcloneRemoteFileClient.swift in Sources */,
-			A10113 /* WebDAVRemoteFileClient.swift in Sources */,
-			A10114 /* SeedboxRemoteFileClient.swift in Sources */,
-			A10115 /* RemoteFilesViewModel.swift in Sources */,
-			A10117 /* RemoteFileEditorView.swift in Sources */,
-			A10118 /* RemoteFilesDisplay.swift in Sources */,
 			A10074 /* String+Parsing.swift in Sources */,
 			A10075 /* NetworkConstants.swift in Sources */,
 			A10076 /* Logging.swift in Sources */,
@@ -829,8 +734,6 @@
 			A10081 /* DownloadJobs.swift in Sources */,
 			A10140 /* LocalDownloadJob.swift in Sources */,
 			A10141 /* MegaDownloadJob.swift in Sources */,
-			A10142 /* GDriveDownloadJob.swift in Sources */,
-			A10143 /* SeedboxDownloadJob.swift in Sources */,
 			A10082 /* DirectDownloader.swift in Sources */,
 			A10083 /* YtDlpRunner.swift in Sources */,
 			A10084 /* HLSDownloader.swift in Sources */,
@@ -846,7 +749,6 @@
 			T10002 /* DownloadResolutionTests.swift in Sources */,
 			T10003 /* DownloadQueueProjectionTests.swift in Sources */,
 			T10004 /* ProgressParserTests.swift in Sources */,
-			T10005 /* SettingsDependencyStateTests.swift in Sources */,
 			T10006 /* ThumbnailCacheTests.swift in Sources */,
 			T10007 /* LibraryThumbnailResolverTests.swift in Sources */,
 			T10008 /* HomeURLInputModelTests.swift in Sources */,
@@ -857,17 +759,11 @@
 			T10013 /* DownloadQueueResumeTests.swift in Sources */,
 			T10033 /* ExtractionPulseTests.swift in Sources */,
 			T10014 /* FeedFavoritesTests.swift in Sources */,
-			T10015 /* RemotePathTests.swift in Sources */,
-			T10016 /* RcloneRemoteFileParserTests.swift in Sources */,
-			T10017 /* WebDAVRemoteFileParserTests.swift in Sources */,
-			T10018 /* RemoteFileTextPolicyTests.swift in Sources */,
-			T10019 /* RemoteFilesDisplayTests.swift in Sources */,
 			T10020 /* VideoProcessingTests.swift in Sources */,
 			T10021 /* ProfileNarrativeFormatterTests.swift in Sources */,
 			T10022 /* NavigationGateTests.swift in Sources */,
 			T10023 /* PornHubBrowserTests.swift in Sources */,
 			T10024 /* DownloadPathsTests.swift in Sources */,
-			T10025 /* RcloneRemoteSetupTests.swift in Sources */,
 			T10034 /* AppModalLayoutTests.swift in Sources */,
 		);
 		runOnlyForDeploymentPostprocessing = 0;
@@ -905,6 +801,7 @@
 			MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 			ONLY_ACTIVE_ARCH = YES;
 			PRODUCT_BUNDLE_IDENTIFIER = com.pmvdl.app;
+			PRODUCT_MODULE_NAME = VidDL;
 			SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG";
 			SWIFT_VERSION = 5.0;
 		};
@@ -929,6 +826,7 @@
 			MACOSX_DEPLOYMENT_TARGET = 14.0;
 			MTL_ENABLE_DEBUG_INFO = NO;
 			PRODUCT_BUNDLE_IDENTIFIER = com.pmvdl.app;
+			PRODUCT_MODULE_NAME = VidDL;
 			SWIFT_COMPILATION_MODE = wholemodule;
 			SWIFT_OPTIMIZATION_LEVEL = "-O";
 			SWIFT_VERSION = 5.0;

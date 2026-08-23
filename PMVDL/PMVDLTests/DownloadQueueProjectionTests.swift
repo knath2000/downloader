@@ -533,6 +533,43 @@ final class DownloadQueueProjectionTests: XCTestCase {
         XCTAssertEqual(item.statusMessage, "Temporary connection issue. Retrying in 5s…")
     }
 
+    func testSupportedDestinationsExposeOnlyLocalAndMega() {
+        XCTAssertEqual(CloudTarget.allCases, [.local, .mega])
+        XCTAssertEqual(DestinationAvailabilityPolicy.newJobTargets, [.local, .mega])
+        XCTAssertTrue(CloudTarget.local.isSupported)
+        XCTAssertTrue(CloudTarget.mega.isSupported)
+        XCTAssertFalse(CloudTarget.gdrive.isSupported)
+        XCTAssertFalse(CloudTarget.seedbox.isSupported)
+    }
+
+    @MainActor
+    func testRemovedDestinationMigrationPreservesRowButDisablesRetry() {
+        var item = DownloadQueueItem(
+            url: "https://example.test/video.mp4",
+            quality: "Video",
+            targetCloud: .gdrive,
+            retryPayload: DownloadRetryPayload(
+                resolution: makeRetryTestResolution(),
+                target: .gdrive,
+                context: DownloadJobContext(megaRemotePath: "/").retryContext,
+                gdriveMegaRemotePath: nil
+            )
+        )
+        item.status = .downloading
+        item.automaticRetryAfter = Date().addingTimeInterval(60)
+
+        let migrated = DownloadQueue.migratingRemovedDestination(item)
+
+        XCTAssertEqual(migrated.id, item.id)
+        XCTAssertNil(migrated.retryPayload)
+        XCTAssertNil(migrated.automaticRetryAfter)
+        XCTAssertFalse(migrated.canRetry)
+        guard case .failed(let message) = migrated.status else {
+            return XCTFail("Expected a terminal failed row")
+        }
+        XCTAssertTrue(message.contains("no longer supported"))
+    }
+
     @MainActor
     private func assertQueueItemIsActive(id: UUID, message: String, file: StaticString = #filePath, line: UInt = #line) {
         guard let item = DownloadQueue.shared.item(id: id),

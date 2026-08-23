@@ -47,13 +47,6 @@ class CloudKitManager: ObservableObject {
             // Save settings
             let settings = CKRecord(recordType: Self.settingsRecordType, recordID: CKRecord.ID(recordName: "mainSettings"))
             settings["megaRemotePath"] = UserDefaults.standard.string(forKey: "megaRemotePath")
-            settings["gdriveRemoteName"] = UserDefaults.standard.string(forKey: "gdriveRemoteName")
-            settings["gdriveRemotePath"] = UserDefaults.standard.string(forKey: "gdriveRemotePath")
-            settings["seedboxTransferMode"] = UserDefaults.standard.string(forKey: "seedboxTransferMode")
-            settings["seedboxRemoteName"] = UserDefaults.standard.string(forKey: "seedboxRemoteName")
-            settings["seedboxRemotePath"] = UserDefaults.standard.string(forKey: "seedboxRemotePath")
-            settings["seedboxWebdavURL"] = UserDefaults.standard.string(forKey: "seedboxWebdavURL")
-            settings["seedboxWebdavUser"] = UserDefaults.standard.string(forKey: "seedboxWebdavUser")
             settings["license_pro_active"] = LicenseManager.shared.isPro as CKRecordValue
             settings["modifiedAt"] = Date() as CKRecordValue
             try await database.save(settings)
@@ -95,27 +88,6 @@ class CloudKitManager: ObservableObject {
             if let settings = try? await database.record(for: settingsID) {
                 if let v = settings["megaRemotePath"] as? String {
                     UserDefaults.standard.set(v, forKey: "megaRemotePath")
-                }
-                if let v = settings["gdriveRemoteName"] as? String {
-                    UserDefaults.standard.set(v, forKey: "gdriveRemoteName")
-                }
-                if let v = settings["gdriveRemotePath"] as? String {
-                    UserDefaults.standard.set(v, forKey: "gdriveRemotePath")
-                }
-                if let v = settings["seedboxTransferMode"] as? String {
-                    UserDefaults.standard.set(v, forKey: "seedboxTransferMode")
-                }
-                if let v = settings["seedboxRemoteName"] as? String {
-                    UserDefaults.standard.set(v, forKey: "seedboxRemoteName")
-                }
-                if let v = settings["seedboxRemotePath"] as? String {
-                    UserDefaults.standard.set(v, forKey: "seedboxRemotePath")
-                }
-                if let v = settings["seedboxWebdavURL"] as? String {
-                    UserDefaults.standard.set(v, forKey: "seedboxWebdavURL")
-                }
-                if let v = settings["seedboxWebdavUser"] as? String {
-                    UserDefaults.standard.set(v, forKey: "seedboxWebdavUser")
                 }
             }
 

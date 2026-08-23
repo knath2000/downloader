@@ -116,13 +116,6 @@ struct LustreAgentCreateJobRequest: Codable {
     let destination: String
 }
 
-struct LustreAgentGoogleDriveProfile: Codable {
-    let id: UUID
-    let name: String
-    let remoteName: String
-    let remotePath: String
-}
-
 enum LustreAgentClientError: LocalizedError {
     case unavailable
     case invalidResponse
@@ -231,18 +224,6 @@ struct LustreAgentClient {
 
     func removeJob(id: UUID) async throws {
         let _: EmptyEnvelope = try await request(path: "/v1/jobs/\(id.uuidString)", method: "DELETE", body: nil)
-    }
-
-    func googleDriveProfiles() async throws -> [LustreAgentGoogleDriveProfile] {
-        try await request(path: "/v1/destinations/google-drive", method: "GET", body: nil)
-    }
-
-    func connectGoogleDrive(remoteName: String) async throws -> LustreAgentGoogleDriveProfile {
-        try await request(path: "/v1/destinations/google-drive/connect", method: "POST", body: try encoder.encode(["remoteName": remoteName]))
-    }
-
-    func selectGoogleDrive(profileID: UUID, path: String) async throws -> LustreAgentGoogleDriveProfile {
-        try await request(path: "/v1/destinations/google-drive/\(profileID.uuidString)/select", method: "POST", body: try encoder.encode(["path": path]))
     }
 
     private func request<T: Decodable>(path: String, method: String, body: Data?, authenticated: Bool = true) async throws -> T {
@@ -460,8 +441,6 @@ final class LustreAgentController: ObservableObject {
         title: String,
         preferredQualityLabel: String?,
         target: CloudTarget,
-        gdriveRemoteName: String,
-        gdriveRemotePath: String,
         assistedResolution: LustreAgentAssistedResolution? = nil,
         selector: LustreAgentQualitySelector? = nil
     ) async {
@@ -478,17 +457,7 @@ final class LustreAgentController: ObservableObject {
             } else {
                 effectiveAssistance = nil
             }
-            let destination: String
-            if target == .gdrive {
-                let profiles = try await client.googleDriveProfiles()
-                var profile = profiles.first { $0.remoteName == gdriveRemoteName }
-                if profile == nil { profile = try await client.connectGoogleDrive(remoteName: gdriveRemoteName) }
-                guard let connected = profile else { throw LustreAgentClientError.unavailable }
-                let selected = try await client.selectGoogleDrive(profileID: connected.id, path: gdriveRemotePath)
-                destination = "gdrive:\(selected.id.uuidString)"
-            } else {
-                destination = "local"
-            }
+            guard target == .local else { throw RemovedDestinationError.unsupported(target) }
             let request = LustreAgentCreateJobRequest(
                 id: id,
                 sourcePageURL: sourceURL,
@@ -496,7 +465,7 @@ final class LustreAgentController: ObservableObject {
                 preferredQualityLabel: preferredQualityLabel,
                 qualitySelector: selector,
                 assistedResolution: effectiveAssistance,
-                destination: destination
+                destination: "local"
             )
             _ = try await client.queue(request)
             await refresh()
@@ -545,9 +514,7 @@ final class LustreAgentController: ObservableObject {
                     sourcePageURL: payload.sourcePageURL,
                     title: title,
                     preferredQualityLabel: payload.preferredQualityLabel,
-                    target: payload.target,
-                    gdriveRemoteName: payload.context.gdriveRemoteName,
-                    gdriveRemotePath: payload.context.gdriveRemotePath
+                    target: payload.target
                 )
             } catch {
                 DownloadQueue.shared.fail(id: id, message: error.localizedDescription)

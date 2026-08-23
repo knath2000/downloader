@@ -486,15 +486,7 @@ enum LibraryDownloadContext {
     static func current() -> DownloadJobContext {
         let defaults = UserDefaults.standard
         return DownloadJobContext(
-            megaRemotePath: defaults.string(forKey: "megaRemotePath") ?? "/Cloud/VidDL/",
-            gdriveRemoteName: defaults.string(forKey: "gdriveRemoteName") ?? "gdrive",
-            gdriveRemotePath: defaults.string(forKey: "gdriveRemotePath") ?? "VidDL/",
-            seedboxTransferMode: defaults.string(forKey: "seedboxTransferMode") ?? "rclone",
-            seedboxRemoteName: defaults.string(forKey: "seedboxRemoteName") ?? "seedbox",
-            seedboxRemotePath: defaults.string(forKey: "seedboxRemotePath") ?? "/",
-            seedboxWebdavURL: defaults.string(forKey: "seedboxWebdavURL") ?? "",
-            seedboxWebdavUser: defaults.string(forKey: "seedboxWebdavUser") ?? "",
-            seedboxWebdavPassword: SecureStore.string(forKey: "seedboxWebdavPassword") ?? ""
+            megaRemotePath: defaults.string(forKey: "megaRemotePath") ?? "/Cloud/VidDL/"
         )
     }
 

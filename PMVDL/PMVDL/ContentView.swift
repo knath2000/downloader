@@ -7,14 +7,6 @@ struct ContentView: View {
     @StateObject private var activeQueueBadge = DownloadQueueActiveCountProjection(queue: .shared)
     @StateObject private var license = LicenseManager.shared
     @AppStorage("megaRemotePath") var megaRemotePath = "/Cloud/VidDL/"
-    @AppStorage("gdriveRemoteName") var gdriveRemoteName = "gdrive"
-    @AppStorage("gdriveRemotePath") var gdriveRemotePath = "VidDL/"
-    @AppStorage("seedboxTransferMode") var seedboxTransferMode = "rclone"
-    @AppStorage("seedboxRemoteName") var seedboxRemoteName = "seedbox"
-    @AppStorage("seedboxRemotePath") var seedboxRemotePath = "/"
-    @AppStorage("seedboxWebdavURL") var seedboxWebdavURL = ""
-    @AppStorage("seedboxWebdavUser") var seedboxWebdavUser = ""
-    @SecureStringStorage("seedboxWebdavPassword") var seedboxWebdavPassword = ""
     @State private var showUpgradeOverlay = false
     @State private var isLowPowerModeEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
     @State private var lastAccessibleDestination: NavDestination = .home
@@ -166,14 +158,6 @@ struct ContentView: View {
         case .home:
             HomeView(appState: appState,
                      megaRemotePath: megaRemotePath,
-                     gdriveRemoteName: gdriveRemoteName,
-                     gdriveRemotePath: gdriveRemotePath,
-                     seedboxTransferMode: seedboxTransferMode,
-                     seedboxRemoteName: seedboxRemoteName,
-                     seedboxRemotePath: seedboxRemotePath,
-                     seedboxWebdavURL: seedboxWebdavURL,
-                     seedboxWebdavUser: seedboxWebdavUser,
-                     seedboxWebdavPassword: seedboxWebdavPassword,
                      onUpgradeRequired: presentUpgradeOverlay)
                 .padding()
                 .padding(.bottom, floatingTabContentInset)
@@ -185,15 +169,7 @@ struct ContentView: View {
             WatchlistView()
                 .padding(.bottom, floatingTabContentInset)
         case .settings:
-            SettingsView(gdriveRemoteName: $gdriveRemoteName,
-                         gdriveRemotePath: $gdriveRemotePath,
-                         seedboxTransferMode: $seedboxTransferMode,
-                         seedboxRemoteName: $seedboxRemoteName,
-                         seedboxRemotePath: $seedboxRemotePath,
-                         seedboxWebdavURL: $seedboxWebdavURL,
-                         seedboxWebdavUser: $seedboxWebdavUser,
-                         seedboxWebdavPassword: $seedboxWebdavPassword,
-                         onUpgradeRequired: presentUpgradeOverlay)
+            SettingsView(onUpgradeRequired: presentUpgradeOverlay)
                 .padding()
                 .padding(.bottom, floatingTabContentInset)
         }
@@ -286,7 +262,6 @@ struct ContentView: View {
             _ = FeedFavoritesStore.shared
             _ = WatchlistStore.shared
             _ = FeedViewModel.shared
-            _ = SettingsDependencyStore.shared
         }
     }
 

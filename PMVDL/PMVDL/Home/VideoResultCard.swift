@@ -6,13 +6,9 @@ struct VideoResultCard: View {
     let isRetrying: Bool
     let localState: (String) -> UploadState?
     let megaState: (String) -> UploadState?
-    let gdriveState: (String) -> UploadState?
-    let seedboxState: (String) -> UploadState?
     let onRetry: () -> Void
     let onLocal: (String) -> Void
     let onMega: (String) -> Void
-    let onGDrive: (String) -> Void
-    let onSeedbox: (String) -> Void
     let onMultiple: (String, Set<CloudTarget>) -> Void
 
     @ObservedObject private var watchlist = WatchlistStore.shared
@@ -35,8 +31,7 @@ struct VideoResultCard: View {
         switch selectedTarget {
         case .local: return localState(url)
         case .mega: return megaState(url)
-        case .gdrive: return gdriveState(url)
-        case .seedbox: return seedboxState(url)
+        case .gdrive, .seedbox: return nil
         }
     }
 
@@ -52,12 +47,8 @@ struct VideoResultCard: View {
                         result: result,
                         localState: selectedQuality.map { localState($0.url) } ?? nil,
                         megaState: selectedQuality.map { megaState($0.url) } ?? nil,
-                        gdriveState: selectedQuality.map { gdriveState($0.url) } ?? nil,
-                        seedboxState: selectedQuality.map { seedboxState($0.url) } ?? nil,
                         onLocal: onLocal,
-                        onMega: onMega,
-                        onGDrive: onGDrive,
-                        onSeedbox: onSeedbox
+                        onMega: onMega
                     )
                     .padding(.top, 6)
                 }
@@ -233,8 +224,7 @@ struct VideoResultCard: View {
             switch selectedTarget {
             case .local: onLocal(url)
             case .mega: onMega(url)
-            case .gdrive: onGDrive(url)
-            case .seedbox: onSeedbox(url)
+            case .gdrive, .seedbox: return
             }
         } label: {
             Label(selectedTarget.homeActionTitle, systemImage: selectedTarget.icon)
@@ -344,7 +334,7 @@ struct MultiDestinationPicker: View {
     @Binding var selected: Set<CloudTarget>
     let start: () -> Void
 
-    private let destinations: [CloudTarget] = [.gdrive, .seedbox]
+    private let destinations: [CloudTarget] = [.local, .mega]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {

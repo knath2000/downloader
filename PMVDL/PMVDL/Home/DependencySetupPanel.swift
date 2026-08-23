@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct DependencySetupPanel: View {
-    let gdriveRemoteName: String
     @State private var checks: [DependencyCheck] = []
 
     private var actionableChecks: [DependencyCheck] {
@@ -44,15 +43,11 @@ struct DependencySetupPanel: View {
     }
 
     private func refresh() async {
-        let remoteName = gdriveRemoteName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let resolvedRemoteName = remoteName.isEmpty ? "gdrive" : remoteName
         let agentReady = LustreAgentController.shared.health?.status == "ok"
         let agentDetail = LustreAgentController.shared.lastError ?? "Persistent downloads continue after LustreStudio quits"
         let next = await Task.detached {
             let ytDlpReady = ScraperEngine.isYTDLPAvailable
             let ffmpegReady = VideoProcessor.findFFmpeg() != nil
-            let rcloneReady = GDriveManager.isAvailable
-            let gdriveReady = rcloneReady && GDriveManager.isConfigured(remoteName: resolvedRemoteName)
 
             return [
                 DependencyCheck(
@@ -78,14 +73,6 @@ struct DependencySetupPanel: View {
                     status: agentReady ? "Running" : "Needs repair",
                     command: nil,
                     isReady: agentReady
-                ),
-                DependencyCheck(
-                    id: "gdrive",
-                    title: "Google Drive",
-                    detail: "rclone remote named \(resolvedRemoteName)",
-                    status: gdriveReady ? "Configured" : (rcloneReady ? "Configure" : "Missing"),
-                    command: gdriveReady ? nil : (rcloneReady ? "rclone config" : "brew install rclone"),
-                    isReady: gdriveReady
                 )
             ]
         }.value

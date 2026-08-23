@@ -302,7 +302,6 @@ class LicenseManager: ObservableObject {
     }
 
     private func migrateLegacyState() {
-        SecureStore.migrateLegacyString("seedboxWebdavPassword", to: "seedboxWebdavPassword")
         for key in Self.legacyKeys { UserDefaults.standard.removeObject(forKey: key) }
     }
 

@@ -1,5 +1,24 @@
 import SwiftUI
 
+enum RemovedDestinationPreferences {
+    private static let keys = [
+        "gdriveRemoteName",
+        "gdriveRemotePath",
+        "seedboxTransferMode",
+        "seedboxRemoteName",
+        "seedboxRemotePath",
+        "seedboxWebdavURL",
+        "seedboxWebdavUser",
+        "seedboxWebdavAllowSelfSigned",
+        "seedboxConcurrentTransferLimit"
+    ]
+
+    static func clear(defaults: UserDefaults = .standard) {
+        keys.forEach(defaults.removeObject(forKey:))
+        SecureStore.remove(forKey: "seedboxWebdavPassword")
+    }
+}
+
 @main
 struct LustreStudioApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -56,7 +75,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
             } else if url.scheme == "pmvdl", url.host == "license-success" {
-                let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
                 Task { @MainActor in
                     LicenseManager.shared.handleLicenseSuccess(email: nil)
                     AppStateManager.shared.select(.settings)
@@ -68,6 +86,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
+        RemovedDestinationPreferences.clear()
         Task.detached(priority: .utility) {
             MegaManager.cleanupTempFiles()
         }
@@ -77,7 +96,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 _ = LicenseManager.shared
             }
             await LicenseManager.shared.bootstrap()
-            await SeedboxManager.reconnectConfiguredWebDAV()
         }
         Task {
             async let queueRestore: Void = DownloadQueue.shared.restorePersistedQueue()
@@ -91,8 +109,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 completedUploads: HistoryManager.shared.completedUploads,
                 queueItems: DownloadQueue.shared.queue
             )
-            let seedboxWebdavPassword = SecureStore.string(forKey: "seedboxWebdavPassword") ?? ""
-            DownloadQueue.shared.resumeInterruptedOnLaunch(seedboxWebdavPassword: seedboxWebdavPassword)
+            DownloadQueue.shared.resumeInterruptedOnLaunch()
         }
         SleepPreventionManager.shared.start()
         Task { @MainActor in

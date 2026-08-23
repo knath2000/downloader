@@ -97,7 +97,6 @@ struct HomeCompactQueue: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let displayMode: HomeCompactQueueDisplayMode
-    let seedboxWebdavPassword: String
     let onUpgradeRequired: () -> Void
     var onClose: (() -> Void)? = nil
     var isEmbedded = false
@@ -708,7 +707,7 @@ struct HomeCompactQueue: View {
         DownloadJobRunner.shared.startResume(
             queueId: item.id,
             payload: payload,
-            seedboxWebdavPassword: seedboxWebdavPassword
+            seedboxWebdavPassword: ""
         )
     }
 
@@ -725,19 +724,19 @@ struct HomeCompactQueue: View {
                 DownloadJobRunner.shared.startRetry(
                     queueId: item.id,
                     payload: payload,
-                    seedboxWebdavPassword: seedboxWebdavPassword
+                    seedboxWebdavPassword: ""
                 )
             case .paused:
                 DownloadJobRunner.shared.startResume(
                     queueId: item.id,
                     payload: payload,
-                    seedboxWebdavPassword: seedboxWebdavPassword
+                    seedboxWebdavPassword: ""
                 )
             case .pending:
                 DownloadJobRunner.shared.startQueuedWithFreshSource(
                     queueId: item.id,
                     payload: payload,
-                    seedboxWebdavPassword: seedboxWebdavPassword
+                    seedboxWebdavPassword: ""
                 )
             case .waiting, .downloading, .verifying, .uploading, .processing, .completed:
                 continue
@@ -778,7 +777,7 @@ struct HomeCompactQueue: View {
             DownloadJobRunner.shared.startRetry(
                 queueId: item.id,
                 payload: payload,
-                seedboxWebdavPassword: seedboxWebdavPassword
+                seedboxWebdavPassword: ""
             )
         }
     }
@@ -801,7 +800,7 @@ struct HomeCompactQueue: View {
     }
 
     private func startNow(_ item: DownloadQueueItem) {
-        guard queue.startNow(item, seedboxWebdavPassword: seedboxWebdavPassword) else { return }
+        guard queue.startNow(item, seedboxWebdavPassword: "") else { return }
     }
 
     private func showInFinder(_ item: DownloadQueueItem) {

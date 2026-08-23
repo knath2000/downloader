@@ -5,12 +5,8 @@ struct VideoResultRow: View {
     let result: ExtractResult
     let localState: UploadState?
     let megaState: UploadState?
-    let gdriveState: UploadState?
-    let seedboxState: UploadState?
     let onLocal: (String) -> Void
     let onMega: (String) -> Void
-    let onGDrive: (String) -> Void
-    let onSeedbox: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -86,10 +82,6 @@ struct VideoResultRow: View {
                         .buttonStyle(.borderedProminent)
                     Button("Mega") { onMega(mp4) }
                         .buttonStyle(.bordered)
-                    Button("GDrive") { onGDrive(mp4) }
-                        .buttonStyle(.bordered)
-                    Button("Seedbox") { onSeedbox(mp4) }
-                        .buttonStyle(.bordered)
                     Button("Copy") { copyToClipboard(mp4) }
                         .buttonStyle(.bordered)
                 }
@@ -105,10 +97,6 @@ struct VideoResultRow: View {
                             Button("Local") { onLocal(quality.url) }
                                 .buttonStyle(.borderedProminent)
                             Button("Mega") { onMega(quality.url) }
-                                .buttonStyle(.bordered)
-                            Button("GDrive") { onGDrive(quality.url) }
-                                .buttonStyle(.bordered)
-                            Button("Seedbox") { onSeedbox(quality.url) }
                                 .buttonStyle(.bordered)
                             Button("Copy") { copyToClipboard(quality.url) }
                                 .buttonStyle(.bordered)
@@ -126,12 +114,6 @@ struct VideoResultRow: View {
         }
         if let megaState {
             stateLine(label: "Mega", state: megaState)
-        }
-        if let gdriveState {
-            stateLine(label: "GDrive", state: gdriveState)
-        }
-        if let seedboxState {
-            stateLine(label: "Seedbox", state: seedboxState)
         }
     }
 

@@ -3,7 +3,6 @@ import Foundation
 
 enum AppPreferenceKeys {
     static let preventSleepWhileRunning = "preventSleepWhileRunning"
-    static let seedboxConcurrentTransferLimit = "seedboxConcurrentTransferLimit"
 }
 
 enum SleepPreventionPolicy {
@@ -137,16 +136,11 @@ struct DownloadQueueCapacity: Equatable {
     let waiting: Int
     let ready: Int
     let limit: Int
-    let seedboxActive: Int
-    let seedboxBytesPerSecond: Double
 
     init(items: [DownloadQueueItem], limit: Int) {
         active = items.filter { SleepPreventionPolicy.isRunningStatus($0.status) }.count
         waiting = items.filter { $0.status == .waiting }.count
         ready = items.filter { $0.status == .pending }.count
-        let seedboxItems = items.filter { $0.targetCloud == .seedbox && SleepPreventionPolicy.isRunningStatus($0.status) }
-        seedboxActive = seedboxItems.count
-        seedboxBytesPerSecond = seedboxItems.compactMap(\.bytesPerSecond).reduce(0, +)
         self.limit = limit
     }
 
@@ -160,12 +154,6 @@ class DownloadQueue: ObservableObject {
     @Published var queue: [DownloadQueueItem] = []
     @Published private(set) var isRestoring = true
     private var maxConcurrent: Int { ProFeatureGate.concurrentDownloadLimit }
-    private var seedboxConcurrentLimit: Int {
-        guard ProFeatureGate.isPro,
-              UserDefaults.standard.string(forKey: "seedboxTransferMode") == "webdav" else { return maxConcurrent }
-        let configured = UserDefaults.standard.integer(forKey: AppPreferenceKeys.seedboxConcurrentTransferLimit)
-        return min(max(configured == 0 ? maxConcurrent : configured, maxConcurrent), 8)
-    }
 
     private let userDefaultsKey = "downloadQueue"
     private let restartMessage = "Resuming after app restart…"
@@ -177,7 +165,7 @@ class DownloadQueue: ObservableObject {
     private var isBatchingAgentProjection = false
     private var agentProjectionNeedsSave = false
 
-    var concurrentLimit: Int { max(maxConcurrent, seedboxConcurrentLimit) }
+    var concurrentLimit: Int { maxConcurrent }
 
     var capacity: DownloadQueueCapacity {
         DownloadQueueCapacity(items: queue, limit: concurrentLimit)
@@ -193,7 +181,9 @@ class DownloadQueue: ObservableObject {
         }.value
 
         var didNormalizeURLs = false
+        let didMigrateRemovedDestinations = decoded.contains { !$0.targetCloud.isSupported }
         let restored = decoded.map { item in
+            let item = Self.migratingRemovedDestination(item)
             guard item.itemKind != .extraction,
                   let sourcePageURL = item.retryPayload?.sourcePageURL,
                   item.url != sourcePageURL else { return item }
@@ -207,9 +197,20 @@ class DownloadQueue: ObservableObject {
         queue = restored.filter { !currentIDs.contains($0.id) } + queue
         let didNormalize = normalizeInterruptedItemsForLaunch()
         isRestoring = false
-        if didNormalizeURLs || didNormalize {
+        if didMigrateRemovedDestinations || didNormalizeURLs || didNormalize {
             persistQueueSnapshot()
         }
+    }
+
+    static func migratingRemovedDestination(_ item: DownloadQueueItem) -> DownloadQueueItem {
+        guard !item.targetCloud.isSupported else { return item }
+        var unsupported = item
+        let message = "\(item.targetCloud.displayName) is no longer supported. Create a new Local or Mega download."
+        unsupported.status = .failed(message)
+        unsupported.statusMessage = message
+        unsupported.retryPayload = nil
+        unsupported.automaticRetryAfter = nil
+        return unsupported
     }
 
     func save() {
@@ -261,9 +262,6 @@ class DownloadQueue: ObservableObject {
                     queue[i].statusMessage = restartMessage
                     if wasUploading {
                         queue[i].uploadStarted = true
-                    }
-                    if queue[i].targetCloud == .seedbox {
-                        queue[i].resumeStrategy = .remoteSafeNewFile
                     }
                 } else {
                     let message = "Interrupted and cannot resume because retry metadata is missing."
@@ -327,7 +325,14 @@ class DownloadQueue: ObservableObject {
     }
 
     func projectAgentJob(_ job: LustreAgentJob) {
-        let target: CloudTarget = job.destination.hasPrefix("gdrive:") ? .gdrive : .local
+        guard !job.destination.hasPrefix("gdrive:") else {
+            if let index = queue.firstIndex(where: { $0.id == job.id }) {
+                queue[index] = Self.migratingRemovedDestination(queue[index])
+                save()
+            }
+            return
+        }
+        let target: CloudTarget = .local
         if queue.first(where: { $0.id == job.id }) == nil {
             _ = addAgentOwned(
                 id: job.id,

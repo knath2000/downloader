@@ -185,8 +185,6 @@ struct WatchlistView: View {
     @State private var selected = Set<UUID>()
     @State private var downloadTarget: CloudTarget = .local
     @State private var removedItem: WatchlistItem?
-    @AppStorage("gdriveRemoteName") private var gdriveRemoteName = "gdrive"
-    @AppStorage("gdriveRemotePath") private var gdriveRemotePath = "VidDL/"
 
     private var providers: [String] {
         ["All providers"] + Set(store.items.map(\.provider)).sorted()
@@ -428,11 +426,7 @@ struct WatchlistView: View {
     }
 
     private func download(_ items: [WatchlistItem]) {
-        let context = DownloadJobContext(
-            megaRemotePath: "",
-            gdriveRemoteName: gdriveRemoteName,
-            gdriveRemotePath: gdriveRemotePath
-        )
+        let context = DownloadJobContext(megaRemotePath: "")
         for item in items {
             _ = DownloadJobRunner.shared.queue(
                 sourcePageURL: item.sourcePageURL,

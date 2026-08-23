@@ -1356,12 +1356,7 @@ struct PornHubBrowserWebView: NSViewRepresentable {
         }
 
         private func queueExtractedQuality(item: FeedItem, provider: String, quality: LustreAgentQuality) {
-            let defaults = UserDefaults.standard
-            let context = DownloadJobContext(
-                megaRemotePath: "",
-                gdriveRemoteName: defaults.string(forKey: "gdriveRemoteName") ?? "gdrive",
-                gdriveRemotePath: defaults.string(forKey: "gdriveRemotePath") ?? "VidDL/"
-            )
+            let context = DownloadJobContext(megaRemotePath: "")
             let selector = LustreAgentQualitySelector(
                 provider: provider,
                 mediaKind: quality.mediaKind,

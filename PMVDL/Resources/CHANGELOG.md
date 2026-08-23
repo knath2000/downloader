@@ -1,6 +1,7 @@
 # LustreStudio Changelog
 
 ## Unreleased
+- Removed Google Drive, Seedbox, WebDAV, SFTP, and all rclone-backed destinations; Local and Mega remain supported
 - Rebranded the visible app, bundle, packaging, and licensing experience as LustreStudio while retaining compatibility identities and persisted paths
 - Added a persistent macOS menu-bar download monitor with transfer progress, pause/resume, quick-open, and quit controls
 - Added concurrent Google Drive and Seedbox transfers from a single extracted result

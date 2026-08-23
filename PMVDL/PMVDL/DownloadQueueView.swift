@@ -538,10 +538,6 @@ private struct DownloadCapacityStrip: View {
             if capacity.ready > 0 {
                 Text("\(capacity.ready) ready to start")
             }
-            if capacity.seedboxActive > 0, capacity.seedboxBytesPerSecond > 0 {
-                Text("Seedbox \(DownloadStatusFormatting.formatBytes(Int64(capacity.seedboxBytesPerSecond)))/s")
-                    .foregroundStyle(Theme.skyBlue)
-            }
             Spacer()
             Text(capacity.availableSlots > 0 ? "\(capacity.availableSlots) slot\(capacity.availableSlots == 1 ? "" : "s") available" : "All slots allocated")
                 .foregroundStyle(Theme.textSecondary)

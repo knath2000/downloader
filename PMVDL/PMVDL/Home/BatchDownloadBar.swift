@@ -5,8 +5,7 @@ extension CloudTarget {
         switch self {
         case .local: return "Local"
         case .mega: return "Mega"
-        case .gdrive: return "GDrive"
-        case .seedbox: return "Seedbox"
+        case .gdrive, .seedbox: return "Unavailable"
         }
     }
 
@@ -14,8 +13,7 @@ extension CloudTarget {
         switch self {
         case .local: return "Download All to Local"
         case .mega: return "Send All to Mega"
-        case .gdrive: return "Send All to GDrive"
-        case .seedbox: return "Send All to Seedbox"
+        case .gdrive, .seedbox: return "Destination Unavailable"
         }
     }
 
@@ -23,8 +21,7 @@ extension CloudTarget {
         switch self {
         case .local: return "Download"
         case .mega: return "Send to Mega"
-        case .gdrive: return "Send to GDrive"
-        case .seedbox: return "Send to Seedbox"
+        case .gdrive, .seedbox: return "Destination Unavailable"
         }
     }
 }

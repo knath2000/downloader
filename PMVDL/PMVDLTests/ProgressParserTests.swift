@@ -20,11 +20,4 @@ final class ProgressParserTests: XCTestCase {
         XCTAssertTrue(message?.contains("25.0%") == true)
     }
 
-    func testRcloneProgressParser() {
-        let percent = DownloadProgressParsers.rclonePercent(
-            from: "Transferred:      10 MiB / 20 MiB, 50%, 1 MiB/s"
-        )
-
-        XCTAssertEqual(percent, 50)
-    }
 }

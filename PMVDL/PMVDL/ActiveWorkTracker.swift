@@ -8,11 +8,7 @@ class ActiveWorkTracker: ObservableObject {
     static let shared = ActiveWorkTracker()
 
     @Published var megaUploads: [String: UploadState] = [:]
-    @Published var gdriveUploads: [String: UploadState] = [:]
-    @Published var seedboxUploads: [String: UploadState] = [:]
     @Published var localDownloads: [String: UploadState] = [:]
-    /// Maps video source URL → remote Mega path (e.g. "/Cloud/VidDL/viddl_abc12345.mp4")
-    /// for auto-deletion after successful GDrive upload.
     @Published var megaFilenames: [String: String] = [:]
     @Published var isBatchDownloading = false
     @Published var batchProgress = ""
@@ -22,16 +18,12 @@ class ActiveWorkTracker: ObservableObject {
     /// Clear upload states and mega filename tracking for URLs that were part of a new extraction.
     func clear(except urls: Set<String>) {
         megaUploads = megaUploads.filter { urls.contains($0.key) }
-        gdriveUploads = gdriveUploads.filter { urls.contains($0.key) }
-        seedboxUploads = seedboxUploads.filter { urls.contains($0.key) }
         localDownloads = localDownloads.filter { urls.contains($0.key) }
         megaFilenames = megaFilenames.filter { urls.contains($0.key) }
     }
 
     func reset() {
         megaUploads = [:]
-        gdriveUploads = [:]
-        seedboxUploads = [:]
         localDownloads = [:]
         megaFilenames = [:]
         isBatchDownloading = false
@@ -40,10 +32,6 @@ class ActiveWorkTracker: ObservableObject {
 
     var activeUploadCount: Int {
         megaUploads.values.filter {
-            if case .uploading = $0 { return true }; return false
-        }.count + gdriveUploads.values.filter {
-            if case .uploading = $0 { return true }; return false
-        }.count + seedboxUploads.values.filter {
             if case .uploading = $0 { return true }; return false
         }.count
     }
@@ -62,14 +50,8 @@ class ActiveWorkTracker: ObservableObject {
             if item.status == .completed, let finalPath = item.finalPath {
                 megaFilenames[item.url] = finalPath
             }
-        case .gdrive:
-            if gdriveUploads[item.url] != state {
-                gdriveUploads[item.url] = state
-            }
-        case .seedbox:
-            if seedboxUploads[item.url] != state {
-                seedboxUploads[item.url] = state
-            }
+        case .gdrive, .seedbox:
+            return
         }
     }
 
@@ -89,10 +71,8 @@ class ActiveWorkTracker: ObservableObject {
             localDownloads[url] = state
         case .mega:
             megaUploads[url] = state
-        case .gdrive:
-            gdriveUploads[url] = state
-        case .seedbox:
-            seedboxUploads[url] = state
+        case .gdrive, .seedbox:
+            return
         }
     }
 }

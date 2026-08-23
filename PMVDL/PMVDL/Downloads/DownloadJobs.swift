@@ -14,8 +14,8 @@ struct DownloadJobContext {
 
     init(
         megaRemotePath: String,
-        gdriveRemoteName: String,
-        gdriveRemotePath: String,
+        gdriveRemoteName: String = "",
+        gdriveRemotePath: String = "",
         seedboxTransferMode: String = "rclone",
         seedboxRemoteName: String = "seedbox",
         seedboxRemotePath: String = "/",
@@ -91,6 +91,17 @@ protocol DownloadJob {
     func run(onEvent: @escaping (JobEvent) -> Void) async throws -> JobCompletion
 }
 
+enum RemovedDestinationError: LocalizedError {
+    case unsupported(CloudTarget)
+
+    var errorDescription: String? {
+        switch self {
+        case .unsupported(let target):
+            return "\(target.displayName) is no longer supported. Choose Local or Mega."
+        }
+    }
+}
+
 @MainActor
 final class DownloadJobRunner {
     static let shared = DownloadJobRunner()
@@ -133,7 +144,8 @@ final class DownloadJobRunner {
 
     @discardableResult
     func queue(resolutions: [DownloadResolution], target: CloudTarget, context: DownloadJobContext) -> [UUID] {
-        resolutions.map { enqueueAgent(resolution: $0, target: target, context: context) }
+        guard target.isSupported else { return [] }
+        return resolutions.map { enqueueAgent(resolution: $0, target: target, context: context) }
     }
 
     @discardableResult
@@ -145,6 +157,7 @@ final class DownloadJobRunner {
         context: DownloadJobContext,
         selector: LustreAgentQualitySelector? = nil
     ) -> UUID {
+        precondition(target.isSupported, "Unsupported download destination")
         let payload = DownloadRetryPayload(
             sourcePageURL: sourcePageURL,
             preferredQualityLabel: preferredQualityLabel,
@@ -168,8 +181,6 @@ final class DownloadJobRunner {
                 title: title,
                 preferredQualityLabel: preferredQualityLabel,
                 target: target,
-                gdriveRemoteName: context.gdriveRemoteName,
-                gdriveRemotePath: context.gdriveRemotePath,
                 selector: selector
             )
         }
@@ -286,9 +297,7 @@ final class DownloadJobRunner {
         let queueItems = DownloadQueue.shared.queue
         for item in queueItems {
             guard !item.isAgentOwned else { continue }
-            let limit = item.targetCloud == .seedbox
-                ? DownloadQueue.shared.concurrentLimit
-                : ProFeatureGate.concurrentDownloadLimit
+            let limit = ProFeatureGate.concurrentDownloadLimit
             guard inFlightCount < limit else { continue }
             guard item.status == .waiting,
                   let queuedRun = queuedRuns[item.id],
@@ -399,8 +408,6 @@ final class DownloadJobRunner {
                 title: resolution.title,
                 preferredQualityLabel: preferredLabel,
                 target: target,
-                gdriveRemoteName: context.gdriveRemoteName,
-                gdriveRemotePath: context.gdriveRemotePath,
                 assistedResolution: assisted,
                 selector: selector
             )
@@ -683,15 +690,8 @@ final class DownloadJobRunner {
         case .mega:
             guard MegaManager.isAvailable else { throw MegaUpError.notInstalled }
             guard MegaManager.isLoggedIn else { throw MegaUpError.notLoggedIn }
-        case .gdrive:
-            guard GDriveManager.isAvailable else { throw GDriveError.notInstalled }
-        case .seedbox:
-            if context.seedboxTransferMode == "webdav" {
-                guard !context.seedboxWebdavURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw SeedboxError.notConfigured }
-            } else {
-                guard SeedboxManager.isRcloneAvailable else { throw SeedboxError.notInstalled }
-                guard !context.seedboxRemoteName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw SeedboxError.notConfigured }
-            }
+        case .gdrive, .seedbox:
+            throw RemovedDestinationError.unsupported(target)
         }
     }
 
@@ -706,20 +706,11 @@ final class DownloadJobRunner {
         target: CloudTarget,
         context: DownloadJobContext
     ) -> DownloadRetryPayload {
-        // Snapshot the GDrive Mega path at first-attempt time so retry doesn't accidentally
-        // delete a different Mega file that was resolved after this job was queued.
-        let gdriveMegaRemotePath: String?
-        if target == .gdrive {
-            gdriveMegaRemotePath = DownloadQueue.shared.latestFinalPath(for: resolution.requestedUrl, target: .mega)
-                ?? ActiveWorkTracker.shared.megaFilenames[resolution.requestedUrl]
-        } else {
-            gdriveMegaRemotePath = nil
-        }
         return DownloadRetryPayload(
             resolution: resolution,
             target: target,
             context: context.retryContext,
-            gdriveMegaRemotePath: gdriveMegaRemotePath
+            gdriveMegaRemotePath: nil
         )
     }
 
@@ -730,16 +721,8 @@ final class DownloadJobRunner {
             return LocalDownloadJob(queueId: queueId, resolution: resolution)
         case .mega:
             return MegaDownloadJob(queueId: queueId, resolution: resolution, remotePath: context.megaRemotePath)
-        case .gdrive:
-            return GDriveDownloadJob(
-                queueId: queueId,
-                resolution: resolution,
-                remoteName: context.gdriveRemoteName,
-                remotePath: context.gdriveRemotePath,
-                megaRemotePath: payload.gdriveMegaRemotePath
-            )
-        case .seedbox:
-            return SeedboxDownloadJob(queueId: queueId, resolution: resolution, context: context)
+        case .gdrive, .seedbox:
+            preconditionFailure("Removed destinations are rejected before job construction")
         }
     }
 
@@ -795,12 +778,6 @@ final class DownloadJobRunner {
             DownloadQueue.shared.remove(id: queueId)
         }
 
-        if completion.notificationDestination != "Local",
-           let item = DownloadQueue.shared.item(id: queueId),
-           item.targetCloud == .gdrive {
-            ActiveWorkTracker.shared.removeMegaFilename(for: resolution.requestedUrl)
-        }
-
         NotificationManager.shared.notifyUploadComplete(
             filename: completion.notificationFilename,
             destination: completion.notificationDestination
@@ -831,10 +808,8 @@ final class DownloadJobRunner {
             return resolution.queueQuality
         case .mega:
             return resolution.isHLS ? "HLS → Mega" : "Mega"
-        case .gdrive:
-            return resolution.isHLS ? "HLS → GDrive" : "GDrive"
-        case .seedbox:
-            return resolution.isHLS ? "HLS → Seedbox" : "Seedbox"
+        case .gdrive, .seedbox:
+            return "Unsupported"
         }
     }
 
@@ -849,17 +824,8 @@ final class DownloadJobRunner {
             }
         case .mega:
             return resolution.isHLS ? "Materializing HLS…" : "Downloading… 0%"
-        case .gdrive:
-            if GDriveDownloadJob.shouldStream(
-                mediaKind: resolution.mediaKind,
-                siteName: resolution.source.siteName,
-                sourcePageUrl: resolution.sourcePageUrl
-            ) {
-                return resolution.isHLS ? "Streaming HLS to Google Drive…" : "Transferring to Google Drive…"
-            }
-            return resolution.isHLS ? "Materializing HLS…" : "Preparing Google Drive upload…"
-        case .seedbox:
-            return resolution.isHLS ? "Streaming HLS to seedbox…" : "Transferring to seedbox…"
+        case .gdrive, .seedbox:
+            return "Destination no longer supported"
         }
     }
 
@@ -885,27 +851,6 @@ struct DownloadQueueProgressProjection: Equatable {
     let progress: Double
     let message: String
     let metrics: DownloadTransferMetrics?
-}
-
-extension ProgressEvent {
-    var seedboxMaterializationProjection: DownloadQueueProgressProjection {
-        switch phase {
-        case .completing:
-            return DownloadQueueProgressProjection(
-                status: .verifying,
-                progress: min(percent, 99),
-                message: "Preparing seedbox upload…",
-                metrics: nil
-            )
-        default:
-            return DownloadQueueProgressProjection(
-                status: phase.queueStatus,
-                progress: percent,
-                message: message,
-                metrics: metrics
-            )
-        }
-    }
 }
 
 extension ProgressEvent.Phase {

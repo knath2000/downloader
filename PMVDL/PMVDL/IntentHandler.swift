@@ -45,42 +45,10 @@ struct DownloadVideoIntent: AppIntent {
             sourcePageURL: url.absoluteString,
             preferredQualityLabel: source.hls.first?.label
         )
-        let context = DownloadJobContext(megaRemotePath: "", gdriveRemoteName: "gdrive", gdriveRemotePath: "VidDL/")
+        let context = DownloadJobContext(megaRemotePath: "")
         _ = await DownloadJobRunner.shared.run(resolution: resolution, target: .local, context: context)
         await LicenseManager.shared.recordSuccessfulDownload()
         return .result(dialog: "Queued with the background Lustre Agent.")
-    }
-}
-
-// MARK: - Intent: Upload to Cloud
-
-struct UploadToCloudIntent: AppIntent {
-    static var title: LocalizedStringResource { "Upload to Cloud" }
-    static var description: IntentDescription { "Upload a local video file to Google Drive." }
-
-    @Parameter(title: "File")
-    var file: IntentFile
-
-    @Parameter(title: "Cloud Provider")
-    var provider: CloudProvider
-
-    static var parameterSummary: any ParameterSummary {
-        Summary("Upload \(\.$file) to \(\.$provider)")
-    }
-
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        // For now, open the file via MegaManager — full implementation would need
-        // the file path. IntentFile exposes fileData or fileURL.
-        return .result(dialog: "Upload started for \(file.filename) to \(provider.rawValue)")
-    }
-}
-
-enum CloudProvider: String, AppEnum, CaseIterable {
-    case gdrive = "Google Drive"
-
-    static var typeDisplayRepresentation: TypeDisplayRepresentation { "Cloud Provider" }
-    static var caseDisplayRepresentations: [CloudProvider: DisplayRepresentation] {
-        [.gdrive: "Google Drive"]
     }
 }
 

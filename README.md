@@ -42,56 +42,25 @@ Install `ffmpeg` for HLS stream assembly and video processing:
 brew install ffmpeg
 ```
 
-## Optional Cloud Upload Setup
+## Download Destinations
 
-Cloud uploads are optional. Current Settings exposes a minimal Cloud Destination tile for Google Drive setup. Click the tile to open the detailed modal after installing `rclone`.
-
-### Google Drive Uploads
-
-Google Drive uploads use `rclone`.
-
-Install `rclone`:
-
-```sh
-brew install rclone
-```
-
-Create a Google Drive remote:
-
-```sh
-rclone config
-```
-
-In the rclone setup flow, choose Google Drive and name the remote:
-
-```text
-gdrive
-```
-
-You can use a different remote name, but it must match the Google Drive remote name in LustreStudio Settings.
-
-The legacy default Google Drive upload path is preserved for compatibility:
-
-```text
-VidDL/
-```
+LustreStudio supports downloads to a local folder and uploads to Mega. Remote
+destinations backed by `rclone` are not supported.
 
 ## First Launch
 
-The Home tab shows a Setup panel when LustreStudio finds missing tools or incomplete cloud setup.
+The Home tab shows a Setup panel when LustreStudio finds missing tools.
 
 The setup panel includes copyable install or setup commands, such as:
 
 ```sh
 brew install yt-dlp
 brew install ffmpeg
-brew install rclone
-rclone config
 ```
 
 After installing or configuring tools, click Refresh Checks to verify them.
 
-Cloud setup, notifications, download options, helper checks, Pro licensing, and app info are configured from minimal Settings tiles. Each tile opens a modal with the detailed controls.
+Notifications, download options, Pro licensing, and app info are configured in Settings.
 
 ## Licensing
 
@@ -105,12 +74,6 @@ Keep command-line dependencies current with:
 
 ```sh
 brew upgrade yt-dlp ffmpeg
-```
-
-If you use cloud uploads, also keep optional upload tools current:
-
-```sh
-brew upgrade rclone
 ```
 
 ## Automation URL Scheme

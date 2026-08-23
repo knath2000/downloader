@@ -519,6 +519,12 @@ struct CompletedUploadItem: Identifiable, Codable, Hashable {
 enum CloudTarget: String, Codable, CaseIterable {
     case local, mega, gdrive, seedbox
 
+    static var allCases: [CloudTarget] { [.local, .mega] }
+
+    var isSupported: Bool {
+        self == .local || self == .mega
+    }
+
     var displayName: String {
         switch self {
         case .local: return "Local"
@@ -539,10 +545,10 @@ enum CloudTarget: String, Codable, CaseIterable {
 }
 
 enum DestinationAvailabilityPolicy {
-    static let newJobTargets: [CloudTarget] = [.local, .gdrive]
+    static let newJobTargets: [CloudTarget] = [.local, .mega]
 
     static func canCreateNewJob(for target: CloudTarget) -> Bool {
-        newJobTargets.contains(target)
+        target == .local
     }
 }
 

@@ -181,14 +181,6 @@ struct HomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.appShellWindowSize) private var appShellWindowSize
     var megaRemotePath: String
-    var gdriveRemoteName: String
-    var gdriveRemotePath: String
-    var seedboxTransferMode: String
-    var seedboxRemoteName: String
-    var seedboxRemotePath: String
-    var seedboxWebdavURL: String
-    var seedboxWebdavUser: String
-    var seedboxWebdavPassword: String
     let onUpgradeRequired: () -> Void
 
     private var layoutWindowSize: CGSize {
@@ -379,7 +371,6 @@ struct HomeView: View {
                 AppModalOverlay(dismiss: { showActiveDownloadsSheet = false }) {
                     HomeCompactQueue(
                         displayMode: .activeModal,
-                        seedboxWebdavPassword: seedboxWebdavPassword,
                         onUpgradeRequired: onUpgradeRequired,
                         onClose: { showActiveDownloadsSheet = false }
                     )
@@ -391,7 +382,6 @@ struct HomeView: View {
                 AppModalOverlay(dismiss: { showQueuedDownloadsSheet = false }) {
                     HomeCompactQueue(
                         displayMode: .queuedModal,
-                        seedboxWebdavPassword: seedboxWebdavPassword,
                         onUpgradeRequired: onUpgradeRequired,
                         onClose: { showQueuedDownloadsSheet = false }
                     )
@@ -403,7 +393,6 @@ struct HomeView: View {
                 AppModalOverlay(dismiss: { showCompletedDownloadsSheet = false }) {
                     HomeCompactQueue(
                         displayMode: .completedModal,
-                        seedboxWebdavPassword: seedboxWebdavPassword,
                         onUpgradeRequired: onUpgradeRequired,
                         onClose: { showCompletedDownloadsSheet = false }
                     )
@@ -531,7 +520,7 @@ struct HomeView: View {
                 onFileDrop: { _ in }
             ))
 
-            DependencySetupPanel(gdriveRemoteName: gdriveRemoteName)
+            DependencySetupPanel()
         }
         .frame(maxWidth: AppShellSurfaceMetrics.mainPanelWidth(for: layoutWindowSize))
         .frame(maxWidth: .infinity)
@@ -750,13 +739,9 @@ struct HomeView: View {
                         isRetrying: retryingResultIndices.contains(index),
                         localState: { tracker.localDownloads[$0] },
                         megaState: { tracker.megaUploads[$0] },
-                        gdriveState: { tracker.gdriveUploads[$0] },
-                        seedboxState: { tracker.seedboxUploads[$0] },
                         onRetry: { retryExtractResult(at: index) },
                         onLocal: { url in Task { await startDownload(url: url, cloud: .local) } },
                         onMega: { url in Task { await startDownload(url: url, cloud: .mega) } },
-                        onGDrive: { url in Task { await startDownload(url: url, cloud: .gdrive) } },
-                        onSeedbox: { url in Task { await startDownload(url: url, cloud: .seedbox) } },
                         onMultiple: { url, destinations in Task { await startDownload(url: url, destinations: destinations) } }
                     )
                 }
@@ -791,15 +776,11 @@ struct HomeView: View {
             isYtDlpReady: ScraperEngine.isYTDLPAvailable,
             localState: { tracker.localDownloads[$0] },
             megaState: { tracker.megaUploads[$0] },
-            gdriveState: { tracker.gdriveUploads[$0] },
-            seedboxState: { tracker.seedboxUploads[$0] },
             onAddURL: addURLFromResultsModal,
             onRetryFailed: retryFailedResults,
             onRetry: retryExtractResult,
             onLocal: { url in Task { await startDownload(url: url, cloud: .local) } },
             onMega: { url in Task { await startDownload(url: url, cloud: .mega) } },
-            onGDrive: { url in Task { await startDownload(url: url, cloud: .gdrive) } },
-            onSeedbox: { url in Task { await startDownload(url: url, cloud: .seedbox) } },
             onMultiple: { url, destinations in Task { await startDownload(url: url, destinations: destinations) } },
             onQueue: { url, target in Task { await queueDownload(url: url, target: target) } },
             onBatchDownload: batchDownloadAll,
@@ -906,9 +887,7 @@ struct HomeView: View {
         isLoading = true
         showResultsSheet = true
         loadProgress = ""
-        tracker.clear(except: Set(tracker.megaUploads.keys)
-            .union(tracker.gdriveUploads.keys)
-            .union(tracker.seedboxUploads.keys))
+        tracker.clear(except: Set(tracker.megaUploads.keys))
         let batchRanges = ExtractionBatchPolicy.ranges(forCount: urls.count)
         loadProgress = "Extracting batch 1 of \(batchRanges.count)…"
 
@@ -1271,17 +1250,7 @@ struct HomeView: View {
     }
 
     private var downloadJobContext: DownloadJobContext {
-        DownloadJobContext(
-            megaRemotePath: megaRemotePath,
-            gdriveRemoteName: gdriveRemoteName,
-            gdriveRemotePath: gdriveRemotePath,
-            seedboxTransferMode: seedboxTransferMode,
-            seedboxRemoteName: seedboxRemoteName,
-            seedboxRemotePath: seedboxRemotePath,
-            seedboxWebdavURL: seedboxWebdavURL,
-            seedboxWebdavUser: seedboxWebdavUser,
-            seedboxWebdavPassword: seedboxWebdavPassword
-        )
+        DownloadJobContext(megaRemotePath: megaRemotePath)
     }
 
     private func fileName(of url: String) -> String {
@@ -1323,10 +1292,8 @@ struct HomeView: View {
             return tracker.localDownloads[url]
         case .mega:
             return tracker.megaUploads[url]
-        case .gdrive:
-            return tracker.gdriveUploads[url]
-        case .seedbox:
-            return tracker.seedboxUploads[url]
+        case .gdrive, .seedbox:
+            return nil
         }
     }
 }
