@@ -769,6 +769,15 @@ final class DownloadJobRunner {
                let fileSize = try? FileManager.default.attributesOfItem(atPath: finalPath)[.size] as? Int64 {
                 VideoLibrary.shared.updateFileSize(forID: libraryItem.id, fileSize: fileSize)
             }
+            // Pre-generate the hover-scrub sprite sheet so the first hover is
+            // instant. Fire-and-forget on a low-priority background task — the
+            // UI degrades gracefully to the static thumbnail if this fails or
+            // is cancelled.
+            let videoURL = URL(fileURLWithPath: finalPath, isDirectory: false)
+            let identity = libraryItem.url
+            Task.detached(priority: .background) {
+                await SpriteGenerator.generateIfNeeded(videoURL: videoURL, identity: identity)
+            }
         }
 
         Task {

@@ -1653,6 +1653,10 @@ private struct LibraryThumbnailGridCard: View, Equatable {
                         Image(nsImage: thumbnail)
                             .resizable()
                             .scaledToFill()
+                            .hoverSpritePreview(
+                                identity: item.url,
+                                videoURL: LocalVideoResolver.localURL(for: item)
+                            )
                     } else {
                         LibraryThumbnailPlaceholder(
                             item: item,

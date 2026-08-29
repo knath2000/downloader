@@ -98,26 +98,11 @@ final class HoverSpriteController: ObservableObject {
 
     /// Run ffmpeg to generate + persist a sprite sheet for `videoURL`. No-op if
     /// ffmpeg is unavailable or generation fails.
+    ///
+    /// Delegates to `SpriteGenerator` so the hover controller and the
+    /// download-complete hook share a single code path.
     private static func generateAndStore(videoURL: URL, identity: String) async {
-        let baseName = ThumbnailCache.spriteCacheName(for: identity)
-        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("VidDL/thumbnails/sprites", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let outputURL = dir.appendingPathComponent("\(baseName).jpg")
-        if FileManager.default.fileExists(atPath: outputURL.path) { return }
-
-        do {
-            let sprite = try await VideoProcessor.generateSpriteSheet(
-                for: videoURL,
-                options: VideoProcessor.SpriteSheetOptions(),
-                outputURL: outputURL
-            )
-            let jpegData = try Data(contentsOf: sprite.url)
-            let metadata = SpriteSheetMetadata(spriteSheet: sprite)
-            try ThumbnailCache.storeSprite(jpegData: jpegData, metadata: metadata, for: identity)
-        } catch {
-            // Silent failure: the UI simply keeps the static thumbnail.
-        }
+        await SpriteGenerator.generateIfNeeded(videoURL: videoURL, identity: identity)
     }
 }
 

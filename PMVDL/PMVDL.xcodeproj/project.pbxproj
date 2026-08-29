@@ -99,6 +99,8 @@
 	A10154 /* SpriteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20154 /* SpriteSheet.swift */; };
 	A10155 /* SpriteSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20155 /* SpriteSheetView.swift */; };
 	A10156 /* HoverSpritePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20156 /* HoverSpritePreview.swift */; };
+	A10157 /* LocalVideoResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20157 /* LocalVideoResolver.swift */; };
+	A10158 /* SpriteGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20158 /* SpriteGenerator.swift */; };
 	A10074 /* String+Parsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20074 /* String+Parsing.swift */; };
 	A10075 /* NetworkConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20075 /* NetworkConstants.swift */; };
 	A10076 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20076 /* Logging.swift */; };
@@ -150,6 +152,8 @@
 	A20154 /* SpriteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpriteSheet.swift; sourceTree = "<group>"; };
 	A20155 /* SpriteSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpriteSheetView.swift; sourceTree = "<group>"; };
 	A20156 /* HoverSpritePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoverSpritePreview.swift; sourceTree = "<group>"; };
+	A20157 /* LocalVideoResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalVideoResolver.swift; sourceTree = "<group>"; };
+	A20158 /* SpriteGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpriteGenerator.swift; sourceTree = "<group>"; };
 	A20010 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 	A20008 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20009 /* MegaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MegaManager.swift; sourceTree = "<group>"; };
@@ -342,6 +346,8 @@
 			A20154 /* SpriteSheet.swift */,
 			A20155 /* SpriteSheetView.swift */,
 			A20156 /* HoverSpritePreview.swift */,
+			A20157 /* LocalVideoResolver.swift */,
+			A20158 /* SpriteGenerator.swift */,
 			A20062 /* Theme.swift */,
 			A20063 /* GlassComponents.swift */,
 			A20134 /* MobileComponents.swift */,
@@ -674,6 +680,8 @@
 			A10154 /* SpriteSheet.swift in Sources */,
 			A10155 /* SpriteSheetView.swift in Sources */,
 			A10156 /* HoverSpritePreview.swift in Sources */,
+			A10157 /* LocalVideoResolver.swift in Sources */,
+			A10158 /* SpriteGenerator.swift in Sources */,
 			A10013 /* AppStateManager.swift in Sources */,
 			A10014 /* NotificationManager.swift in Sources */,
 			A10015 /* ThumbnailCache.swift in Sources */,
