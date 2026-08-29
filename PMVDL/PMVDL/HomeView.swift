@@ -500,6 +500,9 @@ struct HomeView: View {
             HomeStitchCommandPanel(
                 text: $urlText,
                 isLoading: isLoading,
+                loadProgress: loadProgress,
+                extractionSlots: extractionSlots,
+                onCancelExtraction: cancelExtraction,
                 isYtDlpReady: ScraperEngine.isYTDLPAvailable,
                 isPro: ProFeatureGate.isPro,
                 onPaste: pasteFromClipboard,
@@ -1063,6 +1066,13 @@ struct HomeView: View {
             onProgress?("Source failed • stage: page extraction • source: \(url) • reason: \(error.localizedDescription)")
             return ExtractResult(url: url, source: nil, error: error.localizedDescription)
         }
+    }
+
+    @MainActor
+    private func cancelExtraction() {
+        extractionGeneration = UUID()  // Invalidate current generation to cancel all in-flight tasks
+        isLoading = false
+        loadProgress = ""
     }
 
     @MainActor

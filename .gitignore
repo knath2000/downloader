@@ -61,3 +61,7 @@ pmvdl.py.backup
 
 # Local Hermes agent plans
 .hermes/
+
+# Build artifacts (repo-root level)
+build/
+LustreStudio-*-unsigned.app/

@@ -285,7 +285,7 @@ struct FeedView: View {
             )
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(siteTheme.accent.opacity(0.18), lineWidth: 0.8))
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
             .overlay(alignment: .bottom) {
                 if isSelecting {
                     FeedBrowserSelectionBar(
@@ -318,7 +318,7 @@ struct FeedView: View {
                 reservedBottomInset: FeedLayout.browserBottomMargin
             )
         )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
         .onAppear {
             if let browserSite = FeedBrowserSite(host: model.selectedSite) {
                 feedBrowser.configure(site: browserSite)
@@ -458,6 +458,7 @@ private struct FeedBrowserSelectionBar: View {
             .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
             .pressEffect(scale: 0.97)
+            .help("Clear selection")
 
             Button(action: extract) {
                 Label("Extract Selected", systemImage: "bolt.fill")

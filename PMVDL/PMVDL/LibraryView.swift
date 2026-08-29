@@ -36,6 +36,7 @@ struct LibraryView: View {
     @StateObject private var favorites = FeedFavoritesStore.shared
     @StateObject private var pipeline = LibraryPipelineStore.shared
     @StateObject private var thumbnailStore = LibraryThumbnailStore()
+    @StateObject private var selectionManager = SelectionManager.shared
     let onUpgradeRequired: () -> Void
 
     @State private var searchText = ""
@@ -43,71 +44,41 @@ struct LibraryView: View {
     @State private var smartScope: LibrarySmartScope = .all
     @State private var viewMode: LibraryViewMode = .list
     @State private var selectedEntryID: String?
-    @State private var selection: Set<UUID> = []
     @State private var showingBulkDeleteConfirmation = false
     @State private var pendingDeleteItem: LibraryItem?
     @State private var pendingFavoriteRemoval: FeedFavoriteItem?
     @FocusState private var searchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    private var selection: Set<String> {
+        get { selectionManager.selection(for: .library) }
+        set { selectionManager.selectAll(Array(newValue), in: .library) }
+    }
+
+    @State private var cachedTimelineEntries: [LibraryTimelineEntry] = []
+    @State private var cachedPipelineSearchTextByURL: [String: String] = [:]
+    @State private var cachedFilteredEntries: [LibraryTimelineEntry] = []
+    @State private var cachedDuplicateIDs: Set<UUID> = []
+    @State private var cachedDayBuckets: [LibraryTimelineDayBucket] = []
+    @State private var cachedFavoriteURLs: Set<String> = []
+
     init(onUpgradeRequired: @escaping () -> Void = {}) {
         self.onUpgradeRequired = onUpgradeRequired
     }
 
-    private var timelineEntries: [LibraryTimelineEntry] {
-        LibraryTimelineBuilder.entries(
-            libraryItems: library.items,
-            historyItems: history.items,
-            completedUploads: history.completedUploads,
-            favoriteItems: favorites.items
-        )
-    }
-
-    private var favoriteURLs: Set<String> {
-        Set(favorites.items.map { LibraryTimelineBuilder.normalizedURL($0.url) })
-    }
-
-    private var pipelineSearchTextByURL: [String: String] {
-        Dictionary(uniqueKeysWithValues: library.items.map { item in
-            (item.url, pipeline.searchText(for: item.url))
-        })
-    }
-
-    private var filteredEntries: [LibraryTimelineEntry] {
-        LibraryTimelineBuilder.filteredEntries(
-            timelineEntries,
-            query: searchText,
-            filter: timelineFilter,
-            favoriteURLs: favoriteURLs,
-            pipelineSearchTextByURL: pipelineSearchTextByURL
-        ).filter(matchesSmartScope)
-    }
-
-    private var duplicateIDs: Set<UUID> {
-        let grouped = Dictionary(grouping: library.items) { item in
-            LibraryDisplay.title(for: item)
-                .lowercased()
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return Set(grouped.values.filter { $0.count > 1 }.flatMap { $0.map(\.id) })
-    }
-
-    private var dayBuckets: [LibraryTimelineDayBucket] {
-        Dictionary(grouping: filteredEntries) { entry in
-            Calendar.current.startOfDay(for: entry.timestamp)
-        }
-        .map { date, entries in
-            LibraryTimelineDayBucket(date: date, entries: entries.sorted { $0.timestamp > $1.timestamp })
-        }
-        .sorted { $0.date > $1.date }
-    }
+    private var timelineEntries: [LibraryTimelineEntry] { cachedTimelineEntries }
+    private var pipelineSearchTextByURL: [String: String] { cachedPipelineSearchTextByURL }
+    private var filteredEntries: [LibraryTimelineEntry] { cachedFilteredEntries }
+    private var duplicateIDs: Set<UUID> { cachedDuplicateIDs }
+    private var dayBuckets: [LibraryTimelineDayBucket] { cachedDayBuckets }
+    private var favoriteURLs: Set<String> { cachedFavoriteURLs }
 
     private var visibleVideoItems: [LibraryItem] {
         filteredEntries.compactMap(\.libraryItem)
     }
 
     private var selectedItems: [LibraryItem] {
-        library.items.filter { selection.contains($0.id) }
+        library.items.filter { selection.contains($0.id.uuidString) }
     }
 
     private var selectedEntry: LibraryTimelineEntry? {
@@ -116,6 +87,50 @@ struct LibraryView: View {
 
     private var filteredEntryIDs: [String] {
         filteredEntries.map(\.id)
+    }
+
+    private func recomputeCaches() {
+        let newTimelineEntries = LibraryTimelineBuilder.entries(
+            libraryItems: library.items,
+            historyItems: history.items,
+            completedUploads: history.completedUploads,
+            favoriteItems: favorites.items
+        )
+        let newFavoriteURLs = Set(favorites.items.map { LibraryTimelineBuilder.normalizedURL($0.url) })
+        let newPipelineSearchTextByURL = Dictionary(uniqueKeysWithValues: library.items.map { item in
+            (item.url, pipeline.searchText(for: item.url))
+        })
+        let newFilteredEntries = LibraryTimelineBuilder.filteredEntries(
+            newTimelineEntries,
+            query: searchText,
+            filter: timelineFilter,
+            favoriteURLs: newFavoriteURLs,
+            pipelineSearchTextByURL: newPipelineSearchTextByURL
+        ).filter(matchesSmartScope)
+
+        let newDuplicateIDs: Set<UUID> = {
+            let grouped = Dictionary(grouping: library.items) { item in
+                LibraryDisplay.title(for: item)
+                    .lowercased()
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            return Set(grouped.values.filter { $0.count > 1 }.flatMap { $0.map(\.id) })
+        }()
+
+        let newDayBuckets = Dictionary(grouping: newFilteredEntries) { entry in
+            Calendar.current.startOfDay(for: entry.timestamp)
+        }
+        .map { date, entries in
+            LibraryTimelineDayBucket(date: date, entries: entries.sorted { $0.timestamp > $1.timestamp })
+        }
+        .sorted { $0.date > $1.date }
+
+        cachedTimelineEntries = newTimelineEntries
+        cachedFavoriteURLs = newFavoriteURLs
+        cachedPipelineSearchTextByURL = newPipelineSearchTextByURL
+        cachedFilteredEntries = newFilteredEntries
+        cachedDuplicateIDs = newDuplicateIDs
+        cachedDayBuckets = newDayBuckets
     }
 
     var body: some View {
@@ -148,7 +163,7 @@ struct LibraryView: View {
                         withAnimation {
                             library.remove(item)
                             favorites.remove(url: item.url)
-                            selection.remove(item.id)
+                            selectionManager.deselect(item.id.uuidString, in: .library)
                         }
                     }
                     pendingDeleteItem = nil
@@ -191,9 +206,17 @@ struct LibraryView: View {
             .onChange(of: appState.pendingLibraryItemID) { _, newValue in
                 focusLibraryItem(id: newValue)
             }
+            .onChange(of: library.items) { _, _ in recomputeCaches() }
+            .onChange(of: history.items) { _, _ in recomputeCaches() }
+            .onChange(of: history.completedUploads) { _, _ in recomputeCaches() }
+            .onChange(of: favorites.items) { _, _ in recomputeCaches() }
+            .onChange(of: searchText) { _, _ in recomputeCaches() }
+            .onChange(of: timelineFilter) { _, _ in recomputeCaches() }
+            .onChange(of: smartScope) { _, _ in recomputeCaches() }
             .onAppear {
                 syncSelectedEntry()
                 focusLibraryItem(id: appState.pendingLibraryItemID)
+                recomputeCaches()
             }
             .background(searchShortcut)
     }
@@ -222,7 +245,7 @@ struct LibraryView: View {
                 )
                 .padding(.horizontal, 12)
                 .padding(.top, AppShellSurfaceMetrics.appModalBackdropInset)
-                .padding(.bottom, selection.isEmpty ? 92 : 132)
+                .padding(.bottom, selectionManager.selection(for: .library).isEmpty ? 92 : 132)
         }
     }
 
@@ -239,6 +262,7 @@ struct LibraryView: View {
             canRefreshThumbnails: !visibleVideoItems.isEmpty,
             searchFocused: $searchFocused,
             refreshAction: regenerateAllThumbnails,
+            resetOrderAction: resetLibraryOrder,
             favoritesAllowed: ProFeatureGate.canUseFavorites,
             onFavoritesRequested: showFavoritesOrUpgrade
         ) {
@@ -260,11 +284,12 @@ struct LibraryView: View {
 
     @ViewBuilder
     private var selectionBar: some View {
-        if !selection.isEmpty {
+        let currentSelection = selectionManager.selection(for: .library)
+        if !currentSelection.isEmpty {
             LibrarySelectionBar(
-                count: selection.count,
+                count: currentSelection.count,
                 deleteAction: { showingBulkDeleteConfirmation = true },
-                clearAction: { selection.removeAll() }
+                clearAction: { selectionManager.deselectAll(in: .library) }
             )
             .padding(.horizontal, 18)
             .padding(.bottom, 10)
@@ -275,7 +300,8 @@ struct LibraryView: View {
 
     private var searchShortcut: some View {
         Button("") { searchFocused = true }
-            .keyboardShortcut("f", modifiers: .command)
+            .keyboardShortcut(ShortcutManager.shared.binding(for: .search),
+                              modifiers: ShortcutManager.shared.modifiers(for: .search))
             .opacity(0)
             .frame(width: 0, height: 0)
     }
@@ -296,7 +322,7 @@ struct LibraryView: View {
                 searchText = ""
             }
         } else if !selection.isEmpty {
-            selection.removeAll()
+            selectionManager.deselectAll(in: .library)
         } else if selectedEntryID != nil {
             selectedEntryID = nil
         }
@@ -320,16 +346,16 @@ struct LibraryView: View {
     @ViewBuilder
     private var content: some View {
         if timelineEntries.isEmpty {
-            LibraryEmptyState()
-                .frame(maxWidth: .infinity)
+            EmptyStateView.libraryEmpty(clearAction: clearFilters)
+                .frame(maxWidth: CGFloat.infinity)
                 .padding(.vertical, 48)
         } else if filteredEntries.isEmpty {
-            LibraryNoResultsState(
+            EmptyStateView.libraryNoResults(
                 searchText: searchText,
                 filter: timelineFilter,
                 clearAction: clearFilters
             )
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: CGFloat.infinity)
             .padding(.vertical, 48)
         } else {
             switch viewMode {
@@ -342,7 +368,29 @@ struct LibraryView: View {
     }
 
     private func timelineScroll() -> some View {
-        LazyVStack(alignment: .leading, spacing: 8, pinnedViews: [.sectionHeaders]) {
+        let actionHandler = LibraryRowActionHandler(
+            refreshThumbnail: { itemID in
+                if let item = library.items.first(where: { $0.id == itemID }) {
+                    Task { await thumbnailStore.load(item: item, force: true) }
+                }
+            },
+            openMedia: openPreferredMedia,
+            openSource: openSource,
+            reExtractVideo: reExtract,
+            uploadVideo: { item, target in uploadItems([item], to: target) },
+            requestDeleteVideo: { pendingDeleteItem = $0 },
+            toggleFavoriteVideo: toggleFavorite,
+            selectEntry: selectEntry,
+            toggleVideoSelection: toggleVideoSelection,
+            extractAgain: reExtract,
+            removeLink: { history.remove($0) },
+            removeUpload: { history.removeCompletedUpload($0) },
+            extractFavorite: extractFavorite,
+            removeFavorite: { pendingFavoriteRemoval = $0 },
+            onUpgradeRequired: onUpgradeRequired
+        )
+
+        return LazyVStack(alignment: .leading, spacing: 8, pinnedViews: [.sectionHeaders]) {
             ForEach(dayBuckets) { bucket in
                 Section {
                     ForEach(bucket.entries) { entry in
@@ -353,25 +401,9 @@ struct LibraryView: View {
                             thumbnailFailed: thumbnailFailed(entry),
                             isPreviewSelected: selectedEntry?.id == entry.id,
                             isBulkSelected: isBulkSelected(entry),
-                            refreshThumbnail: { item in
-                                Task { await thumbnailStore.load(item: item, force: true) }
-                            },
-                            openMedia: openPreferredMedia,
-                            openSource: openSource,
-                            reExtractVideo: reExtract,
-                            uploadVideo: { item, target in uploadItems([item], to: target) },
-                            requestDeleteVideo: { pendingDeleteItem = $0 },
-                            toggleFavoriteVideo: toggleFavorite,
-                            selectEntry: selectEntry,
-                            toggleVideoSelection: toggleVideoSelection,
-                            extractAgain: reExtract,
-                            removeLink: { history.remove($0) },
-                            removeUpload: { history.removeCompletedUpload($0) },
-                            extractFavorite: extractFavorite,
-                            removeFavorite: { pendingFavoriteRemoval = $0 },
+                            actions: actionHandler,
                             pipelineStore: pipeline,
-                            favoritesStore: favorites,
-                            onUpgradeRequired: onUpgradeRequired
+                            favoritesStore: favorites
                         )
                         .task(id: entry.thumbnailIdentity, priority: .utility) {
                             if case .video(let item) = entry {
@@ -379,6 +411,7 @@ struct LibraryView: View {
                             }
                         }
                     }
+                    .onMove(perform: moveLibraryItems)
                 } header: {
                     LibraryDayHeader(date: bucket.date, count: bucket.entries.count)
                 }
@@ -407,12 +440,34 @@ struct LibraryView: View {
     }
 
     private func thumbnailGrid() -> some View {
-        LazyVGrid(
+        let actionHandler = LibraryRowActionHandler(
+            refreshThumbnail: { itemID in
+                if let item = library.items.first(where: { $0.id == itemID }) {
+                    Task { await thumbnailStore.load(item: item, force: true) }
+                }
+            },
+            openMedia: openPreferredMedia,
+            openSource: openSource,
+            reExtractVideo: reExtract,
+            uploadVideo: { item, target in uploadItems([item], to: target) },
+            requestDeleteVideo: { pendingDeleteItem = $0 },
+            toggleFavoriteVideo: toggleFavorite,
+            selectEntry: selectEntry,
+            toggleVideoSelection: toggleVideoSelection,
+            extractAgain: reExtract,
+            removeLink: { history.remove($0) },
+            removeUpload: { history.removeCompletedUpload($0) },
+            extractFavorite: extractFavorite,
+            removeFavorite: { pendingFavoriteRemoval = $0 },
+            onUpgradeRequired: onUpgradeRequired
+        )
+
+        return LazyVGrid(
             columns: [GridItem(.adaptive(minimum: 180, maximum: 240), spacing: 12)],
             alignment: .leading,
             spacing: 12
         ) {
-            ForEach(filteredEntries) { entry in
+            ForEach(Array(filteredEntries.enumerated()), id: \.element.id) { index, entry in
                 LibraryThumbnailGridCard(
                     entry: entry,
                     thumbnail: thumbnail(for: entry),
@@ -420,17 +475,60 @@ struct LibraryView: View {
                     thumbnailFailed: thumbnailFailed(entry),
                     isSelected: selectedEntry?.id == entry.id,
                     isBulkSelected: isBulkSelected(entry),
-                    refreshThumbnail: { item in
-                        Task { await thumbnailStore.load(item: item, force: true) }
-                    },
-                    selectEntry: selectEntry,
-                    toggleVideoSelection: toggleVideoSelection,
+                    actions: actionHandler,
                     pipelineStore: pipeline,
                     favoritesStore: favorites
                 )
                 .task(id: entry.thumbnailIdentity, priority: .utility) {
                     if case .video(let item) = entry {
                         await thumbnailStore.load(item: item)
+                    }
+                }
+                .onDrag {
+                    guard case .video(let item) = entry else { return NSItemProvider() }
+                    let provider = NSItemProvider(object: item.id.uuidString as NSString)
+                    return provider
+                }
+                .onDrop(
+                    of: [.text],
+                    delegate: GridDropDelegate(
+                        currentIndex: index,
+                        entries: filteredEntries,
+                        onReorder: reorderGridItems
+                    )
+                )
+            }
+        }
+    }
+
+    /// DropDelegate for grid view drag-drop reordering
+    private struct GridDropDelegate: DropDelegate {
+        let currentIndex: Int
+        let entries: [LibraryTimelineEntry]
+        let onReorder: (Int, Int) -> Void
+
+        func performDrop(info: DropInfo) -> Bool {
+            return false // We handle reordering in dropUpdated
+        }
+
+        func dropUpdated(info: DropInfo) -> DropProposal? {
+            return DropProposal(operation: .move)
+        }
+
+        func dropEntered(info: DropInfo) {
+            guard let itemProvider = info.itemProviders(for: [.text]).first else { return }
+            _ = itemProvider.loadObject(ofClass: NSString.self) { (string, _) in
+                guard let draggedIDString = string as? String,
+                      let draggedUUID = UUID(uuidString: draggedIDString),
+                      let draggedIndex = entries.firstIndex(where: {
+                          if case .video(let item) = $0 { return item.id == draggedUUID }
+                          return false
+                      }) else { return }
+
+                // Only reorder if dragged from a different position
+                if draggedIndex != currentIndex {
+                    DispatchQueue.main.async {
+                        onReorder(draggedIndex, currentIndex)
                     }
                 }
             }
@@ -512,22 +610,22 @@ struct LibraryView: View {
 
     private func thumbnail(for entry: LibraryTimelineEntry) -> NSImage? {
         guard let item = entry.libraryItem else { return nil }
-        return thumbnailStore.image(for: item)
+        return thumbnailStore.state(for: item).image
     }
 
     private func isThumbnailLoading(_ entry: LibraryTimelineEntry) -> Bool {
         guard let item = entry.libraryItem else { return false }
-        return thumbnailStore.isLoading(item)
+        return thumbnailStore.state(for: item).isLoading
     }
 
     private func thumbnailFailed(_ entry: LibraryTimelineEntry) -> Bool {
         guard let item = entry.libraryItem else { return false }
-        return thumbnailStore.didFail(item)
+        return thumbnailStore.state(for: item).didFail
     }
 
     private func isBulkSelected(_ entry: LibraryTimelineEntry) -> Bool {
         guard let item = entry.libraryItem else { return false }
-        return selection.contains(item.id)
+        return selectionManager.isSelected(item.id.uuidString, in: .library)
     }
 
     private func selectEntry(_ entry: LibraryTimelineEntry) {
@@ -537,7 +635,8 @@ struct LibraryView: View {
     }
 
     private func toggleVideoSelection(_ entry: LibraryTimelineEntry) {
-        selection = LibraryTimelineBuilder.videoSelection(selection, toggling: entry)
+        guard let item = entry.libraryItem else { return }
+        selectionManager.toggle(item.id.uuidString, in: .library)
     }
 
     private func syncSelectedEntry() {
@@ -549,19 +648,40 @@ struct LibraryView: View {
               library.items.contains(where: { $0.id == id }) else { return }
         searchText = ""
         timelineFilter = .videos
-        selection.removeAll()
+        selectionManager.deselectAll(in: .library)
         selectedEntryID = "video-\(id.uuidString)"
         appState.pendingLibraryItemID = nil
     }
 
     private func deleteSelectedItems() {
         let items = selectedItems
+        let itemIDs = items.map(\.id.uuidString)
+
+        // Register undo before deletion
+        selectionManager.registerUndo(itemIDs: itemIDs, context: .library) { [weak library, weak favorites] in
+            // Re-add items to library and favorites
+            for item in items {
+                library?.add(item)
+                favorites?.add(url: item.url, title: item.title, thumbnailURL: item.thumbnailURL)
+            }
+        }
+
         withAnimation {
             for item in items {
                 library.remove(item)
                 favorites.remove(url: item.url)
             }
-            selection.removeAll()
+            selectionManager.deselectAll(in: .library)
+        }
+
+        // Show undo toast
+        ToastQueue.shared.showWithUndo(
+            "Deleted \(items.count) item\(items.count == 1 ? "" : "s")",
+            type: .info,
+            duration: 8.0,
+            actionText: "Undo"
+        ) {
+            selectionManager.undoLastDelete(in: .library)
         }
     }
 
@@ -604,7 +724,7 @@ struct LibraryView: View {
 
     private func uploadSelected(to target: CloudTarget) {
         uploadItems(selectedItems, to: target)
-        selection.removeAll()
+        selectionManager.deselectAll(in: .library)
     }
 
     private func uploadItems(_ items: [LibraryItem], to target: CloudTarget) {
@@ -650,6 +770,104 @@ struct LibraryView: View {
             )
         }
     }
+
+    // MARK: - Drag-Drop Reordering
+
+    /// Reorders library video items in list view
+    private func moveLibraryItems(fromOffsets: IndexSet, toOffset: Int) {
+        // Filter to only video entries
+        let videoEntries = dayBuckets.flatMap(\.entries).compactMap { entry -> (Int, LibraryItem)? in
+            if case .video(let item) = entry {
+                return (entry.id.hashValue, item)
+            }
+            return nil
+        }
+
+        // Get the video items in the full library array
+        var reorderedItems = library.items
+        var movedItems: [LibraryItem] = []
+
+        for index in fromOffsets {
+            if index < videoEntries.count {
+                movedItems.append(videoEntries[index].1)
+            }
+        }
+
+        // Remove moved items from current positions
+        for item in movedItems {
+            if let idx = reorderedItems.firstIndex(where: { $0.id == item.id }) {
+                reorderedItems.remove(at: idx)
+            }
+        }
+
+        // Find target position
+        let targetIndex: Int
+        if toOffset >= videoEntries.count - fromOffsets.count {
+            // Moving to end
+            let lastVideoItem = videoEntries.last!.1
+            targetIndex = (reorderedItems.firstIndex(where: { $0.id == lastVideoItem.id }) ?? reorderedItems.count) + 1
+        } else {
+            let targetVideoItem = videoEntries[toOffset].1
+            targetIndex = reorderedItems.firstIndex(where: { $0.id == targetVideoItem.id }) ?? reorderedItems.count
+        }
+
+        // Insert at target
+        reorderedItems.insert(contentsOf: movedItems, at: min(targetIndex, reorderedItems.count))
+
+        // Reassign sequential sortOrders
+        for (index, _) in reorderedItems.enumerated() {
+            reorderedItems[index].sortOrder = index
+        }
+
+        library.items = reorderedItems
+        library.save()
+    }
+
+    /// Reorders library video items in grid view
+    private func reorderGridItems(from fromIndex: Int, to toIndex: Int) {
+        // Filter to only video entries
+        let videoEntries = filteredEntries.compactMap { entry -> LibraryItem? in
+            if case .video(let item) = entry { return item }
+            return nil
+        }
+
+        guard fromIndex < videoEntries.count, toIndex <= videoEntries.count else { return }
+
+        var reorderedItems = library.items
+        let movedItem = videoEntries[fromIndex]
+
+        // Remove from current position
+        if let idx = reorderedItems.firstIndex(where: { $0.id == movedItem.id }) {
+            reorderedItems.remove(at: idx)
+        }
+
+        // Find target position
+        let targetIndex: Int
+        if toIndex >= videoEntries.count {
+            // Moving to end
+            let lastVideoItem = videoEntries.last!
+            targetIndex = (reorderedItems.firstIndex(where: { $0.id == lastVideoItem.id }) ?? reorderedItems.count) + 1
+        } else {
+            let targetVideoItem = videoEntries[toIndex]
+            targetIndex = reorderedItems.firstIndex(where: { $0.id == targetVideoItem.id }) ?? reorderedItems.count
+        }
+
+        // Insert at target
+        reorderedItems.insert(movedItem, at: min(targetIndex, reorderedItems.count))
+
+        // Reassign sequential sortOrders
+        for (index, _) in reorderedItems.enumerated() {
+            reorderedItems[index].sortOrder = index
+        }
+
+        library.items = reorderedItems
+        library.save()
+    }
+
+    /// Clears all custom sort orders
+    private func resetLibraryOrder() {
+        library.resetSortOrder()
+    }
 }
 
 private struct LibraryCommandPanel<Content: View>: View {
@@ -665,6 +883,7 @@ private struct LibraryCommandPanel<Content: View>: View {
     let canRefreshThumbnails: Bool
     let searchFocused: FocusState<Bool>.Binding
     let refreshAction: () -> Void
+    let resetOrderAction: () -> Void
     let favoritesAllowed: Bool
     let onFavoritesRequested: () -> Void
     @ViewBuilder let content: () -> Content
@@ -695,6 +914,7 @@ private struct LibraryCommandPanel<Content: View>: View {
                         smartScopePicker
                         LibraryViewModePicker(selection: $viewMode)
                         refreshButton
+                        resetOrderButton
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -703,6 +923,7 @@ private struct LibraryCommandPanel<Content: View>: View {
                             smartScopePicker
                             LibraryViewModePicker(selection: $viewMode)
                             refreshButton
+                            resetOrderButton
                         }
                     }
                 }
@@ -732,11 +953,23 @@ private struct LibraryCommandPanel<Content: View>: View {
                     )
                 )
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Theme.border.opacity(0.64), lineWidth: 1)
-        )
-        .shadow(color: Theme.skyBlue.opacity(0.12), radius: 20, x: 0, y: 16)
+    }
+
+    private var resetOrderButton: some View {
+        Button(action: resetOrderAction) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.up.arrow.down.circle")
+                Text("Reset Order")
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Theme.lavender)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Theme.lavender.opacity(0.13), in: Capsule())
+            .overlay(Capsule().strokeBorder(Theme.lavender.opacity(0.28), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .help("Clear custom sort order, revert to date-based sorting")
     }
 
     private var titleBlock: some View {
@@ -883,6 +1116,7 @@ private struct LibrarySearchField: View {
                         .foregroundStyle(Theme.textSecondary.opacity(0.8))
                 }
                 .buttonStyle(.plain)
+                .help("Clear search")
             }
         }
         .padding(.horizontal, 10)
@@ -938,6 +1172,7 @@ private struct LibraryFilterChip: View {
                 if isLocked {
                     Image(systemName: "lock.fill")
                         .font(.system(size: 8, weight: .bold))
+                        .help("Requires LustreStudio Pro")
                 }
                 Text(title)
                 Text("\(count)")
@@ -999,30 +1234,25 @@ private struct LibraryDayHeader: View {
     }
 }
 
-private struct LibraryTimelineRow: View {
+private struct LibraryTimelineRow: View, Equatable {
     let entry: LibraryTimelineEntry
     let thumbnail: NSImage?
     let isThumbnailLoading: Bool
     let thumbnailFailed: Bool
     let isPreviewSelected: Bool
     let isBulkSelected: Bool
-    let refreshThumbnail: (LibraryItem) -> Void
-    let openMedia: (LibraryItem) -> Void
-    let openSource: (LibraryItem) -> Void
-    let reExtractVideo: (LibraryItem) -> Void
-    let uploadVideo: (LibraryItem, CloudTarget) -> Void
-    let requestDeleteVideo: (LibraryItem) -> Void
-    let toggleFavoriteVideo: (LibraryItem) -> Void
-    let selectEntry: (LibraryTimelineEntry) -> Void
-    let toggleVideoSelection: (LibraryTimelineEntry) -> Void
-    let extractAgain: (HistoryItem) -> Void
-    let removeLink: (HistoryItem) -> Void
-    let removeUpload: (CompletedUploadItem) -> Void
-    let extractFavorite: (FeedFavoriteItem) -> Void
-    let removeFavorite: (FeedFavoriteItem) -> Void
+    let actions: LibraryRowActionHandler
     let pipelineStore: LibraryPipelineStore
     let favoritesStore: FeedFavoritesStore
-    let onUpgradeRequired: () -> Void
+
+    static func == (lhs: LibraryTimelineRow, rhs: LibraryTimelineRow) -> Bool {
+        lhs.entry.id == rhs.entry.id &&
+        lhs.thumbnail === rhs.thumbnail &&
+        lhs.isThumbnailLoading == rhs.isThumbnailLoading &&
+        lhs.thumbnailFailed == rhs.thumbnailFailed &&
+        lhs.isPreviewSelected == rhs.isPreviewSelected &&
+        lhs.isBulkSelected == rhs.isBulkSelected
+    }
 
     private var rowTint: Color {
         switch entry {
@@ -1098,7 +1328,7 @@ private struct LibraryTimelineRow: View {
                             item: item,
                             isLoading: isThumbnailLoading,
                             didFail: thumbnailFailed,
-                            retryAction: { refreshThumbnail(item) }
+                            retryAction: { actions.refreshThumbnail(item.id) }
                         )
                     }
                 }
@@ -1226,38 +1456,38 @@ private struct LibraryTimelineRow: View {
     }
 
     @ViewBuilder
-    private var actions: some View {
+    private var actionButtons: some View {
         HStack(spacing: 4) {
             switch entry {
             case .video(let item):
                 LibraryTimelineIconButton(systemName: favoritesStore.contains(url: item.url) ? "heart.fill" : "heart", help: "Favorite") {
-                    toggleFavoriteVideo(item)
+                    actions.toggleFavoriteVideo(item)
                 }
-                LibraryTimelineIconButton(systemName: "play.fill", help: "Open media") { openMedia(item) }
-                LibraryTimelineIconButton(systemName: "safari", help: "Open source page") { openSource(item) }
-                LibraryTimelineIconButton(systemName: "arrow.clockwise", help: "Re-extract") { reExtractVideo(item) }
+                LibraryTimelineIconButton(systemName: "play.fill", help: "Open media") { actions.openMedia(item) }
+                LibraryTimelineIconButton(systemName: "safari", help: "Open source page") { actions.openSource(item) }
+                LibraryTimelineIconButton(systemName: "arrow.clockwise", help: "Re-extract") { actions.reExtractVideo(item) }
                 Menu {
-                    Button("Local") { uploadVideo(item, .local) }
-                    Button("Mega") { uploadVideo(item, .mega) }
+                    Button("Local") { actions.uploadVideo(item, .local) }
+                    Button("Mega") { actions.uploadVideo(item, .mega) }
                 } label: {
                     LibraryTimelineMenuLabel(systemName: "arrow.up.circle", help: "Send")
                 }
                 .menuStyle(.borderlessButton)
             case .link(let item):
-                LibraryTimelineIconButton(systemName: "arrow.clockwise", help: "Extract again") { extractAgain(item) }
+                LibraryTimelineIconButton(systemName: "arrow.clockwise", help: "Extract again") { actions.extractAgain(item) }
                 LibraryTimelineIconButton(systemName: "doc.on.doc", help: "Copy link") { ClipboardManager.copy(item.url) }
                 LibraryTimelineIconButton(systemName: "safari", help: "Open link") { openURL(item.url) }
-                LibraryTimelineIconButton(systemName: "trash", help: "Remove") { removeLink(item) }
+                LibraryTimelineIconButton(systemName: "trash", help: "Remove") { actions.removeLink(item) }
             case .upload(let item):
                 LibraryTimelineIconButton(systemName: "arrow.up.right.square", help: "Copy remote path") { ClipboardManager.copy(item.remotePath) }
                 LibraryTimelineIconButton(systemName: "doc.on.doc", help: "Copy source link") { ClipboardManager.copy(item.url) }
                 LibraryTimelineIconButton(systemName: "safari", help: "Open source") { openURL(item.url) }
-                LibraryTimelineIconButton(systemName: "trash", help: "Remove") { removeUpload(item) }
+                LibraryTimelineIconButton(systemName: "trash", help: "Remove") { actions.removeUpload(item) }
             case .favorite(let item):
-                LibraryTimelineIconButton(systemName: "arrow.clockwise", help: "Extract") { extractFavorite(item) }
+                LibraryTimelineIconButton(systemName: "arrow.clockwise", help: "Extract") { actions.extractFavorite(item) }
                 LibraryTimelineIconButton(systemName: "doc.on.doc", help: "Copy link") { ClipboardManager.copy(item.url) }
                 LibraryTimelineIconButton(systemName: "safari", help: "Open source") { openURL(item.url) }
-                LibraryTimelineIconButton(systemName: "heart.slash", help: "Remove favorite") { removeFavorite(item) }
+                LibraryTimelineIconButton(systemName: "heart.slash", help: "Remove favorite") { actions.removeFavorite(item) }
             }
         }
     }
@@ -1265,55 +1495,55 @@ private struct LibraryTimelineRow: View {
     private var contextActions: [AppContextMenuAction] {
         switch entry {
         case .video(let item):
-            var actions = [
-                AppContextMenuAction(favoritesStore.contains(url: item.url) ? "Remove Favorite" : "Add Favorite", systemImage: "heart", action: { toggleFavoriteVideo(item) }),
-                AppContextMenuAction("Open Source Page", systemImage: "safari", action: { openSource(item) }),
-                AppContextMenuAction("Open Media", systemImage: "play.rectangle", action: { openMedia(item) }),
-                AppContextMenuAction("Re-extract", systemImage: "arrow.clockwise", action: { reExtractVideo(item) }),
-                AppContextMenuAction("Send to Local", systemImage: "arrow.up.circle", action: { uploadVideo(item, .local) }),
-                AppContextMenuAction("Send to Mega", systemImage: "arrow.up.circle", action: { uploadVideo(item, .mega) }),
-                AppContextMenuAction("Refresh Thumbnail", systemImage: "photo", action: { refreshThumbnail(item) }),
+            var menuActions = [
+                AppContextMenuAction(favoritesStore.contains(url: item.url) ? "Remove Favorite" : "Add Favorite", systemImage: "heart", action: { actions.toggleFavoriteVideo(item) }),
+                AppContextMenuAction("Open Source Page", systemImage: "safari", action: { actions.openSource(item) }),
+                AppContextMenuAction("Open Media", systemImage: "play.rectangle", action: { actions.openMedia(item) }),
+                AppContextMenuAction("Re-extract", systemImage: "arrow.clockwise", action: { actions.reExtractVideo(item) }),
+                AppContextMenuAction("Send to Local", systemImage: "arrow.up.circle", action: { actions.uploadVideo(item, .local) }),
+                AppContextMenuAction("Send to Mega", systemImage: "arrow.up.circle", action: { actions.uploadVideo(item, .mega) }),
+                AppContextMenuAction("Refresh Thumbnail", systemImage: "photo", action: { actions.refreshThumbnail(item.id) }),
                 AppContextMenuAction("Copy Page URL", systemImage: "doc.on.doc", action: { ClipboardManager.copy(item.url) })
             ]
             if let mp4 = item.mp4Url {
-                actions.append(AppContextMenuAction("Copy MP4 Link", systemImage: "doc.on.doc", action: { ClipboardManager.copy(mp4) }))
+                menuActions.append(AppContextMenuAction("Copy MP4 Link", systemImage: "doc.on.doc", action: { ClipboardManager.copy(mp4) }))
             }
-            actions.append(AppContextMenuAction("Delete from Library", systemImage: "trash", role: .destructive, action: { requestDeleteVideo(item) }))
-            return actions
+            menuActions.append(AppContextMenuAction("Delete from Library", systemImage: "trash", role: .destructive, action: { actions.requestDeleteVideo(item) }))
+            return menuActions
         case .link(let item):
             return [
-                AppContextMenuAction("Extract Again", systemImage: "arrow.clockwise", action: { extractAgain(item) }),
+                AppContextMenuAction("Extract Again", systemImage: "arrow.clockwise", action: { actions.extractAgain(item) }),
                 AppContextMenuAction("Copy Link", systemImage: "doc.on.doc", action: { ClipboardManager.copy(item.url) }),
                 AppContextMenuAction("Open Link", systemImage: "safari", action: { openURL(item.url) }),
-                AppContextMenuAction("Remove", systemImage: "trash", role: .destructive, action: { removeLink(item) })
+                AppContextMenuAction("Remove", systemImage: "trash", role: .destructive, action: { actions.removeLink(item) })
             ]
         case .upload(let item):
             return [
                 AppContextMenuAction("Copy Remote Path", systemImage: "folder", action: { ClipboardManager.copy(item.remotePath) }),
                 AppContextMenuAction("Copy Source Link", systemImage: "doc.on.doc", action: { ClipboardManager.copy(item.url) }),
                 AppContextMenuAction("Open Source Link", systemImage: "safari", action: { openURL(item.url) }),
-                AppContextMenuAction("Remove", systemImage: "trash", role: .destructive, action: { removeUpload(item) })
+                AppContextMenuAction("Remove", systemImage: "trash", role: .destructive, action: { actions.removeUpload(item) })
             ]
         case .favorite(let item):
             return [
-                AppContextMenuAction("Extract", systemImage: "bolt.fill", action: { extractFavorite(item) }),
+                AppContextMenuAction("Extract", systemImage: "bolt.fill", action: { actions.extractFavorite(item) }),
                 AppContextMenuAction("Copy Link", systemImage: "doc.on.doc", action: { ClipboardManager.copy(item.url) }),
                 AppContextMenuAction("Open Link", systemImage: "safari", action: { openURL(item.url) }),
-                AppContextMenuAction("Remove Favorite", systemImage: "heart.slash", role: .destructive, action: { removeFavorite(item) })
+                AppContextMenuAction("Remove Favorite", systemImage: "heart.slash", role: .destructive, action: { actions.removeFavorite(item) })
             ]
         }
     }
 
     private func handleTap() {
         if case .favorite = entry, !ProFeatureGate.canUseFavorites {
-            onUpgradeRequired()
+            actions.onUpgradeRequired()
             return
         }
         if NSEvent.modifierFlags.contains(.command) {
-            toggleVideoSelection(entry)
+            actions.toggleVideoSelection(entry)
             return
         }
-        selectEntry(entry)
+        actions.selectEntry(entry)
     }
 
     private func openURL(_ raw: String) {
@@ -1322,18 +1552,45 @@ private struct LibraryTimelineRow: View {
     }
 }
 
-private struct LibraryThumbnailGridCard: View {
+/// Stable handler for row actions - enables Equatable on LibraryTimelineRow
+@MainActor
+struct LibraryRowActionHandler {
+    let refreshThumbnail: (UUID) -> Void
+    let openMedia: (LibraryItem) -> Void
+    let openSource: (LibraryItem) -> Void
+    let reExtractVideo: (LibraryItem) -> Void
+    let uploadVideo: (LibraryItem, CloudTarget) -> Void
+    let requestDeleteVideo: (LibraryItem) -> Void
+    let toggleFavoriteVideo: (LibraryItem) -> Void
+    let selectEntry: (LibraryTimelineEntry) -> Void
+    let toggleVideoSelection: (LibraryTimelineEntry) -> Void
+    let extractAgain: (HistoryItem) -> Void
+    let removeLink: (HistoryItem) -> Void
+    let removeUpload: (CompletedUploadItem) -> Void
+    let extractFavorite: (FeedFavoriteItem) -> Void
+    let removeFavorite: (FeedFavoriteItem) -> Void
+    let onUpgradeRequired: () -> Void
+}
+
+private struct LibraryThumbnailGridCard: View, Equatable {
     let entry: LibraryTimelineEntry
     let thumbnail: NSImage?
     let isThumbnailLoading: Bool
     let thumbnailFailed: Bool
     let isSelected: Bool
     let isBulkSelected: Bool
-    let refreshThumbnail: (LibraryItem) -> Void
-    let selectEntry: (LibraryTimelineEntry) -> Void
-    let toggleVideoSelection: (LibraryTimelineEntry) -> Void
+    let actions: LibraryRowActionHandler
     let pipelineStore: LibraryPipelineStore
     let favoritesStore: FeedFavoritesStore
+
+    static func == (lhs: LibraryThumbnailGridCard, rhs: LibraryThumbnailGridCard) -> Bool {
+        lhs.entry.id == rhs.entry.id &&
+        lhs.thumbnail === rhs.thumbnail &&
+        lhs.isThumbnailLoading == rhs.isThumbnailLoading &&
+        lhs.thumbnailFailed == rhs.thumbnailFailed &&
+        lhs.isSelected == rhs.isSelected &&
+        lhs.isBulkSelected == rhs.isBulkSelected
+    }
 
     private var tint: Color {
         switch entry {
@@ -1401,7 +1658,7 @@ private struct LibraryThumbnailGridCard: View {
                             item: item,
                             isLoading: isThumbnailLoading,
                             didFail: thumbnailFailed,
-                            retryAction: { refreshThumbnail(item) }
+                            retryAction: { actions.refreshThumbnail(item.id) }
                         )
                     }
                 case .favorite(let item):
@@ -1497,10 +1754,10 @@ private struct LibraryThumbnailGridCard: View {
             return
         }
         if NSEvent.modifierFlags.contains(.command) {
-            toggleVideoSelection(entry)
+            actions.toggleVideoSelection(entry)
             return
         }
-        selectEntry(entry)
+        actions.selectEntry(entry)
     }
 }
 

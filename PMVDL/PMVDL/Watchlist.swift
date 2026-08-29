@@ -11,8 +11,9 @@ struct WatchlistItem: Identifiable, Codable, Hashable {
     var watchedAt: Date?
     let createdAt: Date
     var updatedAt: Date
+    var sortOrder: Int = Int.max
 
-    init(id: UUID = UUID(), sourcePageURL: String, title: String, provider: String, thumbnailURL: String?, watched: Bool = false, watchedAt: Date? = nil, createdAt: Date = .now, updatedAt: Date = .now) {
+    init(id: UUID = UUID(), sourcePageURL: String, title: String, provider: String, thumbnailURL: String?, watched: Bool = false, watchedAt: Date? = nil, createdAt: Date = .now, updatedAt: Date = .now, sortOrder: Int = Int.max) {
         self.id = id
         self.sourcePageURL = Self.normalizedURL(sourcePageURL)
         self.title = title
@@ -22,6 +23,7 @@ struct WatchlistItem: Identifiable, Codable, Hashable {
         self.watchedAt = watchedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.sortOrder = sortOrder
     }
 
     init(feedItem: FeedItem) {
@@ -46,7 +48,7 @@ struct WatchlistItem: Identifiable, Codable, Hashable {
 final class WatchlistStore: ObservableObject {
     static let shared = WatchlistStore()
 
-    @Published private(set) var items: [WatchlistItem] = []
+    @Published var items: [WatchlistItem] = []
 
     private let fileURL: URL
 
@@ -55,7 +57,17 @@ final class WatchlistStore: ObservableObject {
             .appendingPathComponent("LustreStudio", isDirectory: true)
         self.fileURL = fileURL ?? support.appendingPathComponent("watchlist.json")
         load()
+        // Repair pre-existing duration-only titles offline (no cloud dependency) so the
+        // cards show real titles even when the local agent is unavailable.
+        Task { await repairDurationTitles() }
         Task { await synchronizeWithAgent() }
+    }
+
+    /// Reorders items and reassigns sequential sortOrders - public for drag-drop
+    func reorderItems(_ newItems: [WatchlistItem]) {
+        items = newItems
+        reassignSequentialSortOrders()
+        save()
     }
 
     func contains(_ rawURL: String) -> Bool {
@@ -70,7 +82,11 @@ final class WatchlistStore: ObservableObject {
             items[index].thumbnailURL = item.thumbnailURL ?? items[index].thumbnailURL
             items[index].updatedAt = .now
         } else {
-            items.insert(item, at: 0)
+            var newItem = item
+            // Assign sortOrder = max + 1 for new items (append to end)
+            let maxSortOrder = items.map(\.sortOrder).filter { $0 != Int.max }.max() ?? 0
+            newItem.sortOrder = maxSortOrder + 1
+            items.insert(newItem, at: 0)
         }
         save()
         Task { try? await LustreAgentClient().saveWatchlist(itemForSync(item.sourcePageURL)) }
@@ -122,9 +138,16 @@ final class WatchlistStore: ObservableObject {
             return
         }
         var seen = Set<String>()
-        items = decoded.sorted { $0.updatedAt > $1.updatedAt }.filter {
-            seen.insert($0.sourcePageURL).inserted
-        }
+        items = decoded
+            .sorted {
+                if $0.sortOrder != $1.sortOrder { return $0.sortOrder < $1.sortOrder }
+                return $0.updatedAt > $1.updatedAt
+            }
+            .filter {
+                seen.insert($0.sourcePageURL).inserted
+            }
+        // Assign sequential sortOrder to any items with Int.max (legacy/unassigned)
+        reassignSequentialSortOrdersIfNeeded()
     }
 
     private func save() {
@@ -132,8 +155,48 @@ final class WatchlistStore: ObservableObject {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONEncoder().encode(items).write(to: fileURL, options: .atomic)
         } catch {
-            AppStateManager.shared.transientMessage = AppTransientMessage(text: "Watchlist could not be saved.")
+            ToastQueue.shared.error("Watchlist could not be saved.")
         }
+    }
+
+    /// Reassigns sequential sortOrders to all items, preserving relative order
+    private func reassignSequentialSortOrders() {
+        for (index, item) in items.enumerated() {
+            if item.sortOrder != index {
+                items[index].sortOrder = index
+            }
+        }
+    }
+
+    /// Only reassigns if there are items with Int.max (legacy items without sortOrder)
+    private func reassignSequentialSortOrdersIfNeeded() {
+        let hasLegacyItems = items.contains { $0.sortOrder == Int.max }
+        if hasLegacyItems {
+            reassignSequentialSortOrders()
+            save()
+        }
+    }
+
+    /// Clears all custom sort orders, reverting to date-based sorting
+    func resetSortOrder() {
+        for index in items.indices {
+            items[index].sortOrder = Int.max
+        }
+        save()
+    }
+
+    /// Reorders items and reassigns sequential sortOrders
+    func moveItems(fromOffsets: IndexSet, toOffset: Int) {
+        items.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        reassignSequentialSortOrders()
+        save()
+    }
+
+    func updateThumbnailURL(for id: UUID, thumbnailURL: String) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        items[index].thumbnailURL = thumbnailURL
+        items[index].updatedAt = .now
+        save()
     }
 
     private func itemForSync(_ sourcePageURL: String) -> WatchlistItem {
@@ -148,9 +211,80 @@ final class WatchlistStore: ObservableObject {
                 UserDefaults.standard.set(true, forKey: "cloudCollectionsWatchlistMigrated")
             }
             let snapshot = try await client.collections()
-            items = snapshot.watchlist.sorted { $0.updatedAt > $1.updatedAt }
+            // The cloud agent can echo back title values that are actually video
+            // durations (e.g. "21:22") for some providers. Merge cloud data in without
+            // clobbering locally-known real titles, watched state, thumbnails, or sort order.
+            items = mergeCloud(snapshot.watchlist)
+            // Repair any entries whose title is a bare duration by re-fetching the real title.
+            await repairDurationTitles()
             save()
         } catch {}
+    }
+
+    /// Merges the cloud snapshot into the current local items keyed by `sourcePageURL`.
+    /// Local fields are preferred when the cloud value is missing, empty, or looks like a
+    /// bare duration (e.g. "21:22" or "1:08:03"), so a wrong cloud title never overwrites a
+    /// correct local one.
+    private func mergeCloud(_ cloud: [WatchlistItem]) -> [WatchlistItem] {
+        // Seed with local items so entries never disappear, then overlay cloud fields that are trustworthy.
+        var merged = items
+
+        for cloudItem in cloud {
+            if let index = merged.firstIndex(where: { $0.sourcePageURL == cloudItem.sourcePageURL }) {
+                var local = merged[index]
+                // Prefer local title unless the cloud title is genuinely better (non-empty, non-duration).
+                if isBareDuration(local.title) || local.title.isEmpty {
+                    if !isBareDuration(cloudItem.title), !cloudItem.title.isEmpty {
+                        local.title = cloudItem.title
+                    }
+                }
+                if local.thumbnailURL == nil { local.thumbnailURL = cloudItem.thumbnailURL }
+                if local.provider.isEmpty { local.provider = cloudItem.provider }
+                // Watched state goes cloud -> local (cloud is source of truth for playback progress).
+                local.watched = cloudItem.watched
+                local.watchedAt = cloudItem.watchedAt
+                local.updatedAt = max(local.updatedAt, cloudItem.updatedAt)
+                if cloudItem.sortOrder != Int.max { local.sortOrder = cloudItem.sortOrder }
+                merged[index] = local
+            } else {
+                merged.append(cloudItem)
+            }
+        }
+
+        return merged.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    /// Returns true when a string is a bare duration such as "21:22" or "1:08:03"
+    /// (with no spaces or other text), which the cloud agent has been observed to store
+    /// in place of a real title for PornHub items.
+    private func isBareDuration(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        // Allow only digits and colon separators, with 1-3 colon-delimited groups.
+        let allowed = CharacterSet(charactersIn: "0123456789:")
+        guard trimmed.rangeOfCharacter(from: allowed.inverted) == nil else { return false }
+        let parts = trimmed.split(separator: ":").map(String.init)
+        return (1...3).contains(parts.count) && parts.allSatisfy { Int($0) != nil }
+    }
+
+    /// Re-fetches the real page title for any item whose title is a bare duration.
+    private func repairDurationTitles() async {
+        let needsRepair = items.enumerated().filter { isBareDuration($0.element.title) }
+        guard !needsRepair.isEmpty else { return }
+
+        for index in needsRepair.map(\.offset) {
+            let item = items[index]
+            guard let viewkey = DownloadedFeedIndex.pornHubViewkey(item.sourcePageURL) else { continue }
+            guard let realTitle = try? await PornHubFeedScraper.fetchVideoPageTitle(viewkey: viewkey),
+                  !realTitle.isEmpty, !isBareDuration(realTitle) else { continue }
+            items[index].title = realTitle
+            items[index].updatedAt = .now
+            // Best-effort: persist the correction so the cloud stops echoing the duration.
+            // Failure here is non-fatal; the local correction still wins via mergeCloud.
+            try? await LustreAgentClient().saveWatchlist(items[index])
+        }
+        // Always persist local corrections (works even when the cloud is unavailable).
+        save()
     }
 }
 
@@ -177,14 +311,20 @@ private enum WatchlistGrouping: String, CaseIterable, Identifiable {
 
 struct WatchlistView: View {
     @StateObject private var store = WatchlistStore.shared
+    @StateObject private var thumbnailStore = WatchlistThumbnailStore.shared
+    @StateObject private var selectionManager = SelectionManager.shared
     @State private var query = ""
     @State private var status: WatchlistStatusFilter = .all
     @State private var provider = "All providers"
     @State private var sort: WatchlistSort = .newest
     @State private var grouping: WatchlistGrouping = .none
-    @State private var selected = Set<UUID>()
     @State private var downloadTarget: CloudTarget = .local
     @State private var removedItem: WatchlistItem?
+
+    private var selected: Set<String> {
+        get { selectionManager.selection(for: .watchlist) }
+        set { selectionManager.selectAll(Array(newValue), in: .watchlist) }
+    }
 
     private var providers: [String] {
         ["All providers"] + Set(store.items.map(\.provider)).sorted()
@@ -199,9 +339,21 @@ struct WatchlistView: View {
             return statusMatches && providerMatches && queryMatches
         }
         switch sort {
-        case .newest: return filtered.sorted { $0.updatedAt > $1.updatedAt }
-        case .oldest: return filtered.sorted { $0.updatedAt < $1.updatedAt }
-        case .title: return filtered.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        case .newest:
+            return filtered.sorted {
+                if $0.sortOrder != $1.sortOrder { return $0.sortOrder < $1.sortOrder }
+                return $0.updatedAt > $1.updatedAt
+            }
+        case .oldest:
+            return filtered.sorted {
+                if $0.sortOrder != $1.sortOrder { return $0.sortOrder < $1.sortOrder }
+                return $0.updatedAt < $1.updatedAt
+            }
+        case .title:
+            return filtered.sorted {
+                if $0.sortOrder != $1.sortOrder { return $0.sortOrder < $1.sortOrder }
+                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            }
         }
     }
 
@@ -228,12 +380,21 @@ struct WatchlistView: View {
                 controls
                 batchBar
                 if visibleItems.isEmpty {
-                    ContentUnavailableView(
-                        store.items.isEmpty ? "Your Watchlist is empty" : "No matching scenes",
-                        systemImage: "bookmark",
-                        description: Text(store.items.isEmpty ? "Save a scene from Feed to begin." : "Adjust the search or filters.")
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 320)
+                    if store.items.isEmpty {
+                        EmptyStateView.watchlistEmpty()
+                            .frame(maxWidth: .infinity, minHeight: 320)
+                    } else {
+                        EmptyStateView(
+                            icon: "magnifyingglass",
+                            title: "No matching scenes",
+                            subtitle: "Adjust the search or filters.",
+                            tint: Theme.hotPink,
+                            isSearchEmpty: true,
+                            searchText: query,
+                            clearSearchAction: { query = "" }
+                        )
+                        .frame(maxWidth: CGFloat.infinity, minHeight: 320)
+                    }
                 } else {
                     LazyVStack(spacing: 12) {
                         ForEach(groupNames, id: \.self) { group in
@@ -244,8 +405,21 @@ struct WatchlistView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             ForEach(groupItems(group)) { item in row(item) }
+                                .onMove(perform: { indices, newOffset in
+                                    moveWatchlistItems(in: group, indices: indices, newOffset: newOffset)
+                                })
                         }
                     }
+                }
+            }
+            .onAppear {
+                Task {
+                    await thumbnailStore.refresh(items: visibleItems, force: false)
+                }
+            }
+            .onChange(of: visibleItems.count) { _, _ in
+                Task {
+                    await thumbnailStore.refresh(items: visibleItems, force: false)
                 }
             }
         }
@@ -312,6 +486,10 @@ struct WatchlistView: View {
                 ForEach(WatchlistGrouping.allCases) { Text($0.rawValue).tag($0) }
             }
             .frame(width: 145)
+            Button("Reset Order") {
+                store.resetSortOrder()
+            }
+            .help("Clear custom sort order, revert to date-based sorting")
         }
     }
 
@@ -322,9 +500,12 @@ struct WatchlistView: View {
                 systemImage: selected.isEmpty ? "checklist" : "checkmark.circle.fill",
                 tint: Theme.lavender
             ) {
-                let ids = Set(visibleItems.map(\.id))
-                if !ids.isEmpty && ids.isSubset(of: selected) { selected.subtract(ids) }
-                else { selected.formUnion(ids) }
+                let ids = Set(visibleItems.map(\.id.uuidString))
+                if !ids.isEmpty && ids.isSubset(of: selected) {
+                    selectionManager.deselectAll(in: .watchlist)
+                } else {
+                    selectionManager.selectAll(Array(ids), in: .watchlist)
+                }
             }
             Text("\(selected.count) selected").foregroundStyle(Theme.textSecondary)
             Spacer()
@@ -339,26 +520,38 @@ struct WatchlistView: View {
         }
     }
 
+    private func thumbnail(for item: WatchlistItem) -> NSImage? {
+        thumbnailStore.state(for: item).image
+    }
+
+    private func isThumbnailLoading(_ item: WatchlistItem) -> Bool {
+        thumbnailStore.state(for: item).isLoading
+    }
+
+    private func thumbnailFailed(_ item: WatchlistItem) -> Bool {
+        thumbnailStore.state(for: item).didFail
+    }
+
     private func row(_ item: WatchlistItem) -> some View {
         HStack(spacing: 14) {
-            Toggle("", isOn: Binding(
-                get: { selected.contains(item.id) },
-                set: { isSelected in
-                    if isSelected {
-                        selected.insert(item.id)
-                    } else {
-                        selected.remove(item.id)
-                    }
+            Toggle("", isOn: selectionManager.binding(for: item.id.uuidString, in: .watchlist))
+                .toggleStyle(.checkbox)
+            Group {
+                if let image = thumbnail(for: item) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else if isThumbnailLoading(item) {
+                    ZStack { Theme.surface2; ProgressView() }
+                } else {
+                    ZStack { Theme.surface2; Image(systemName: "photo") }
                 }
-            ))
-            .toggleStyle(.checkbox)
-            AsyncImage(url: item.thumbnailURL.flatMap(URL.init(string:))) { image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                ZStack { Theme.surface2; Image(systemName: "photo") }
             }
             .frame(width: 150, height: 90)
             .clipShape(RoundedRectangle(cornerRadius: 12))
+            .task(id: item.id, priority: .utility) {
+                await thumbnailStore.load(item: item)
+            }
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(item.provider.uppercased()).font(.caption2.bold()).foregroundStyle(Theme.accent)
@@ -385,7 +578,21 @@ struct WatchlistView: View {
                         NSPasteboard.general.setString(item.sourcePageURL, forType: .string)
                     }
                     WatchlistPillButton("Remove", systemImage: "trash.fill", tint: Theme.error) {
-                        removedItem = store.remove(id: item.id)
+                        let removed = store.remove(id: item.id)
+                        if let removed = removed {
+                            selectionManager.registerUndo(itemIDs: [item.id.uuidString], context: .watchlist) {
+                                store.add(removed)
+                            }
+                            removedItem = removed
+                            ToastQueue.shared.showWithUndo(
+                                "Removed from Watchlist",
+                                type: .info,
+                                duration: 8.0,
+                                actionText: "Undo"
+                            ) {
+                                selectionManager.undoLastDelete(in: .watchlist)
+                            }
+                        }
                     }
                 }
             }
@@ -393,10 +600,38 @@ struct WatchlistView: View {
         }
         .padding(14)
         .mobileCard(tint: item.watched ? Theme.success : Theme.accent, isElevated: false)
+        .appContextMenu(
+            title: item.title,
+            subtitle: item.sourcePageURL,
+            accent: item.watched ? Theme.success : Theme.accent,
+            actions: [
+                AppContextMenuAction("Extract Links", systemImage: "link.badge.plus", action: { extract([item]) }),
+                AppContextMenuAction("Download", systemImage: "arrow.down.circle.fill", action: { download([item]) }),
+                AppContextMenuAction("Copy Video URL", systemImage: "doc.on.doc", action: { ClipboardManager.copy(item.sourcePageURL) }),
+                AppContextMenuAction(item.watched ? "Mark Unwatched" : "Mark Watched", systemImage: item.watched ? "circle" : "checkmark.circle.fill", action: { store.toggleWatched(id: item.id) }),
+                AppContextMenuAction("Remove", systemImage: "trash", role: .destructive, action: {
+                        let removed = store.remove(id: item.id)
+                        if let removed = removed {
+                            selectionManager.registerUndo(itemIDs: [item.id.uuidString], context: .watchlist) {
+                                store.add(removed)
+                            }
+                            removedItem = removed
+                            ToastQueue.shared.showWithUndo(
+                                "Removed from Watchlist",
+                                type: .info,
+                                duration: 8.0,
+                                actionText: "Undo"
+                            ) {
+                                selectionManager.undoLastDelete(in: .watchlist)
+                            }
+                        }
+                    })
+            ]
+        )
     }
 
     private func selectedItems() -> [WatchlistItem] {
-        visibleItems.filter { selected.contains($0.id) }
+        visibleItems.filter { selected.contains($0.id.uuidString) }
     }
 
     private func groupItems(_ group: String) -> [WatchlistItem] {
@@ -405,6 +640,47 @@ struct WatchlistView: View {
         case .provider: return visibleItems.filter { $0.provider == group }
         case .watched: return visibleItems.filter { $0.watched == (group == "Watched") }
         }
+    }
+
+    private func moveWatchlistItems(in group: String, indices: IndexSet, newOffset: Int) {
+        // We need to reorder in the full items array, not just visible items
+        // First, get the group items in the order they appear in the full store.items
+        let groupItemsArray = groupItems(group)
+        // Create a mutable copy of the full items array
+        var reorderedItems = store.items
+        // For each index in indices, find the corresponding item in the full array and move it
+        var movedItems: [WatchlistItem] = []
+        for index in indices {
+            if index < groupItemsArray.count {
+                movedItems.append(groupItemsArray[index])
+            }
+        }
+        // Remove moved items from their current positions
+        for item in movedItems {
+            if let idx = reorderedItems.firstIndex(where: { $0.id == item.id }) {
+                reorderedItems.remove(at: idx)
+            }
+        }
+        // Find the target position in the full array
+        // The target position is after the item at newOffset in the group (or at end if newOffset >= count)
+        let targetIndex: Int
+        if newOffset >= groupItemsArray.count - indices.count {
+            // Moving to end of group - find the last group item in full array
+            let lastGroupItem = groupItemsArray.last!
+            targetIndex = (reorderedItems.firstIndex(where: { $0.id == lastGroupItem.id }) ?? reorderedItems.count) + 1
+        } else {
+            // Moving to before the item at newOffset in group
+            let targetGroupItem = groupItemsArray[newOffset]
+            targetIndex = reorderedItems.firstIndex(where: { $0.id == targetGroupItem.id }) ?? reorderedItems.count
+        }
+        // Insert moved items at target position
+        reorderedItems.insert(contentsOf: movedItems, at: min(targetIndex, reorderedItems.count))
+        // Reassign sequential sortOrders
+        for (index, item) in reorderedItems.enumerated() {
+            reorderedItems[index].sortOrder = index
+        }
+        // Update store using public method
+        store.reorderItems(reorderedItems)
     }
 
     private func extractSelected() { extract(selectedItems()) }

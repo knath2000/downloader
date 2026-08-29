@@ -97,7 +97,8 @@ struct HistoryView: View {
         }
         .background(
             Button("") { searchFocused = true }
-                .keyboardShortcut("f", modifiers: .command)
+                .keyboardShortcut(ShortcutManager.shared.binding(for: .search),
+                                  modifiers: ShortcutManager.shared.modifiers(for: .search))
                 .opacity(0)
                 .frame(width: 0, height: 0)
         )
@@ -106,16 +107,17 @@ struct HistoryView: View {
     @ViewBuilder
     private var content: some View {
         if totalCount == 0 {
-            EmptyHistoryState()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            EmptyStateView.historyEmpty()
+                .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
         } else if dayBuckets.isEmpty {
-            NoHistoryResultsState(
+            let providerName = selectedProviderKey.flatMap { key in providerFilters.first { $0.key == key }?.name }
+            EmptyStateView.historyNoResults(
                 searchText: searchText,
-                providerName: selectedProviderKey.flatMap { key in providerFilters.first { $0.key == key }?.name },
+                providerName: providerName,
                 streamFilter: streamFilter,
                 clearAction: clearFilters
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
         } else {
             ScrollView {
                 LazyVStack(spacing: 6, pinnedViews: [.sectionHeaders]) {
@@ -632,7 +634,7 @@ private struct NoHistoryResultsState: View {
     }
 }
 
-private enum HistoryStreamFilter: String, CaseIterable, Identifiable {
+enum HistoryStreamFilter: String, CaseIterable, Identifiable {
     case all
     case links
     case uploads

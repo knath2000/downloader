@@ -63,19 +63,9 @@ struct ContentView: View {
                     .zIndex(100)
             }
             .overlay(alignment: .top) {
-                if let message = appState.transientMessage {
-                    Text(message.text)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Theme.textPrimary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(Theme.surface1.opacity(0.98), in: Capsule())
-                        .overlay(Capsule().strokeBorder(Theme.border.opacity(0.8), lineWidth: 1))
-                        .shadow(color: .black.opacity(0.2), radius: 12, y: 5)
-                        .padding(.top, 12)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                        .zIndex(250)
-                }
+                ToastQueueView()
+                    .padding(.top, 12)
+                    .zIndex(250)
             }
         }
         .background(WindowConfigurator())
@@ -120,7 +110,7 @@ struct ContentView: View {
 
     private var mainLayout: some View {
         contentLayer(for: displayedDestination)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
         .onAppear {
             NotificationManager.shared.requestAuthorization()
         }

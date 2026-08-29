@@ -36,14 +36,26 @@ struct LustreStudioApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Navigate") {
-                Button("Home") { appState.select(.home) }.keyboardShortcut("1", modifiers: .command)
-                Button("Feed") { appState.select(.feed) }.keyboardShortcut("2", modifiers: .command)
-                Button("Watchlist") { appState.select(.watchlist) }.keyboardShortcut("3", modifiers: .command)
-                Button("Library") { appState.select(.library) }.keyboardShortcut("4", modifiers: .command)
-                Button("Settings") { appState.select(.settings) }.keyboardShortcut(",", modifiers: .command)
+                Button("Home") { appState.select(.home) }
+                    .keyboardShortcut(ShortcutManager.shared.binding(for: .homeTab),
+                                      modifiers: ShortcutManager.shared.modifiers(for: .homeTab))
+                Button("Feed") { appState.select(.feed) }
+                    .keyboardShortcut(ShortcutManager.shared.binding(for: .feedTab),
+                                      modifiers: ShortcutManager.shared.modifiers(for: .feedTab))
+                Button("Watchlist") { appState.select(.watchlist) }
+                    .keyboardShortcut(ShortcutManager.shared.binding(for: .watchlistTab),
+                                      modifiers: ShortcutManager.shared.modifiers(for: .watchlistTab))
+                Button("Library") { appState.select(.library) }
+                    .keyboardShortcut(ShortcutManager.shared.binding(for: .libraryTab),
+                                      modifiers: ShortcutManager.shared.modifiers(for: .libraryTab))
+                Button("Settings") { appState.select(.settings) }
+                    .keyboardShortcut(ShortcutManager.shared.binding(for: .settingsTab),
+                                      modifiers: ShortcutManager.shared.modifiers(for: .settingsTab))
             }
             CommandMenu("Downloads") {
-                Button("Extract New") { appState.select(.home) }.keyboardShortcut("N", modifiers: .command)
+                Button("Extract New") { appState.select(.home) }
+                    .keyboardShortcut(ShortcutManager.shared.binding(for: .extractNew),
+                                      modifiers: ShortcutManager.shared.modifiers(for: .extractNew))
             }
             CommandGroup(replacing: .appInfo) {
                 Button("About LustreStudio") { showAboutWindow() }
@@ -253,7 +265,8 @@ struct DownloadMenuBarView: View {
         Button("Quit LustreStudio") {
             NSApp.terminate(nil)
         }
-        .keyboardShortcut("q", modifiers: .command)
+        .keyboardShortcut(ShortcutManager.shared.binding(for: .quit),
+                          modifiers: ShortcutManager.shared.modifiers(for: .quit))
     }
 
     private var summaryTitle: String {

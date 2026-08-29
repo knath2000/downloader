@@ -764,6 +764,11 @@ final class DownloadJobRunner {
         let cloud = DownloadQueue.shared.item(id: queueId)?.targetCloud ?? .local
         if let finalPath = completion.finalPath {
             VideoLibrary.shared.updateRemotePaths(for: libraryItem, cloud: cloud, path: finalPath)
+            // Update file size for local files
+            if cloud == .local,
+               let fileSize = try? FileManager.default.attributesOfItem(atPath: finalPath)[.size] as? Int64 {
+                VideoLibrary.shared.updateFileSize(forID: libraryItem.id, fileSize: fileSize)
+            }
         }
 
         Task {

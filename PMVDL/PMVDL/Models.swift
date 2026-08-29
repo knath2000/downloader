@@ -191,6 +191,8 @@ struct LibraryItem: Identifiable, Codable, Hashable {
     var remotePaths: [String: String] // "mega": "/Cloud/...", "gdrive": "gdrive:VidDL/..."
     var tags: [String]?
     var collectionName: String?
+    var sortOrder: Int = Int.max
+    var fileSize: Int64? // Local file size in bytes
 
     init(
         id: UUID = UUID(),
@@ -205,7 +207,9 @@ struct LibraryItem: Identifiable, Codable, Hashable {
         sourceSiteName: String? = nil,
         remotePaths: [String: String] = [:],
         tags: [String]? = nil,
-        collectionName: String? = nil
+        collectionName: String? = nil,
+        sortOrder: Int = Int.max,
+        fileSize: Int64? = nil
     ) {
         self.id = id
         self.url = url
@@ -220,6 +224,8 @@ struct LibraryItem: Identifiable, Codable, Hashable {
         self.remotePaths = remotePaths
         self.tags = tags
         self.collectionName = collectionName
+        self.sortOrder = sortOrder
+        self.fileSize = fileSize
     }
 }
 

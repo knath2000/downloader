@@ -87,11 +87,16 @@ class VideoLibrary: ObservableObject {
             let decoded = data.flatMap {
                 try? JSONDecoder().decode([LibraryItem].self, from: $0)
             } ?? []
-            return decoded.sorted { $0.extractedAt > $1.extractedAt }
+            return decoded.sorted {
+                if $0.sortOrder != $1.sortOrder { return $0.sortOrder < $1.sortOrder }
+                return $0.extractedAt > $1.extractedAt
+            }
         }.value
         let currentIDs = Set(items.map(\.id))
         items = restored.filter { !currentIDs.contains($0.id) } + items
         isRestoring = false
+        // Reassign sequential sortOrders if there are legacy items without sortOrder
+        reassignSequentialSortOrdersIfNeeded()
         purgeExpired()
     }
 
@@ -102,6 +107,32 @@ class VideoLibrary: ObservableObject {
         LibraryPipelineStore.shared.rebuild(libraryItems: items)
     }
 
+    /// Reassigns sequential sortOrders to all items, preserving relative order
+    private func reassignSequentialSortOrders() {
+        for (index, item) in items.enumerated() {
+            if item.sortOrder != index {
+                items[index].sortOrder = index
+            }
+        }
+    }
+
+    /// Only reassigns if there are items with Int.max (legacy items without sortOrder)
+    private func reassignSequentialSortOrdersIfNeeded() {
+        let hasLegacyItems = items.contains { $0.sortOrder == Int.max }
+        if hasLegacyItems {
+            reassignSequentialSortOrders()
+            save()
+        }
+    }
+
+    /// Clears all custom sort orders, reverting to date-based sorting
+    func resetSortOrder() {
+        for index in items.indices {
+            items[index].sortOrder = Int.max
+        }
+        save()
+    }
+
     func purgeExpired() {
         let cutoff = Date().addingTimeInterval(-Double(retentionDays) * 86400)
         let before = items.count
@@ -110,7 +141,11 @@ class VideoLibrary: ObservableObject {
     }
 
     func add(_ item: LibraryItem) {
-        items.insert(item, at: 0)
+        var newItem = item
+        // Assign sortOrder = max + 1 for new items (append to end)
+        let maxSortOrder = items.map(\.sortOrder).filter { $0 != Int.max }.max() ?? 0
+        newItem.sortOrder = maxSortOrder + 1
+        items.insert(newItem, at: 0)
         save()
     }
 
@@ -124,11 +159,18 @@ class VideoLibrary: ObservableObject {
     nonisolated static func mergedLibraryItems(existing: [LibraryItem], incoming: LibraryItem) -> [LibraryItem] {
         var copy = existing
         if let idx = copy.firstIndex(where: { $0.url == incoming.url }) {
+            // Preserve existing sortOrder when merging
             mergeMetadata(into: &copy[idx], from: incoming)
             return copy
         }
 
-        copy.insert(incoming, at: 0)
+        var newItem = incoming
+        // Assign sortOrder if not already set (Int.max default)
+        if newItem.sortOrder == Int.max {
+            let maxSortOrder = copy.map(\.sortOrder).filter { $0 != Int.max }.max() ?? 0
+            newItem.sortOrder = maxSortOrder + 1
+        }
+        copy.insert(newItem, at: 0)
         return copy
     }
 
@@ -170,6 +212,15 @@ class VideoLibrary: ObservableObject {
 
         var copy = items
         copy[idx].thumbnailURL = normalized
+        items = copy
+        save()
+    }
+
+    func updateFileSize(forID id: UUID, fileSize: Int64) {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        guard items[idx].fileSize != fileSize else { return }
+        var copy = items
+        copy[idx].fileSize = fileSize
         items = copy
         save()
     }

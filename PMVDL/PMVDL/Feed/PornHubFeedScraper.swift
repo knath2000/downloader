@@ -62,6 +62,41 @@ struct PornHubFeedScraper: FeedScraper {
         return html
     }
 
+    /// Fetches a single video page and returns its real title, reusing the same
+    /// headers/cookies as the feed requests. Returns `nil` on any failure or when no
+    /// usable title is found.
+    static func fetchVideoPageTitle(viewkey: String) async throws -> String? {
+        guard let url = URL(string: "\(baseURL.absoluteString)/view_video.php?viewkey=\(viewkey)") else {
+            throw FeedScraperError.invalidPage
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue(NetworkConstants.chromeUserAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("\(baseURL.absoluteString)/", forHTTPHeaderField: "Referer")
+        request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+        request.httpShouldHandleCookies = false
+        request.timeoutInterval = 20
+
+        let pornhubCookies = (HTTPCookieStorage.shared.cookies ?? [])
+            .filter { $0.domain.contains("pornhub.com") }
+        if !pornhubCookies.isEmpty,
+           let cookieHeader = HTTPCookie.requestHeaderFields(with: pornhubCookies)["Cookie"] {
+            request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+        }
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { return nil }
+        guard (200..<300).contains(http.statusCode) else { return nil }
+        guard let html = String(data: data, encoding: .utf8) else { return nil }
+
+        guard let raw = NativeVideoPageExtractor.extractTitle(from: html, pageURL: url),
+              !raw.isEmpty else { return nil }
+        return raw
+            .replacingOccurrences(of: " - Pornhub.com", with: "", options: .caseInsensitive)
+            .replacingOccurrences(of: " | Pornhub.com", with: "", options: .caseInsensitive)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     static func parseEntries(from html: String) -> [FeedItem] {
         let pattern = #"<li[^>]+class=["'][^"']*pcVideoListItem[^"']*["'][^>]*>.*?</li>"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {

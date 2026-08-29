@@ -3,12 +3,16 @@ import SwiftUI
 
 struct FavoriteCardView: View {
     let item: FeedFavoriteItem
+    let isSelected: Bool
     let extract: () -> Void
     let openSource: () -> Void
     let copyLink: () -> Void
-    let remove: () -> Void
+    let remove: (FeedFavoriteItem) -> Void
+    let onSelectionToggle: ((Bool) -> Void)?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @EnvironmentObject private var favorites: FeedFavoritesStore
+    private let selectionManager = SelectionManager.shared
     @State private var isHovered = false
 
     var body: some View {
@@ -18,8 +22,19 @@ struct FavoriteCardView: View {
             }
             .buttonStyle(.plain)
 
-            removeButton
-                .padding(17)
+            HStack {
+                Toggle("", isOn: Binding(
+                    get: { isSelected },
+                    set: { onSelectionToggle?($0) }
+                ))
+                .toggleStyle(.checkbox)
+                .padding(12)
+
+                Spacer()
+
+                removeButton
+                    .padding(12)
+            }
         }
         .scaleEffect(isHovered && !reduceMotion ? 1.012 : 1)
         .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.72), value: isHovered)
@@ -33,13 +48,31 @@ struct FavoriteCardView: View {
                 AppContextMenuAction("Extract", systemImage: "bolt.fill", action: extract),
                 AppContextMenuAction("Copy Link", systemImage: "doc.on.doc", action: copyLink),
                 AppContextMenuAction("Open in Browser", systemImage: "safari", action: openSource),
-                AppContextMenuAction("Remove from Favorites", systemImage: "heart.slash", role: .destructive, action: remove)
+                AppContextMenuAction("Remove from Favorites", systemImage: "heart.slash", role: .destructive, action: {
+                    withAnimation {
+                        let removed = favorites.items.first { $0.id == item.id }
+                        remove(item)
+                        if let removed = removed {
+                            selectionManager.registerUndo(itemIDs: [item.id], context: .favorites) {
+                                favorites.add(removed)
+                            }
+                            ToastQueue.shared.showWithUndo(
+                                "Removed from Favorites",
+                                type: .info,
+                                duration: 8.0,
+                                actionText: "Undo"
+                            ) {
+                                selectionManager.undoLastDelete(in: .favorites)
+                            }
+                        }
+                    }
+                })
             ]
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text("\(item.siteName), \(item.title), \(metadataText)"))
         .accessibilityAction(named: Text("Remove from Favorites")) {
-            remove()
+            remove(item)
         }
     }
 
@@ -147,7 +180,7 @@ struct FavoriteCardView: View {
     }
 
     private var removeButton: some View {
-        Button(action: remove) {
+        Button(action: { remove(item) }) {
             Image(systemName: "heart.fill")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(Theme.hotPink)
@@ -165,7 +198,7 @@ struct FavoriteCardView: View {
         Image(systemName: "heart.fill")
             .font(.system(size: 28, weight: .bold))
             .foregroundStyle(.white.opacity(0.82))
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
     }
 
     private var metadataText: String {

@@ -19,11 +19,17 @@ enum LibraryFavoritesActions {
 @MainActor
 struct FavoritesView: View {
     @StateObject private var favorites = FeedFavoritesStore.shared
+    @StateObject private var selectionManager = SelectionManager.shared
 
     @State private var searchText = ""
     @State private var sortMode: FavoritesSortMode = .newestFavorited
     @State private var pendingDeleteItem: FeedFavoriteItem?
     @FocusState private var searchFocused: Bool
+
+    private var selected: Set<String> {
+        get { selectionManager.selection(for: .favorites) }
+        set { selectionManager.selectAll(Array(newValue), in: .favorites) }
+    }
 
     private var filteredItems: [FeedFavoriteItem] {
         FavoritesDisplay.filteredAndSorted(
@@ -80,7 +86,8 @@ struct FavoritesView: View {
         }
         .background(
             Button("") { searchFocused = true }
-                .keyboardShortcut("f", modifiers: .command)
+                .keyboardShortcut(ShortcutManager.shared.binding(for: .search),
+                                  modifiers: ShortcutManager.shared.modifiers(for: .search))
                 .opacity(0)
                 .frame(width: 0, height: 0)
         )
@@ -89,35 +96,72 @@ struct FavoritesView: View {
     @ViewBuilder
     private var content: some View {
         if favorites.items.isEmpty {
-            FavoritesEmptyState()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            EmptyStateView.favoritesEmpty()
+                .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
         } else if filteredItems.isEmpty {
-            FavoritesNoResultsState(
+            EmptyStateView.favoritesNoResults(
                 searchText: searchText,
                 clearAction: { searchText = "" }
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
         } else {
-            GeometryReader { proxy in
-                let minimum = proxy.size.width >= 1500 ? 300.0 : 260.0
-                ScrollView {
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: minimum), spacing: 14)],
-                        alignment: .leading,
-                        spacing: 14
-                    ) {
-                        ForEach(filteredItems) { item in
-                            FavoriteCardView(
-                                item: item,
-                                extract: { extract(item) },
-                                openSource: { openSource(item) },
-                                copyLink: { ClipboardManager.copy(item.url) },
-                                remove: { pendingDeleteItem = item }
-                            )
+            VStack(spacing: 0) {
+                if !selected.isEmpty {
+                    FavoritesSelectionBar(
+                        count: selected.count,
+                        clearAction: { selectionManager.deselectAll(in: .favorites) }
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
+                GeometryReader { proxy in
+                    let minimum = proxy.size.width >= 1500 ? 300.0 : 260.0
+                    ScrollView {
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: minimum), spacing: 14)],
+                            alignment: .leading,
+                            spacing: 14
+                        ) {
+                            ForEach(filteredItems) { item in
+                                FavoriteCardView(
+                                    item: item,
+                                    isSelected: selected.contains(item.id),
+                                    extract: { extract(item) },
+                                    openSource: { openSource(item) },
+                                    copyLink: { ClipboardManager.copy(item.url) },
+                                    remove: { itemToRemove in
+                        withAnimation {
+                            let removed = favorites.items.first { $0.id == itemToRemove.id }
+                            favorites.remove(id: itemToRemove.id)
+                            if let removed = removed {
+                                selectionManager.registerUndo(itemIDs: [itemToRemove.id], context: .favorites) {
+                                    favorites.add(removed)
+                                }
+                                ToastQueue.shared.showWithUndo(
+                                    "Removed from Favorites",
+                                    type: .info,
+                                    duration: 8.0,
+                                    actionText: "Undo"
+                                ) {
+                                    selectionManager.undoLastDelete(in: .favorites)
+                                }
+                            }
                         }
+                    },
+                                    onSelectionToggle: { isSelected in
+                                        if isSelected {
+                                            selectionManager.select(item.id, in: .favorites)
+                                        } else {
+                                            selectionManager.deselect(item.id, in: .favorites)
+                                        }
+                                    }
+                                )
+                                .environment(\.selectionManager, selectionManager)
+                            }
+                        }
+                        .padding(.top, 2)
+                        .padding(.bottom, 18)
                     }
-                    .padding(.top, 2)
-                    .padding(.bottom, 18)
                 }
             }
         }
@@ -130,6 +174,27 @@ struct FavoritesView: View {
     private func openSource(_ item: FeedFavoriteItem) {
         guard let url = URL(string: item.url) else { return }
         NSWorkspace.shared.open(url)
+    }
+}
+
+private struct FavoritesSelectionBar: View {
+    let count: Int
+    let clearAction: () -> Void
+
+    var body: some View {
+        HStack {
+            Text("\(count) selected")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+            Spacer()
+            Button("Clear", action: clearAction)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Theme.hotPink)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Theme.surface1.opacity(0.9), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.hotPink.opacity(0.3), lineWidth: 1))
     }
 }
 

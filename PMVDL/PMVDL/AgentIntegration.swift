@@ -549,9 +549,7 @@ final class LustreAgentController: ObservableObject {
                 if lastError != message {
                     lastError = message
                 }
-                AppStateManager.shared.transientMessage = AppTransientMessage(
-                    text: "Unable to remove Agent download: \(message)"
-                )
+                ToastQueue.shared.error("Unable to remove Agent download: \(message)")
             }
         }
     }

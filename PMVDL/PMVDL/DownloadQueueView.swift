@@ -5,19 +5,23 @@ import SwiftUI
 struct DownloadQueueViewNew: View {
     @StateObject private var queue = DownloadQueue.shared
     @ObservedObject private var appState = AppStateManager.shared
+    @StateObject private var selectionManager = SelectionManager.shared
     @SecureStringStorage("seedboxWebdavPassword") private var seedboxWebdavPassword = ""
 
     @State private var searchText = ""
     @State private var statusFilter: DownloadStatusFilter = .all
     @State private var doneExpanded = false
-    @State private var selection: Set<UUID> = []
-    @State private var lastSelectedID: UUID?
     @State private var showingBulkRemoveConfirmation = false
     @State private var diagnosticItem: DownloadQueueItem?
     @FocusState private var searchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let onUpgradeRequired: () -> Void
+
+    private var selection: Set<String> {
+        get { selectionManager.selection(for: .downloads) }
+        set { selectionManager.selectAll(Array(newValue), in: .downloads) }
+    }
 
     init(onUpgradeRequired: @escaping () -> Void = {}) {
         self.onUpgradeRequired = onUpgradeRequired
@@ -55,7 +59,7 @@ struct DownloadQueueViewNew: View {
     }
 
     private var selectedItems: [DownloadQueueItem] {
-        downloadItems.filter { selection.contains($0.id) }
+        downloadItems.filter { selection.contains($0.id.uuidString) }
     }
 
     private var visibleRowAnimationKey: [String] {
@@ -91,7 +95,7 @@ struct DownloadQueueViewNew: View {
                     pauseAction: pauseSelected,
                     resumeAction: resumeSelected,
                     removeAction: { showingBulkRemoveConfirmation = true },
-                    clearAction: { selection.removeAll() }
+                    clearAction: { selectionManager.deselectAll(in: .downloads) }
                 )
                 .padding(.horizontal, 18)
                 .padding(.bottom, 10)
@@ -120,7 +124,7 @@ struct DownloadQueueViewNew: View {
                     searchText = ""
                 }
             } else if !selection.isEmpty {
-                selection.removeAll()
+                selectionManager.deselectAll(in: .downloads)
             }
         }
         .onDeleteCommand {
@@ -130,7 +134,8 @@ struct DownloadQueueViewNew: View {
         }
         .background(
             Button("") { searchFocused = true }
-                .keyboardShortcut("f", modifiers: .command)
+                .keyboardShortcut(ShortcutManager.shared.binding(for: .search),
+                                  modifiers: ShortcutManager.shared.modifiers(for: .search))
                 .opacity(0)
                 .frame(width: 0, height: 0)
         )
@@ -143,24 +148,23 @@ struct DownloadQueueViewNew: View {
     private var content: some View {
         if queue.isRestoring && downloadItems.isEmpty {
             DownloadsRestoringState()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
         } else if downloadItems.isEmpty {
-            DownloadsEmptyState {
-                AppStateManager.shared.select(.home)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .transition(.opacity)
+            EmptyStateView.downloadsEmpty()
+                .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
+                .transition(.opacity)
         } else if visibleItems.isEmpty {
-            DownloadsNoResultsState(
+            let completedCount = downloadItems.filter { $0.status == .completed }.count
+            EmptyStateView.downloadsNoResults(
                 filter: statusFilter,
-                completedCount: downloadItems.filter { $0.status == .completed }.count,
+                completedCount: completedCount,
+                clearAction: clearFilters,
                 showDone: {
                     statusFilter = .done
                     doneExpanded = true
-                },
-                clearFilters: clearFilters
+                }
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
         } else {
             ScrollView {
                 LazyVStack(spacing: 10, pinnedViews: [.sectionHeaders]) {
@@ -170,10 +174,29 @@ struct DownloadQueueViewNew: View {
                                 ForEach(section.items) { item in
                                     DownloadQueueRow(
                                         item: item,
-                                        isSelected: selection.contains(item.id),
+                                        isSelected: selection.contains(item.id.uuidString),
                                         queueIndex: queueIndex(for: item),
                                         queueCount: downloadItems.count,
-                                        onRemove: { queue.remove(item) },
+                                        onRemove: {
+                                            selectionManager.registerUndo(itemIDs: [item.id.uuidString], context: .downloads) {
+                                                queue.add(
+                                                    url: item.url,
+                                                    quality: item.quality,
+                                                    targetCloud: item.targetCloud,
+                                                    displayTitle: item.displayTitle,
+                                                    retryPayload: item.retryPayload
+                                                )
+                                            }
+                                            queue.remove(item)
+                                            ToastQueue.shared.showWithUndo(
+                                                "Removed download",
+                                                type: .info,
+                                                duration: 8.0,
+                                                actionText: "Undo"
+                                            ) {
+                                                selectionManager.undoLastDelete(in: .downloads)
+                                            }
+                                        },
                                         onPause: { queue.pause(item) },
                                         onResume: { resume(item) },
                                         onRetry: { retry(item) },
@@ -183,7 +206,9 @@ struct DownloadQueueViewNew: View {
                                         onShowSource: { showSource(item) },
                                         onCopyError: { copyError(item) },
                                         onDiagnose: { diagnosticItem = item },
-                                        onToggleSelection: { toggleSelection(for: item) }
+                                        onToggleSelection: { toggleSelection(for: item) },
+                                        queue: queue,
+                                        selectionManager: selectionManager
                                     )
                                     .transition(rowTransition)
                                 }
@@ -307,19 +332,7 @@ struct DownloadQueueViewNew: View {
     }
 
     private func toggleSelection(for item: DownloadQueueItem) {
-        let modifiers = NSEvent.modifierFlags
-        if modifiers.contains(.shift),
-           let lastSelectedID,
-           let start = visibleItems.firstIndex(where: { $0.id == lastSelectedID }),
-           let end = visibleItems.firstIndex(where: { $0.id == item.id }) {
-            let range = min(start, end)...max(start, end)
-            selection.formUnion(visibleItems[range].map(\.id))
-        } else if selection.contains(item.id) {
-            selection.remove(item.id)
-        } else {
-            selection.insert(item.id)
-        }
-        lastSelectedID = item.id
+        selectionManager.handleClick(id: item.id.uuidString, in: visibleItems.map(\.id.uuidString), context: .downloads, modifierFlags: NSEvent.modifierFlags)
     }
 
     private func retrySelected() {
@@ -339,8 +352,33 @@ struct DownloadQueueViewNew: View {
     }
 
     private func removeSelected() {
-        selectedItems.forEach { queue.remove($0) }
-        selection.removeAll()
+        let items = selectedItems
+        let itemIDs = items.map(\.id.uuidString)
+
+        // Register undo before deletion
+        selectionManager.registerUndo(itemIDs: itemIDs, context: .downloads) {
+            for item in items {
+                queue.add(
+                    url: item.url,
+                    quality: item.quality,
+                    targetCloud: item.targetCloud,
+                    displayTitle: item.displayTitle,
+                    retryPayload: item.retryPayload
+                )
+            }
+        }
+
+        items.forEach { queue.remove($0) }
+        selectionManager.deselectAll(in: .downloads)
+
+        ToastQueue.shared.showWithUndo(
+            "Removed \(items.count) download\(items.count == 1 ? "" : "s")",
+            type: .info,
+            duration: 8.0,
+            actionText: "Undo"
+        ) {
+            selectionManager.undoLastDelete(in: .downloads)
+        }
     }
 
     private func moveToFront(_ item: DownloadQueueItem) {
@@ -484,6 +522,7 @@ private struct DownloadsToolbar: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
+        .help("Queue actions")
     }
 
     private var countBadge: some View {
@@ -584,6 +623,7 @@ private struct DownloadSectionHeader: View {
             }
             .buttonStyle(.plain)
             .disabled(kind != .done)
+            .help(isCollapsed ? "Expand completed" : "Collapse completed")
 
             Spacer()
         }
@@ -614,6 +654,8 @@ private struct DownloadQueueRow: View {
     let onCopyError: () -> Void
     let onDiagnose: () -> Void
     let onToggleSelection: () -> Void
+    let queue: DownloadQueue
+    let selectionManager: SelectionManager
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isDetailsExpanded = false
@@ -843,10 +885,37 @@ private struct DownloadQueueRow: View {
         }
         actions.append(AppContextMenuAction("Show Source", systemImage: "safari", action: onShowSource))
         actions.append(AppContextMenuAction("Show in Finder", systemImage: "folder", action: onShowInFinder))
+        // Open in Browser for completed downloads with source page URL
+        if item.status == .completed, let sourceURL = item.sourcePageURL {
+            actions.append(AppContextMenuAction("Open in Browser", systemImage: "safari.fill", action: {
+                if let url = URL(string: sourceURL) {
+                    NSWorkspace.shared.open(url)
+                }
+            }))
+        }
         if !item.status.isTerminal && item.status != .processing {
             actions.append(AppContextMenuAction("Move to Front", systemImage: "forward.fill", action: onMoveToFront))
         }
-        actions.append(AppContextMenuAction("Remove", systemImage: "trash", role: .destructive, action: onRemove))
+        actions.append(AppContextMenuAction("Remove", systemImage: "trash", role: .destructive, action: {
+            selectionManager.registerUndo(itemIDs: [item.id.uuidString], context: .downloads) {
+                queue.add(
+                    url: item.url,
+                    quality: item.quality,
+                    targetCloud: item.targetCloud,
+                    displayTitle: item.displayTitle,
+                    retryPayload: item.retryPayload
+                )
+            }
+            queue.remove(item)
+            ToastQueue.shared.showWithUndo(
+                "Removed download",
+                type: .info,
+                duration: 8.0,
+                actionText: "Undo"
+            ) {
+                selectionManager.undoLastDelete(in: .downloads)
+            }
+        }))
         return actions
     }
 
@@ -1279,7 +1348,7 @@ private struct DownloadDiagnosticSheet: View {
     }
 }
 
-private enum DownloadStatusFilter: String, CaseIterable, Identifiable {
+enum DownloadStatusFilter: String, CaseIterable, Identifiable {
     case all
     case active
     case queued

@@ -193,7 +193,14 @@ enum LibraryTimelineBuilder {
             .filter { !libraryURLs.contains(normalizedURL($0.url)) }
             .map(LibraryTimelineEntry.favorite)
 
-        return (videos + links + uploads + favorites).sorted {
+        let sortedVideos = videos.sorted {
+            if let v1 = $0.libraryItem, let v2 = $1.libraryItem {
+                if v1.sortOrder != v2.sortOrder { return v1.sortOrder < v2.sortOrder }
+            }
+            if $0.timestamp == $1.timestamp { return $0.id < $1.id }
+            return $0.timestamp > $1.timestamp
+        }
+        return (sortedVideos + links + uploads + favorites).sorted {
             if $0.timestamp == $1.timestamp { return $0.id < $1.id }
             return $0.timestamp > $1.timestamp
         }
@@ -344,9 +351,14 @@ enum LibraryDisplay {
     @MainActor
     static func detailLine(for item: LibraryItem, pipelineStore: LibraryPipelineStore) -> String {
         let base = LibraryTimelineURLFormatter.prettyURL(item.url)
+        var parts: [String] = []
+        if let fileSize = item.fileSize {
+            parts.append(ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file))
+        }
         let badges = LibraryPipelineDisplay.compactBadges(for: item.url, store: pipelineStore).map(\.title)
-        guard !badges.isEmpty else { return base }
-        return "\(base) · \(badges.joined(separator: ", "))"
+        parts.append(contentsOf: badges)
+        guard !parts.isEmpty else { return base }
+        return "\(base) · \(parts.joined(separator: ", "))"
     }
 
     static func searchText(for item: LibraryItem, pipelineSearchText: String) -> String {
@@ -532,52 +544,48 @@ enum LibraryDownloadContext {
 
 @MainActor
 final class LibraryThumbnailStore: ObservableObject {
-    @Published private var images: [UUID: NSImage] = [:]
-    @Published private var loadingIDs: Set<UUID> = []
-    @Published private var failedIDs: Set<UUID> = []
     @Published var isRefreshing = false
 
     private let resolver: LibraryThumbnailResolver
+    private var itemStates: [UUID: ThumbnailItemState] = [:]
     private var attemptedIdentities = Set<String>()
 
     init(resolver: LibraryThumbnailResolver = .live) {
         self.resolver = resolver
     }
 
-    func image(for item: LibraryItem) -> NSImage? {
-        images[item.id]
-    }
-
-    func isLoading(_ item: LibraryItem) -> Bool {
-        loadingIDs.contains(item.id)
-    }
-
-    func didFail(_ item: LibraryItem) -> Bool {
-        failedIDs.contains(item.id)
+    func state(for item: LibraryItem) -> ThumbnailItemState {
+        if let existing = itemStates[item.id] {
+            return existing
+        }
+        let newState = ThumbnailItemState()
+        itemStates[item.id] = newState
+        return newState
     }
 
     func load(item: LibraryItem, force: Bool = false) async {
         let identity = item.thumbnailURL ?? item.mp4Url ?? item.hlsUrls.first?.url ?? item.url
-        if !force, images[item.id] != nil || loadingIDs.contains(item.id) || attemptedIdentities.contains(identity) {
+        let state = state(for: item)
+        if !force, state.image != nil || state.isLoading || attemptedIdentities.contains(identity) {
             return
         }
 
-        loadingIDs.insert(item.id)
-        failedIDs.remove(item.id)
+        state.isLoading = true
+        state.didFail = false
         attemptedIdentities.insert(identity)
-        defer { loadingIDs.remove(item.id) }
+        defer { state.isLoading = false }
 
         do {
             let result = try await resolver.loadThumbnail(for: item)
             if let image = result.image {
-                images[item.id] = image
+                state.image = image
             }
             if let thumbnailURL = result.thumbnailURL,
                result.source != .mediaFrame {
                 VideoLibrary.shared.updateThumbnailURL(forID: item.id, thumbnailURL: thumbnailURL)
             }
         } catch {
-            failedIDs.insert(item.id)
+            state.didFail = true
         }
     }
 
@@ -586,11 +594,93 @@ final class LibraryThumbnailStore: ObservableObject {
         isRefreshing = true
         defer { isRefreshing = false }
         for item in items {
+            let identity = item.thumbnailURL ?? item.mp4Url ?? item.hlsUrls.first?.url ?? item.url
             if force {
-                images[item.id] = nil
-                attemptedIdentities.remove(item.thumbnailURL ?? item.mp4Url ?? item.hlsUrls.first?.url ?? item.url)
+                let state = state(for: item)
+                state.image = nil
+                attemptedIdentities.remove(identity)
             }
             await load(item: item, force: true)
+        }
+    }
+}
+
+@MainActor
+final class ThumbnailItemState: ObservableObject {
+    @Published var image: NSImage?
+    @Published var isLoading = false
+    @Published var didFail = false
+}
+
+/// Watchlist-specific thumbnail store using the same resolver pipeline as Library
+@MainActor
+final class WatchlistThumbnailStore: ObservableObject {
+    static let shared = WatchlistThumbnailStore()
+
+    private let resolver: LibraryThumbnailResolver
+    private var itemStates: [UUID: ThumbnailItemState] = [:]
+    private var attemptedIdentities = Set<String>()
+
+    init(resolver: LibraryThumbnailResolver = .live) {
+        self.resolver = resolver
+    }
+
+    func state(for item: WatchlistItem) -> ThumbnailItemState {
+        if let existing = itemStates[item.id] {
+            return existing
+        }
+        let newState = ThumbnailItemState()
+        itemStates[item.id] = newState
+        return newState
+    }
+
+    func load(item: WatchlistItem, force: Bool = false) async {
+        let identity = item.thumbnailURL ?? item.sourcePageURL
+        let state = state(for: item)
+        if !force, state.image != nil || state.isLoading {
+            return
+        }
+
+        state.isLoading = true
+        state.didFail = false
+        defer { state.isLoading = false }
+
+        // Create a temporary LibraryItem-compatible object for the resolver
+        let tempItem = LibraryItem(
+            id: item.id,
+            url: item.sourcePageURL,
+            title: item.title,
+            mp4Url: nil,
+            hlsUrls: [],
+            extractedAt: item.createdAt,
+            thumbnailURL: item.thumbnailURL,
+            uploaderName: nil,
+            uploaderURL: nil,
+            sourceSiteName: item.provider,
+            remotePaths: [:],
+            tags: nil,
+            collectionName: nil
+        )
+
+        do {
+            let result = try await resolver.loadThumbnail(for: tempItem)
+            if let image = result.image {
+                state.image = image
+            }
+            if let thumbnailURL = result.thumbnailURL,
+               result.source != .mediaFrame {
+                // Update stored thumbnail URL if we found a better one
+                WatchlistStore.shared.updateThumbnailURL(for: item.id, thumbnailURL: thumbnailURL)
+            }
+        } catch {
+            state.didFail = true
+        }
+    }
+
+    func refresh(items: [WatchlistItem], force: Bool = false) async {
+        guard !items.isEmpty else { return }
+        for item in items {
+            await load(item: item, force: force)
         }
     }
 }

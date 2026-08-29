@@ -136,7 +136,8 @@ struct HomeURLInputCard: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .keyboardShortcut(.return, modifiers: .command)
+            .keyboardShortcut(ShortcutManager.shared.binding(for: .submitURL),
+                              modifiers: ShortcutManager.shared.modifiers(for: .submitURL))
             .disabled(isLoading || (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !canExtract))
             .tint(.white)
             .foregroundStyle(Theme.surface0)
@@ -196,7 +197,8 @@ struct HomeURLInputCard: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(isCompact ? .regular : .large)
-            .keyboardShortcut(.return, modifiers: .command)
+            .keyboardShortcut(ShortcutManager.shared.binding(for: .submitURL),
+                              modifiers: ShortcutManager.shared.modifiers(for: .submitURL))
             .disabled(!canExtract)
             .tint(Theme.skyBlue)
             .help("Extract video sources from the URLs")
@@ -217,6 +219,9 @@ struct HomeURLInputCard: View {
 struct HomeStitchCommandPanel<CompletedContent: View, ResultsContent: View>: View {
     @Binding var text: String
     let isLoading: Bool
+    let loadProgress: String
+    let extractionSlots: [ExtractionSlot]
+    let onCancelExtraction: () -> Void
     let isYtDlpReady: Bool
     let isPro: Bool
     let onPaste: () -> Void
@@ -244,11 +249,38 @@ struct HomeStitchCommandPanel<CompletedContent: View, ResultsContent: View>: Vie
         !isLoading && (canExtract || isPasteAndExtractAction)
     }
 
+    private var currentBatchInfo: (current: Int, total: Int, completed: Int, totalURLs: Int)? {
+        guard !extractionSlots.isEmpty else { return nil }
+        let urls = extractionSlots.map(\.url)
+        let batchRanges = ExtractionBatchPolicy.ranges(forCount: urls.count)
+        var completed = 0
+        for (batchIndex, range) in batchRanges.enumerated() {
+            let batchCompleted = range.filter { i in
+                extractionSlots.indices.contains(i) && extractionSlots[i].result != nil
+            }.count
+            if batchCompleted == range.count {
+                completed += batchCompleted
+            } else {
+                completed += batchCompleted
+                return (batchIndex + 1, batchRanges.count, completed, urls.count)
+            }
+        }
+        return (batchRanges.count, batchRanges.count, completed, urls.count)
+    }
+
+    private var currentSlotTitle: String? {
+        extractionSlots.first(where: { $0.result == nil })?.title
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
             editorBlock
             actionRow
+            if isLoading {
+                extractionProgressBar
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
             completedContent()
             resultsContent()
             supportedPlatforms
@@ -256,6 +288,61 @@ struct HomeStitchCommandPanel<CompletedContent: View, ResultsContent: View>: Vie
         .padding(22)
         .frame(minHeight: AppShellSurfaceMetrics.mainPanelHeight(for: appState.windowSize), alignment: .topLeading)
         .mobileCard(tint: Theme.skyBlue.opacity(0.22), cornerRadius: MobileMetrics.sheetRadius, isElevated: true)
+        .animation(.easeInOut(duration: 0.2), value: isLoading)
+    }
+
+    @ViewBuilder
+    private var extractionProgressBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.8)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    if let info = currentBatchInfo {
+                        Text("Batch \(info.current) of \(info.total)  •  \(info.completed) of \(info.totalURLs) completed")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Theme.textPrimary)
+                    } else {
+                        Text(loadProgress.isEmpty ? "Extracting…" : loadProgress)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Theme.textPrimary)
+                    }
+
+                    if let title = currentSlotTitle {
+                        Text(title)
+                            .font(.caption2)
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+
+                Spacer(minLength: 12)
+
+                Button(action: onCancelExtraction) {
+                    Label("Cancel", systemImage: "xmark.circle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Theme.textSecondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Theme.surface2.opacity(0.6), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Cancel extraction")
+            }
+
+            GradientProgressBar(progress: progressFraction, height: 4, isAnimated: true)
+        }
+        .padding(12)
+        .background(Theme.surface0.opacity(0.4), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.skyBlue.opacity(0.2), lineWidth: 0.5))
+    }
+
+    private var progressFraction: Double {
+        guard let info = currentBatchInfo, info.totalURLs > 0 else { return 0 }
+        return Double(info.completed) / Double(info.totalURLs)
     }
 
     private var header: some View {
@@ -365,7 +452,8 @@ struct HomeStitchCommandPanel<CompletedContent: View, ResultsContent: View>: Vie
             }
         }
         .buttonStyle(MobilePrimaryButtonStyle(tint: Theme.skyBlue))
-        .keyboardShortcut(.return, modifiers: .command)
+        .keyboardShortcut(ShortcutManager.shared.binding(for: .submitURL),
+                          modifiers: ShortcutManager.shared.modifiers(for: .submitURL))
         .disabled(!canRunPrimaryAction)
         .help(isPasteAndExtractAction ? "Paste a URL from the clipboard and extract its video sources" : "Extract video sources from the URLs")
     }

@@ -36,7 +36,7 @@ class AppStateManager: ObservableObject {
             pendingFeedNavigation = try FeedSourceNavigation.request(for: item)
             select(.feed)
         } catch {
-            transientMessage = AppTransientMessage(text: error.localizedDescription)
+            ToastQueue.shared.error(error.localizedDescription)
         }
     }
 }

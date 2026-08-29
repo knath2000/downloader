@@ -1067,13 +1067,50 @@ struct PornHubBrowserWebView: NSViewRepresentable {
         const first = (value || "").split(",")[0]?.trim().split(/\\s+/)[0];
         return abs(first);
       };
+      const findVideoAnchor = (element) => {
+        if (!element) return null;
+        // Check if element itself is a video link
+        if (element.matches && element.matches('a[href]') && isVideoURL(element.getAttribute('href'))) {
+          return element;
+        }
+        // Check ancestors
+        const ancestorAnchor = element.closest ? element.closest('a[href]') : null;
+        if (ancestorAnchor && isVideoURL(ancestorAnchor.getAttribute('href'))) {
+          return ancestorAnchor;
+        }
+        // Check descendants (for when right-clicking on container)
+        const descendantAnchors = element.querySelectorAll ? element.querySelectorAll('a[href]') : [];
+        for (const a of descendantAnchors) {
+          if (isVideoURL(a.getAttribute('href'))) return a;
+        }
+        // Check siblings and their descendants
+        let sibling = element.nextElementSibling;
+        while (sibling) {
+          if (sibling.matches && sibling.matches('a[href]') && isVideoURL(sibling.getAttribute('href'))) return sibling;
+          const sibDesc = sibling.querySelectorAll ? sibling.querySelectorAll('a[href]') : [];
+          for (const a of sibDesc) { if (isVideoURL(a.getAttribute('href'))) return a; }
+          sibling = sibling.nextElementSibling;
+        }
+        sibling = element.previousElementSibling;
+        while (sibling) {
+          if (sibling.matches && sibling.matches('a[href]') && isVideoURL(sibling.getAttribute('href'))) return sibling;
+          const sibDesc = sibling.querySelectorAll ? sibling.querySelectorAll('a[href]') : [];
+          for (const a of sibDesc) { if (isVideoURL(a.getAttribute('href'))) return a; }
+          sibling = sibling.previousElementSibling;
+        }
+        return null;
+      };
       document.addEventListener("contextmenu", event => {
         const videoSelector = 'a[href]';
         const isRentry = window.location.hostname.toLowerCase().replace(/^www\\./, "") === "rentry.co";
-        const cardSelector = '[data-href*="/post/"], [data-thumb-id], [data-href*="/hdporn/"], [data-href*="view_video.php"], [data-href*="/video-"], li, .pcVideoListItem, .videoBox, .videoUList, .phimage, article, section';
+        const cardSelector = '[data-href*="/post/"], [data-thumb-id], [data-href*="/hdporn/"], [data-href*="view_video.php"], [data-href*="/video-"], li, .pcVideoListItem, .videoBox, .videoUList, .phimage, article, section, .entry-text a, .entry-text article, .entry-text section, .entry-text div[style*="float"], .entry-text div[style*="display"]';
         const anchors = event.composedPath ? event.composedPath().filter(node => node?.matches?.(videoSelector)) : [];
-        const anchor = anchors.find(node => isVideoURL(node.getAttribute("href"))) ||
+        let anchor = anchors.find(node => isVideoURL(node.getAttribute("href"))) ||
           (event.target && event.target.closest ? event.target.closest(videoSelector) : null);
+        // For rentry.co, also try to find video anchor from the target element and its context
+        if (isRentry && !anchor) {
+          anchor = findVideoAnchor(event.target);
+        }
         if (isRentry && !videoHref(anchor?.getAttribute("href"))) return;
         const card = isRentry ? anchor : (event.target && event.target.closest ? (event.target.closest(cardSelector) || anchor?.closest(cardSelector)) : null);
         const cardHref = card?.getAttribute("data-href") || card?.getAttribute("data-url") || card?.getAttribute("href");
@@ -1370,7 +1407,7 @@ struct PornHubBrowserWebView: NSViewRepresentable {
                 context: context,
                 selector: selector
             )
-            AppStateManager.shared.transientMessage = AppTransientMessage(text: "\(quality.label) added to Downloads.")
+            ToastQueue.shared.success("\(quality.label) added to Downloads.")
         }
 
         private func performToggleFavorite(_ context: (url: URL, title: String)) {
@@ -1479,7 +1516,7 @@ private struct FeedLinkExtractionPanel: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Theme.textSecondary)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
             case .resolved(let resolution):
                 HStack {
                     Label(resolution.provider, systemImage: "checkmark.circle.fill")
@@ -1507,10 +1544,10 @@ private struct FeedLinkExtractionPanel: View {
                         .buttonStyle(.borderedProminent)
                         .tint(accent)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
             case .failed(let message):
                 ContentUnavailableView("Extraction failed", systemImage: "exclamationmark.triangle.fill", description: Text(message))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(maxWidth: CGFloat.infinity, maxHeight: CGFloat.infinity)
             }
         }
         .padding(18)

@@ -46,6 +46,28 @@ final class FeedFavoritesStore: ObservableObject {
         save()
     }
 
+    func add(url: String, title: String, thumbnailURL: String?) {
+        let item = FeedFavoriteItem(
+            id: FeedFavoriteItem.normalizedURL(url),
+            title: title,
+            url: FeedFavoriteItem.normalizedURL(url),
+            thumbnailURL: thumbnailURL,
+            referer: nil,
+            uploadDate: Date(),
+            favoritedAt: Date(),
+            viewCount: 0,
+            siteName: "Library",
+            studio: nil,
+            durationSeconds: nil,
+            categories: [],
+            tags: [],
+            performers: [],
+            qualityLabels: [],
+            sourceKind: "library"
+        )
+        add(item)
+    }
+
     func add(feedItem: FeedItem) {
         add(FeedFavoriteItem(feedItem: feedItem))
     }
