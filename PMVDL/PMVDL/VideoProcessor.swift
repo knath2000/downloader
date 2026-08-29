@@ -165,6 +165,100 @@ struct VideoProcessor {
         }
     }
 
+    // MARK: - Sprite sheet generation (hover-scrub previews)
+
+    /// Options for `generateSpriteSheet`. Defaults target a 10×10 grid of 160×90 tiles,
+    /// producing a single ~1.4 MP JPEG suitable for scrub-on-hover.
+    struct SpriteSheetOptions {
+        var columns: Int = 10
+        var rows: Int = 10
+        var frameWidth: Int = 160
+        var frameHeight: Int = 90
+        /// Seconds between sampled frames. If nil, derived from `duration / (columns*rows)`.
+        var interval: Double?
+        /// JPEG quality (2 = high, ~31 = low). Lower file size helps cache pressure.
+        var jpegQuality: Int = 4
+        /// Wall-clock timeout for the ffmpeg invocation.
+        var timeout: TimeInterval = 180
+
+        var totalTiles: Int { columns * rows }
+    }
+
+    /// Generate a sprite sheet JPEG for a local video file using ffmpeg's `tile=` filter.
+    /// Output is written to `outputURL` (a JPEG). Metadata describing the layout is
+    /// returned alongside the file URL.
+    ///
+    /// Throws `ProcessorError.ffmpegNotFound` if ffmpeg isn't available, or
+    /// `ProcessorError.processFailed(...)` on non-zero exit.
+    static func generateSpriteSheet(
+        for videoURL: URL,
+        options: SpriteSheetOptions = SpriteSheetOptions(),
+        outputURL: URL
+    ) async throws -> SpriteSheet {
+        guard let ffmpeg = findFFmpeg() else {
+            throw ProcessorError.ffmpegNotFound
+        }
+
+        let duration = await inputDuration(for: videoURL)
+        let interval: Double = {
+            if let explicit = options.interval, explicit > 0 { return explicit }
+            if let duration, duration > 0 {
+                return max(duration / Double(options.totalTiles), 1.0)
+            }
+            return 10.0
+        }()
+
+        let filter = "fps=1/\(Self.formatInterval(interval)),scale=\(options.frameWidth):-1,tile=\(options.columns)x\(options.rows)"
+
+        try? FileManager.default.removeItem(at: outputURL)
+        try? FileManager.default.createDirectory(
+            at: outputURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+
+        let arguments: [String] = [
+            "-y",
+            "-i", videoURL.path,
+            "-vf", filter,
+            "-frames:v", "1",
+            "-q:v", "\(options.jpegQuality)",
+            outputURL.path
+        ]
+
+        let result = try await SubprocessRunner.run(
+            executable: ffmpeg,
+            arguments: arguments,
+            timeout: options.timeout
+        )
+
+        guard result.exitStatus == 0 else {
+            throw ProcessorError.processFailed(
+                "sprite sheet ffmpeg exit \(result.exitStatus): \(result.stderr.prefix(200))"
+            )
+        }
+        guard FileManager.default.fileExists(atPath: outputURL.path) else {
+            throw ProcessorError.processFailed("sprite sheet output missing at \(outputURL.path)")
+        }
+
+        return SpriteSheet(
+            url: outputURL,
+            columns: options.columns,
+            rows: options.rows,
+            frameWidth: options.frameWidth,
+            frameHeight: options.frameHeight,
+            interval: interval
+        )
+    }
+
+    /// Format a sampling interval for ffmpeg's `fps=1/N` filter. Uses reduced precision
+    /// for readability, dropping trailing zeros (e.g. 10.0 -> "10", 12.5 -> "12.5").
+    private static func formatInterval(_ value: Double) -> String {
+        if value.rounded() == value {
+            return String(Int(value))
+        }
+        return String(format: "%g", value)
+    }
+
     enum ProcessOp {
         case downscale(targetHeight: Int)    // 1080, 720, 480
         case convert(format: OutputFormat)    // mp4, webm, mkv

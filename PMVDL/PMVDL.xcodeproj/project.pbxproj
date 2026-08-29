@@ -92,6 +92,13 @@
 	A10105 /* FavoritesDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20105 /* FavoritesDisplay.swift */; };
 	A10106 /* FavoritesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20106 /* FavoritesView.swift */; };
 	A10107 /* FavoriteCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20107 /* FavoriteCardView.swift */; };
+	A10150 /* EmptyStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20150 /* EmptyStateView.swift */; };
+		A10151 /* ToastQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20151 /* ToastQueue.swift */; };
+	A10152 /* SelectionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20152 /* SelectionManager.swift */; };
+	A10153 /* ShortcutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20153 /* ShortcutManager.swift */; };
+	A10154 /* SpriteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20154 /* SpriteSheet.swift */; };
+	A10155 /* SpriteSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20155 /* SpriteSheetView.swift */; };
+	A10156 /* HoverSpritePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20156 /* HoverSpritePreview.swift */; };
 	A10074 /* String+Parsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20074 /* String+Parsing.swift */; };
 	A10075 /* NetworkConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20075 /* NetworkConstants.swift */; };
 	A10076 /* Logging.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20076 /* Logging.swift */; };
@@ -136,6 +143,13 @@
 	A20005 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 	A20148 /* AgentIntegration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentIntegration.swift; sourceTree = "<group>"; };
 	A20149 /* Watchlist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Watchlist.swift; sourceTree = "<group>"; };
+	A20150 /* EmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStateView.swift; sourceTree = "<group>"; };
+		A20151 /* ToastQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastQueue.swift; sourceTree = "<group>"; };
+		A20152 /* SelectionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionManager.swift; sourceTree = "<group>"; };
+	A20153 /* ShortcutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutManager.swift; sourceTree = "<group>"; };
+	A20154 /* SpriteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpriteSheet.swift; sourceTree = "<group>"; };
+	A20155 /* SpriteSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpriteSheetView.swift; sourceTree = "<group>"; };
+	A20156 /* HoverSpritePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoverSpritePreview.swift; sourceTree = "<group>"; };
 	A20010 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 	A20008 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20009 /* MegaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MegaManager.swift; sourceTree = "<group>"; };
@@ -321,6 +335,13 @@
 			A20021 /* DropHandler.swift */,
 			A20061 /* LicenseManager.swift */,
 			A20064 /* HardwareID.swift */,
+			A20150 /* EmptyStateView.swift */,
+			A20151 /* ToastQueue.swift */,
+			A20152 /* SelectionManager.swift */,
+			A20153 /* ShortcutManager.swift */,
+			A20154 /* SpriteSheet.swift */,
+			A20155 /* SpriteSheetView.swift */,
+			A20156 /* HoverSpritePreview.swift */,
 			A20062 /* Theme.swift */,
 			A20063 /* GlassComponents.swift */,
 			A20134 /* MobileComponents.swift */,
@@ -646,6 +667,13 @@
 			A10005 /* ContentView.swift in Sources */,
 			A10148 /* AgentIntegration.swift in Sources */,
 			A10149 /* Watchlist.swift in Sources */,
+			A10150 /* EmptyStateView.swift in Sources */,
+			A10151 /* ToastQueue.swift in Sources */,
+			A10152 /* SelectionManager.swift in Sources */,
+			A10153 /* ShortcutManager.swift in Sources */,
+			A10154 /* SpriteSheet.swift in Sources */,
+			A10155 /* SpriteSheetView.swift in Sources */,
+			A10156 /* HoverSpritePreview.swift in Sources */,
 			A10013 /* AppStateManager.swift in Sources */,
 			A10014 /* NotificationManager.swift in Sources */,
 			A10015 /* ThumbnailCache.swift in Sources */,

@@ -18,7 +18,8 @@ actor ThumbnailCache {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
         diskDirectory = base.appendingPathComponent("VidDL/thumbnails")
         try? FileManager.default.createDirectory(at: diskDirectory, withIntermediateDirectories: true)
-        memoryCache.countLimit = 100
+        memoryCache.countLimit = 600
+        memoryCache.totalCostLimit = 256 * 1024 * 1024 // ~256 MB cap for decoded thumbnails
     }
 
     static func cacheKey(for identity: String) -> String {
@@ -133,6 +134,101 @@ actor ThumbnailCache {
         } else {
             loadWaiters.removeFirst().resume()
         }
+    }
+}
+
+// MARK: - Sprite sheet storage (hover-scrub previews)
+extension ThumbnailCache {
+    /// Disk subdirectory for sprite sheet JPEGs + JSON sidecars.
+    private static let spriteSubdir = "sprites"
+
+    /// File-system path to the sprite storage directory. Created lazily.
+    private static func spriteDirectory() -> URL {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("VidDL/thumbnails")
+            .appendingPathComponent(spriteSubdir)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        return base
+    }
+
+    /// File name for a sprite cache entry (no extension) given a video identity.
+    /// Uses the same hash as single-frame thumbnails so cache eviction is consistent.
+    static func spriteCacheName(for identity: String) -> String {
+        // Reuse cacheKey() so hashes stay stable across both single-frame and sprite entries.
+        cacheKey(for: identity).replacingOccurrences(of: ".jpg", with: "")
+    }
+
+    /// Synchronous check: does a sprite sheet already exist on disk for this identity?
+    static func cachedSprite(for identity: String) -> (image: NSImage, metadata: SpriteSheet)? {
+        let base = spriteCacheName(for: identity)
+        let jpgURL = spriteDirectory().appendingPathComponent("\(base).jpg")
+        let jsonURL = spriteDirectory().appendingPathComponent("\(base).json")
+        guard FileManager.default.fileExists(atPath: jpgURL.path),
+              FileManager.default.fileExists(atPath: jsonURL.path),
+              let data = try? Data(contentsOf: jpgURL),
+              let image = NSImage(data: data),
+              let json = try? Data(contentsOf: jsonURL),
+              let metadata = try? JSONDecoder().decode(SpriteSheetMetadata.self, from: json)
+        else { return nil }
+        return (image, metadata.spriteSheet(imageURL: jpgURL))
+    }
+
+    /// Persist a generated sprite sheet JPEG + metadata sidecar to disk.
+    static func storeSprite(jpegData: Data, metadata: SpriteSheetMetadata, for identity: String) throws {
+        let base = spriteCacheName(for: identity)
+        let jpgURL = spriteDirectory().appendingPathComponent("\(base).jpg")
+        let jsonURL = spriteDirectory().appendingPathComponent("\(base).json")
+        try jpegData.write(to: jpgURL, options: .atomic)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let json = try encoder.encode(metadata)
+        try json.write(to: jsonURL, options: .atomic)
+    }
+
+    /// Remove a sprite sheet (JPEG + sidecar) for a given identity. No-op if missing.
+    static func removeSprite(for identity: String) {
+        let base = spriteCacheName(for: identity)
+        let jpgURL = spriteDirectory().appendingPathComponent("\(base).jpg")
+        let jsonURL = spriteDirectory().appendingPathComponent("\(base).json")
+        try? FileManager.default.removeItem(at: jpgURL)
+        try? FileManager.default.removeItem(at: jsonURL)
+    }
+}
+
+/// Sidecar JSON describing a sprite sheet's grid layout. Kept separate from the
+/// `SpriteSheet` model so the on-disk format is decoupled from in-memory types.
+struct SpriteSheetMetadata: Codable, Hashable, Sendable {
+    var columns: Int
+    var rows: Int
+    var frameWidth: Int
+    var frameHeight: Int
+    var interval: Double
+
+    init(columns: Int, rows: Int, frameWidth: Int, frameHeight: Int, interval: Double) {
+        self.columns = columns
+        self.rows = rows
+        self.frameWidth = frameWidth
+        self.frameHeight = frameHeight
+        self.interval = interval
+    }
+
+    init(spriteSheet: SpriteSheet) {
+        self.columns = spriteSheet.columns
+        self.rows = spriteSheet.rows
+        self.frameWidth = spriteSheet.frameWidth
+        self.frameHeight = spriteSheet.frameHeight
+        self.interval = spriteSheet.interval
+    }
+
+    func spriteSheet(imageURL: URL) -> SpriteSheet {
+        SpriteSheet(
+            url: imageURL,
+            columns: columns,
+            rows: rows,
+            frameWidth: frameWidth,
+            frameHeight: frameHeight,
+            interval: interval
+        )
     }
 }
 
