@@ -4,6 +4,12 @@
 **Date:** 2026-08-28  
 **Branch:** main
 
+> **Status (2026-08-29):** Both phases shipped.
+> - Phase 1 (QW-1..QW-6) → commit `8c8137d` (pushed `2ba1f6e..8c8137d main -> main`)
+> - Phase 2 (Steps 2.1..2.6) → commits `093215b` (foundation) and `7e8a4c7` (UI wiring + download hook + per-tile draw, pushed)
+>
+> See `docs/SESSION_2026_08_29_PHASE1_PHASE2_SHIPPED.md` for the full diff summary and the installable DMG path.
+
 ---
 
 ## Phase 1: Quick Wins (Estimated: 1-2 days total)
@@ -428,3 +434,29 @@ if let finalPath = finalPath {
 3. **Days 3-4:** VideoProcessor sprite generation + ThumbnailCache
 4. **Days 5-6:** SpriteSheetView + Library/Watchlist integration
 5. **Day 7:** Background generation, optimization, testing
+
+---
+
+## Shipped Status (2026-08-29)
+
+| Step | Status | Commit | Notes |
+|------|--------|--------|-------|
+| QW-1 Clear Failed | shipped | `8c8137d` | toolbar + queue helper |
+| QW-2 Copy URL | shipped | `8c8137d` | LibraryView context menu |
+| QW-3 File Size | shipped | `8c8137d` | LibraryTimeline row |
+| QW-4 Open in Browser | shipped | `8c8137d` | DownloadQueueRow context menu |
+| QW-5 Undo Bulk Delete | shipped | `8c8137d` | SelectionManager + Toast |
+| QW-6 Custom Shortcuts | shipped | `8c8137d` | ShortcutManager + Settings |
+| 2.1 VideoProcessor sprite | shipped | `093215b` | `generateSpriteSheet` ffmpeg tile |
+| 2.2 ThumbnailCache sprite | shipped | `093215b` | actor-isolated hybrid cache |
+| 2.3 SpriteSheetView | shipped | `093215b` | offset+clipped full-sheet path |
+| 2.4 Library card wiring | shipped | `7e8a4c7` | `.hoverSpritePreview` on `.video` |
+| 2.5 Background trigger | shipped | `7e8a4c7` | `SpriteGenerator` + `DownloadJobs.complete` fire-and-forget |
+| 2.6 Performance/memory | shipped | `7e8a4c7` | per-tile NSViewRepresentable crop + `drawsAsynchronously` |
+
+**Installable artifact:** `LustreStudio-2.2.7-build20-unsigned.dmg` (5.2 MB UDIF UDZO, built from `7e8a4c7`). Recipe in `team/lustrestudio-dmg-build` memory entry.
+
+**Scope deviations from the original plan:**
+- Step 2.4 was wired only on `LibraryView` (not Watchlist / Favorites). Those scopes have no local file to scrub; the existing static-thumbnail fallback is intentional.
+- Step 2.5 reuses a single `SpriteGenerator.generateIfNeeded` helper for both the hover controller and the download-complete hook (deduplication of the cache lookup + ffmpeg run + JPEG persistence).
+- Step 2.6's "show single thumbnail first, swap to sprite when ready" progressive path is realized implicitly by the existing static thumbnail rendered when no `SpriteSheetMetadata` is cached; the first hover triggers the generation in a background task.
