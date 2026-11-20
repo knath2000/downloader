@@ -465,7 +465,10 @@ final class LustreAgentController: ObservableObject {
                 preferredQualityLabel: preferredQualityLabel,
                 qualitySelector: selector,
                 assistedResolution: effectiveAssistance,
-                destination: "local"
+                // New downloads are Agent-owned, so pass the currently selected local
+                // folder explicitly instead of letting the Agent fall back to its own
+                // (potentially stale) default directory preference.
+                destination: DownloadPaths.downloadDir.standardizedFileURL.path
             )
             _ = try await client.queue(request)
             await refresh()

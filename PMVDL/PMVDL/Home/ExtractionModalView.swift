@@ -20,10 +20,10 @@ struct ExtractionModalView: View {
     let onAddURL: () -> Void
     let onRetryFailed: () -> Void
     let onRetry: (Int) -> Void
-    let onLocal: (String) -> Void
-    let onMega: (String) -> Void
-    let onMultiple: (String, Set<CloudTarget>) -> Void
-    let onQueue: (String, CloudTarget) -> Void
+    let onLocal: (VideoQualityChoice) -> Void
+    let onMega: (VideoQualityChoice) -> Void
+    let onMultiple: (VideoQualityChoice, Set<CloudTarget>) -> Void
+    let onQueue: (VideoQualityChoice, CloudTarget) -> Void
     let onBatchDownload: () -> Void
     let onBatchQueue: () -> Void
 
@@ -429,10 +429,10 @@ private struct ExtractionResultRow: View {
     let localState: (String) -> UploadState?
     let megaState: (String) -> UploadState?
     let onRetry: () -> Void
-    let onLocal: (String) -> Void
-    let onMega: (String) -> Void
-    let onMultiple: (String, Set<CloudTarget>) -> Void
-    let onQueue: (String, CloudTarget) -> Void
+    let onLocal: (VideoQualityChoice) -> Void
+    let onMega: (VideoQualityChoice) -> Void
+    let onMultiple: (VideoQualityChoice, Set<CloudTarget>) -> Void
+    let onQueue: (VideoQualityChoice, CloudTarget) -> Void
 
     @State private var selectedQualityID: String?
     @State private var selectedTarget: CloudTarget = .local
@@ -655,10 +655,10 @@ private struct ExtractionResultRow: View {
 
     private var primaryAction: some View {
         Button {
-            guard let url = selectedQuality?.url else { return }
+            guard let quality = selectedQuality else { return }
             switch selectedTarget {
-            case .local: onLocal(url)
-            case .mega: onMega(url)
+            case .local: onLocal(quality)
+            case .mega: onMega(quality)
             case .gdrive, .seedbox: return
             }
         } label: {
@@ -670,8 +670,8 @@ private struct ExtractionResultRow: View {
 
     private var queueAction: some View {
         Button {
-            guard let url = selectedQuality?.url else { return }
-            onQueue(url, selectedTarget)
+            guard let quality = selectedQuality else { return }
+            onQueue(quality, selectedTarget)
         } label: {
             Label("Queue", systemImage: "clock.badge.plus")
         }
@@ -693,9 +693,9 @@ private struct ExtractionResultRow: View {
         .disabled(selectedQuality == nil)
         .popover(isPresented: $showsDestinationPicker, arrowEdge: .bottom) {
             MultiDestinationPicker(selected: $selectedDestinations) {
-                guard let url = selectedQuality?.url else { return }
+                guard let quality = selectedQuality else { return }
                 showsDestinationPicker = false
-                onMultiple(url, selectedDestinations)
+                onMultiple(quality, selectedDestinations)
             }
         }
         .help("Transfer to multiple destinations")

@@ -130,7 +130,6 @@
 	T10033 /* ExtractionPulseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20033 /* ExtractionPulseTests.swift */; };
 	T10014 /* FeedFavoritesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20014 /* FeedFavoritesTests.swift */; };
 	T10020 /* VideoProcessingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20020 /* VideoProcessingTests.swift */; };
-	T10021 /* ProfileNarrativeFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20021 /* ProfileNarrativeFormatterTests.swift */; };
 	T10022 /* NavigationGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20022 /* NavigationGateTests.swift */; };
 	T10023 /* PornHubBrowserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20023 /* PornHubBrowserTests.swift */; };
 	T10024 /* DownloadPathsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T20024 /* DownloadPathsTests.swift */; };
@@ -266,7 +265,6 @@
 	T20033 /* ExtractionPulseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtractionPulseTests.swift; sourceTree = "<group>"; };
 	T20014 /* FeedFavoritesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedFavoritesTests.swift; sourceTree = "<group>"; };
 	T20020 /* VideoProcessingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoProcessingTests.swift; sourceTree = "<group>"; };
-	T20021 /* ProfileNarrativeFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileNarrativeFormatterTests.swift; sourceTree = "<group>"; };
 	T20022 /* NavigationGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationGateTests.swift; sourceTree = "<group>"; };
 	T20023 /* PornHubBrowserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PornHubBrowserTests.swift; sourceTree = "<group>"; };
 	T20024 /* DownloadPathsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadPathsTests.swift; sourceTree = "<group>"; };
@@ -508,7 +506,6 @@
 			T20033 /* ExtractionPulseTests.swift */,
 			T20014 /* FeedFavoritesTests.swift */,
 			T20020 /* VideoProcessingTests.swift */,
-			T20021 /* ProfileNarrativeFormatterTests.swift */,
 			T20022 /* NavigationGateTests.swift */,
 			T20023 /* PornHubBrowserTests.swift */,
 			T20024 /* DownloadPathsTests.swift */,
@@ -796,7 +793,6 @@
 			T10033 /* ExtractionPulseTests.swift in Sources */,
 			T10014 /* FeedFavoritesTests.swift in Sources */,
 			T10020 /* VideoProcessingTests.swift in Sources */,
-			T10021 /* ProfileNarrativeFormatterTests.swift in Sources */,
 			T10022 /* NavigationGateTests.swift in Sources */,
 			T10023 /* PornHubBrowserTests.swift in Sources */,
 			T10024 /* DownloadPathsTests.swift in Sources */,

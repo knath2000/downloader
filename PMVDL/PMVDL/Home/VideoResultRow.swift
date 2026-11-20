@@ -5,8 +5,8 @@ struct VideoResultRow: View {
     let result: ExtractResult
     let localState: UploadState?
     let megaState: UploadState?
-    let onLocal: (String) -> Void
-    let onMega: (String) -> Void
+    let onLocal: (VideoQualityChoice) -> Void
+    let onMega: (VideoQualityChoice) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -73,35 +73,17 @@ struct VideoResultRow: View {
     @ViewBuilder
     private func sourceButtons(for source: VideoSource) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let mp4 = source.mp4 {
+            ForEach(VideoResultPresentation.qualities(from: source)) { choice in
                 HStack(spacing: 8) {
-                    Text("MP4")
+                    Text(choice.label)
                         .font(.caption.weight(.semibold))
-                        .frame(width: 42, alignment: .leading)
-                    Button("Local") { onLocal(mp4) }
+                        .frame(width: 92, alignment: .leading)
+                    Button("Local") { onLocal(choice) }
                         .buttonStyle(.borderedProminent)
-                    Button("Mega") { onMega(mp4) }
+                    Button("Mega") { onMega(choice) }
                         .buttonStyle(.bordered)
-                    Button("Copy") { copyToClipboard(mp4) }
+                    Button("Copy") { copyToClipboard(choice.url) }
                         .buttonStyle(.bordered)
-                }
-            }
-
-            if !source.hls.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(source.hls, id: \.url) { quality in
-                        HStack(spacing: 8) {
-                            Text(quality.label)
-                                .font(.caption.weight(.semibold))
-                                .frame(width: 92, alignment: .leading)
-                            Button("Local") { onLocal(quality.url) }
-                                .buttonStyle(.borderedProminent)
-                            Button("Mega") { onMega(quality.url) }
-                                .buttonStyle(.bordered)
-                            Button("Copy") { copyToClipboard(quality.url) }
-                                .buttonStyle(.bordered)
-                        }
-                    }
                 }
             }
         }

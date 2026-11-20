@@ -90,6 +90,16 @@ final class StreamTapeExtractorTests: XCTestCase {
         XCTAssertEqual(source.hls.first?.url, finalURL)
         XCTAssertEqual(source.hls.first?.kind, .direct)
     }
+    func testTemporaryYtDlpMediaURLParserAcceptsSingleHttpsURL() throws {
+        let url = try YtDlpExtractor.parseTemporaryMediaURL("https://cdn.example.test/video.mp4?token=temporary\n")
+        XCTAssertEqual(url.absoluteString, "https://cdn.example.test/video.mp4?token=temporary")
+    }
+
+    func testTemporaryYtDlpMediaURLParserRejectsSeparateAudioAndVideoURLs() {
+        XCTAssertThrowsError(try YtDlpExtractor.parseTemporaryMediaURL(
+            "https://cdn.example.test/video.mp4?token=video\nhttps://cdn.example.test/audio.m4a?token=audio\n"
+        ))
+    }
 }
 
 final class MixDropExtractorTests: XCTestCase {
@@ -732,6 +742,7 @@ final class ProviderLinkExtractorResolutionTests: XCTestCase {
             XCTAssertEqual(url, "https://rotating-dood-provider.example/e/hxptj42uoxb0")
             return VideoSource(
                 mp4: "https://dood.video/e2/stream?token=test&expiry=999",
+                hls: [],
                 siteName: "DoodStream"
             )
         })

@@ -7,6 +7,9 @@ struct VideoQualityChoice: Identifiable, Equatable {
     let kind: VideoSource.Kind
     let headers: [String: String]?
     let resolutionMethod: String?
+    /// Deferred (yt-dlp) format selector, e.g. "720p". Required to honor the chosen
+    /// quality because every deferred quality shares the same page URL.
+    let formatSelector: String?
 }
 
 struct VideoResultPresentation: Equatable {
@@ -39,18 +42,23 @@ struct VideoResultPresentation: Equatable {
                     url: mp4,
                     kind: .direct,
                     headers: source.headers,
-                    resolutionMethod: source.resolutionMethod
+                    resolutionMethod: source.resolutionMethod,
+                    formatSelector: nil
                 )
             )
         }
+        // Deferred yt-dlp qualities share one page URL, so the id must include the
+        // label to stay unique (otherwise the picker collapses and selection can't
+        // distinguish e.g. 1080p from 720p).
         output.append(contentsOf: source.hls.map {
             VideoQualityChoice(
-                id: $0.url,
+                id: "\($0.label)|\($0.url)",
                 label: $0.label,
                 url: $0.url,
                 kind: $0.kind,
                 headers: $0.headers,
-                resolutionMethod: $0.resolutionMethod ?? source.resolutionMethod
+                resolutionMethod: $0.resolutionMethod ?? source.resolutionMethod,
+                formatSelector: $0.formatSelector
             )
         })
         return output

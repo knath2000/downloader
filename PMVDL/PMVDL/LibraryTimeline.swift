@@ -537,7 +537,9 @@ enum LibraryDownloadContext {
             title: item.title,
             mediaKind: mediaKind,
             headers: quality.headers,
-            sourcePageUrl: quality.sourcePageUrl ?? item.url
+            sourcePageUrl: quality.sourcePageUrl ?? item.url,
+            selectedQualityLabel: quality.label,
+            formatSelector: quality.formatSelector
         )
     }
 }

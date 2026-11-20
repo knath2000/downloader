@@ -1349,6 +1349,9 @@ struct PornHubBrowserWebView: NSViewRepresentable {
                 AppStateManager.shared.pendingExtractThumbnailURL = item.thumbnailURL
                 AppStateManager.shared.pendingExtractThumbnailURLs = item.thumbnailURL.map { [item.url: $0] } ?? [:]
                 AppStateManager.shared.pendingExtractTitles = [item.url: item.title]
+                if item.url.isPornHubVideoPage {
+                    AppStateManager.shared.pendingPornHubProfileActionURLs.insert(item.url)
+                }
                 AppStateManager.shared.pendingExtractShouldStart = true
                 AppStateManager.shared.pendingExtractURL = item.url
                 AppStateManager.shared.select(.home)
@@ -1477,6 +1480,9 @@ private final class FeedLinkExtractionModel: ObservableObject {
                     state = .verificationRequired
                 } else if let resolution = result.resolution, !resolution.qualities.isEmpty {
                     state = .resolved(resolution)
+                    if item.url.isPornHubVideoPage {
+                        Task { @MainActor in PornHubProfileActionsRunner.shared.likeAndFavorite(item.url) }
+                    }
                 } else {
                     state = .failed("No downloadable links were found.")
                 }
@@ -1492,6 +1498,9 @@ private struct FeedLinkExtractionPanel: View {
     let accent: Color
     let download: (String, LustreAgentQuality) -> Void
     let verify: () -> Void
+    @State private var temporaryMediaURLs: [String: URL] = [:]
+    @State private var resolvingQualityKeys = Set<String>()
+    @State private var resolutionErrors: [String: String] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1562,7 +1571,11 @@ private struct FeedLinkExtractionPanel: View {
     }
 
     private func qualityRow(provider: String, quality: LustreAgentQuality) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let key = qualityKey(provider: provider, quality: quality)
+        let isDeferred = quality.mediaKind.rawValue == "yt-dlp"
+        let temporaryURL = temporaryMediaURLs[key]
+
+        return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(quality.label)
                     .font(.subheadline.weight(.bold))
@@ -1574,15 +1587,29 @@ private struct FeedLinkExtractionPanel: View {
                     .padding(.vertical, 2)
                     .background(accent.opacity(0.14), in: Capsule())
                 Spacer()
-                Button {
-                    ClipboardManager.copy(quality.url.absoluteString)
-                } label: {
-                    Label("Copy", systemImage: "doc.on.doc")
-                }
-                Button {
-                    NSWorkspace.shared.open(quality.url)
-                } label: {
-                    Label("Open", systemImage: "safari")
+                if isDeferred && temporaryURL == nil {
+                    Button {
+                        resolveTemporaryURL(for: quality, key: key)
+                    } label: {
+                        if resolvingQualityKeys.contains(key) {
+                            Label("Resolving…", systemImage: "hourglass")
+                        } else {
+                            Label("Resolve URL", systemImage: "link")
+                        }
+                    }
+                    .disabled(resolvingQualityKeys.contains(key))
+                } else {
+                    let mediaURL = temporaryURL ?? quality.url
+                    Button {
+                        ClipboardManager.copy(mediaURL.absoluteString)
+                    } label: {
+                        Label("Copy URL", systemImage: "doc.on.doc")
+                    }
+                    Button {
+                        NSWorkspace.shared.open(mediaURL)
+                    } label: {
+                        Label("Open", systemImage: "safari")
+                    }
                 }
                 Button {
                     download(provider, quality)
@@ -1592,75 +1619,293 @@ private struct FeedLinkExtractionPanel: View {
             }
             .buttonStyle(.borderless)
 
-            Text(quality.url.absoluteString)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(Theme.textSecondary)
-                .lineLimit(2)
-                .textSelection(.enabled)
+            if isDeferred && temporaryURL == nil {
+                Text("This quality is deferred. Resolve it to reveal a temporary signed media URL; it may expire or be IP-bound.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text((temporaryURL ?? quality.url).absoluteString)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Theme.textSecondary)
+                    .textSelection(.enabled)
+                    .lineLimit(3)
+            }
+
+            if let error = resolutionErrors[key] {
+                Text(error)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.error)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(10)
         .background(Theme.surface2.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(accent.opacity(0.22), lineWidth: 0.6))
     }
-}
 
-struct PornHubBrowserLoadingOverlay: View {
-    let progress: Double
-    let accent: Color
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.performanceProfile) private var performanceProfile
-
-    private var allowsMotion: Bool {
-        !reduceMotion && performanceProfile.allowsLoadingAnimation
+    private func qualityKey(provider: String, quality: LustreAgentQuality) -> String {
+        "\(provider)|\(quality.label)|\(quality.formatSelector ?? quality.url.absoluteString)"
     }
 
-    var body: some View {
-        VStack(spacing: 10) {
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.black.opacity(0.28))
-                    Capsule()
-                        .fill(accent.opacity(0.72))
-                        .frame(width: max(36, proxy.size.width * max(0.08, min(progress, 1))))
-                        .shadow(color: accent.opacity(allowsMotion ? 0.22 : 0), radius: 5)
-                }
-            }
-            .frame(width: 180, height: 4)
-
-            Text("Loading")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Theme.textSecondary)
+    private func resolveTemporaryURL(for quality: LustreAgentQuality, key: String) {
+        guard let sourcePageURL = URL(string: model.item.url),
+              let formatSelector = quality.formatSelector else {
+            resolutionErrors[key] = "This quality does not include a deferred format selector."
+            return
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Color.black.opacity(0.54), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(accent.opacity(0.22), lineWidth: 0.7))
-        .opacity(allowsMotion ? 0.92 : 0.78)
-        .transition(allowsMotion ? .opacity.combined(with: .scale(scale: 0.985)) : .opacity)
-        .allowsHitTesting(false)
+        resolvingQualityKeys.insert(key)
+        resolutionErrors[key] = nil
+        Task {
+            defer { resolvingQualityKeys.remove(key) }
+            do {
+                temporaryMediaURLs[key] = try await YtDlpExtractor.resolveTemporaryMediaURL(
+                    pageURL: sourcePageURL,
+                    formatSelector: formatSelector
+                )
+            } catch {
+                resolutionErrors[key] = error.localizedDescription
+            }
+        }
     }
 }
 
-private final class PornHubContextMenuWebView: WKWebView {
-    func contextMenuAnchorPoint(clientX: Double, clientY: Double) -> NSPoint {
-        let x = min(max(CGFloat(clientX), bounds.minX), bounds.maxX)
-        let rawY = CGFloat(clientY)
-        let y = isFlipped
-            ? min(max(rawY, bounds.minY), bounds.maxY)
-            : min(max(bounds.height - rawY, bounds.minY), bounds.maxY)
-        return NSPoint(x: x, y: y)
-    }
-
-    override func menu(for event: NSEvent) -> NSMenu? {
-        nil
+private extension String {
+    var isPornHubVideoPage: Bool {
+        guard let url = URL(string: self),
+              let host = url.host?.lowercased(),
+              host == "pornhub.com" || host.hasSuffix(".pornhub.com"),
+              url.path == "/view_video.php",
+              let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems else {
+            return false
+        }
+        return items.contains { $0.name == "viewkey" && !($0.value ?? "").isEmpty }
     }
 }
 
-private extension URL {
-    var isPornHubURL: Bool {
-        guard let host = host?.lowercased() else { return false }
-        return host == "pornhub.com" || host.hasSuffix(".pornhub.com")
+@MainActor
+final class PornHubProfileActionsRunner: NSObject, WKNavigationDelegate {
+    static let shared = PornHubProfileActionsRunner()
+
+    private var webView: WKWebView!
+    private var activePageKey: String?
+    private var timeoutTask: Task<Void, Never>?
+    private var runningKeys = Set<String>()
+
+    private override init() {
+        super.init()
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = WKWebsiteDataStore.default()
+        let view = WKWebView(frame: NSRect(x: 0, y: 0, width: 900, height: 700), configuration: configuration)
+        view.navigationDelegate = self
+        webView = view
     }
-}
+
+    func attach(to host: NSView) {
+        guard webView.superview !== host else { return }
+        webView.removeFromSuperview()
+        webView.frame = host.bounds
+        webView.autoresizingMask = [.width, .height]
+        host.addSubview(webView)
+    }
+
+    func likeAndFavorite(_ rawURL: String) {
+        guard activePageKey == nil,
+              rawURL.isPornHubVideoPage,
+              let url = URL(string: rawURL),
+              let key = Self.videoKey(url),
+              runningKeys.insert(key).inserted else { return }
+
+        activePageKey = key
+        Task { @MainActor in
+            // The login window copies its WebKit cookies into the app's secure
+            // cookie store. Rehydrate them into the action WebView explicitly so
+            // this works after relaunch as well as in the original login session.
+            await syncStoredCookiesIntoWebView()
+            guard activePageKey == key else { return }
+            webView.load(URLRequest(url: url))
+            timeoutTask?.cancel()
+            timeoutTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(45))
+                guard let self, self.activePageKey == key else { return }
+                ToastQueue.shared.warning("Pornhub account actions timed out before the video page was ready.")
+                self.finish()
+            }
+        }
+    }
+
+    private func syncStoredCookiesIntoWebView() async {
+        let cookies = (HTTPCookieStorage.shared.cookies ?? []).filter {
+            $0.domain.localizedCaseInsensitiveContains("pornhub.com") &&
+                ($0.expiresDate == nil || $0.expiresDate! > Date())
+        }
+        let store = webView.configuration.websiteDataStore.httpCookieStore
+        for cookie in cookies {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                store.setCookie(cookie) { continuation.resume() }
+            }
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard let pageURL = webView.url else { finish(); return }
+        guard let host = pageURL.host?.lowercased(), host == "pornhub.com" || host.hasSuffix(".pornhub.com") else {
+            finish()
+            return
+        }
+        guard Self.videoKey(pageURL) == activePageKey else {
+            ToastQueue.shared.warning("Pornhub account actions skipped: the page redirected away from the selected video.")
+            finish()
+            return
+        }
+
+        Task { @MainActor in
+            do {
+                guard let initial = try await webView.evaluateJavaScript(Self.applyActionsScript) as? String else {
+                    ToastQueue.shared.warning("Pornhub did not expose its account controls for this video.")
+                    finish()
+                    return
+                }
+                switch initial {
+                case "signed-out":
+                    ToastQueue.shared.warning("Pornhub account actions skipped: sign in within the Feed browser first.")
+                    finish()
+                case "controls-unavailable":
+                    ToastQueue.shared.warning("Pornhub account actions skipped: the video controls were unavailable.")
+                    finish()
+                case "already-set":
+                    ToastQueue.shared.info("This video is already liked and in Pornhub Favorites.")
+                    finish()
+                case "submitted":
+                    try? await Task.sleep(for: .seconds(2))
+                    let rawStatus = try await webView.evaluateJavaScript(Self.verifyActionsScript) as? String
+                    let status = rawStatus?.data(using: .utf8)
+                        .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                    let liked = status?["liked"] as? Bool == true || Self.isSuccessfulHTTPStatus(status?["likeHTTP"])
+                    let favorited = status?["favorited"] as? Bool == true || Self.isSuccessfulHTTPStatus(status?["favoriteHTTP"])
+                    if liked && favorited {
+                        ToastQueue.shared.success("Video liked and added to Pornhub Favorites.")
+                    } else if liked || favorited {
+                        ToastQueue.shared.warning("Pornhub confirmed only one action (Like HTTP \(Self.httpStatusText(status?["likeHTTP"])), Favorite HTTP \(Self.httpStatusText(status?["favoriteHTTP"]))).")
+                    } else if status?["loggedIn"] as? Bool == false {
+                        ToastQueue.shared.warning("Pornhub account actions skipped: the action browser is not signed in.")
+                    } else {
+                        ToastQueue.shared.warning("Pornhub did not confirm the actions (Like HTTP \(Self.httpStatusText(status?["likeHTTP"])), Favorite HTTP \(Self.httpStatusText(status?["favoriteHTTP"]))).")
+                    }
+                    finish()
+                default:
+                    ToastQueue.shared.warning("Pornhub account actions could not determine the video state safely.")
+                    finish()
+                }
+            } catch {
+                ToastQueue.shared.warning("Pornhub account actions failed: \(error.localizedDescription)")
+                finish()
+            }
+        }
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        ToastQueue.shared.warning("Pornhub account actions could not load the video page.")
+        finish()
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        ToastQueue.shared.warning("Pornhub account actions could not load the video page.")
+        finish()
+    }
+
+    private func finish() {
+        if let activePageKey { runningKeys.remove(activePageKey) }
+        activePageKey = nil
+        timeoutTask?.cancel()
+        timeoutTask = nil
+    }
+
+    private static func videoKey(_ url: URL) -> String? {
+        guard url.path == "/view_video.php",
+              let host = url.host?.lowercased(),
+              host == "pornhub.com" || host.hasSuffix(".pornhub.com"),
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let key = components.queryItems?.first(where: { $0.name == "viewkey" })?.value,
+              !key.isEmpty else { return nil }
+        return key
+    }
+
+    private static func isSuccessfulHTTPStatus(_ value: Any?) -> Bool {
+        guard let status = value as? Int else { return false }
+        return (200..<300).contains(status)
+    }
+
+    private static func httpStatusText(_ value: Any?) -> String {
+        (value as? Int).map(String.init) ?? "not observed"
+    }
+
+    private static let applyActionsScript = #"""
+    (() => {
+      const widget = window.WIDGET_RATINGS_LIKE_FAV;
+      const truthy = value => value === true || value === 1 || value === "1";
+      if (!(truthy(window.isLoggedInUser) || truthy(widget?.loggedIn) || truthy(window.isLoggedIn))) return "signed-out";
+      const like = document.querySelector(".js-voteUp[aria-label='vote up button'], .js-voteUp");
+      const favorite = document.querySelector(".js-favoriteBtn");
+      if (!like || !favorite) return "controls-unavailable";
+      if (!window.__lustrePornHubActionResponses) window.__lustrePornHubActionResponses = [];
+      const isActionURL = raw => {
+        try {
+          const path = new URL(raw, location.href).pathname;
+          return path.endsWith("/video/favourite") || path.includes("/api/v1/video/rate");
+        } catch (_) { return false; }
+      };
+      if (!window.__lustrePornHubActionTransportPatched) {
+        window.__lustrePornHubActionTransportPatched = true;
+        const originalFetch = window.fetch;
+        window.fetch = function(input, init) {
+          const raw = typeof input === "string" ? input : input?.url;
+          return originalFetch.apply(this, arguments).then(response => {
+            if (isActionURL(raw)) window.__lustrePornHubActionResponses.push({ path: new URL(raw, location.href).pathname, status: response.status });
+            return response;
+          });
+        };
+        const originalOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, rawURL) {
+          this.__lustrePornHubActionURL = rawURL;
+          return originalOpen.apply(this, arguments);
+        };
+        const originalSend = XMLHttpRequest.prototype.send;
+        XMLHttpRequest.prototype.send = function() {
+          this.addEventListener("loadend", () => {
+            const raw = this.__lustrePornHubActionURL;
+            if (isActionURL(raw)) window.__lustrePornHubActionResponses.push({ path: new URL(raw, location.href).pathname, status: this.status });
+          }, { once: true });
+          return originalSend.apply(this, arguments);
+        };
+      }
+      const active = element => {
+        if (!element) return false;
+        if (element.getAttribute("aria-pressed") === "true") return true;
+        return Array.from(element.classList).some(name => /^(active|liked|voted|selected|is-active|is-liked|is-favorite|favorited)$/i.test(name));
+      };
+      const vote = String(widget?.currentVote ?? widget?.userVote ?? "").toLowerCase();
+      const isLiked = active(like) || ["1", "up", "like", "liked"].includes(vote);
+      const isFavorited = Number(widget?.isFavourite) === 1 || active(favorite);
+      window.__lustrePornHubActions = { likeClicked: false, favoriteClicked: false };
+      if (!isLiked) { like.click(); window.__lustrePornHubActions.likeClicked = true; }
+      if (!isFavorited) { favorite.click(); window.__lustrePornHubActions.favoriteClicked = true; }
+      if (isLiked && isFavorited) return "already-set";
+      return "submitted";
+    })()
+    """#
+
+    private static let verifyActionsScript = #"""
+    (() => {
+      const widget = window.WIDGET_RATINGS_LIKE_FAV;
+      const truthy = value => value === true || value === 1 || value === "1";
+      const loggedIn = truthy(window.isLoggedInUser) || truthy(widget?.loggedIn) || truthy(window.isLoggedIn);
+      const like = document.querySelector(".js-voteUp[aria-label='vote up button'], .js-voteUp");
+      const favorite = document.querySelector(".js-favoriteBtn");
+      const active = element => !!element && (
+        element.getAttribute("aria-pressed") === "true" ||
+        Array.from(element.classList).some(name => /^(active|liked|voted|selected|is-active|is-liked|is-favorite|favorited)$/i.test(name))
+      );
+      const liked = active(like) || ["1", "up", "like", "liked"].includes(String(widget?.currentVote ?? widget?.userVote ?? "").toLowerCase());
+      const favorited = Number(widget?.isFavourite) === 1 || active(favorite);
+      const responses = window._

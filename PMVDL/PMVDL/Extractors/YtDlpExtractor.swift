@@ -27,6 +27,51 @@ struct YtDlpExtractor: VideoSiteExtractor {
         metadata(from: try await dumpJSON(for: url))
     }
 
+    /// Resolve a deferred yt-dlp quality to its current, usually short-lived media URL.
+    /// This is intended for external players; the Agent remains the preferred download path.
+    static func resolveTemporaryMediaURL(pageURL: URL, formatSelector: String) async throws -> URL {
+        guard pageURL.scheme?.lowercased() == "https",
+              pageURL.host != nil,
+              isSafeFormatSelector(formatSelector) else {
+            throw ScraperError.extractionFailed("The source page or selected format is invalid.")
+        }
+        guard let ytDlpPath = findYTDLPath() else {
+            throw ScraperError.toolNotInstalled(name: "yt-dlp", installCmd: "brew install yt-dlp")
+        }
+
+        let result = try await SubprocessRunner.run(
+            executable: URL(fileURLWithPath: ytDlpPath),
+            arguments: ["--no-playlist", "--no-warnings", "--get-url", "--format", formatSelector, pageURL.absoluteString],
+            timeout: 90
+        )
+        guard result.exitStatus == 0 else {
+            let detail = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw ScraperError.extractionFailed(detail.isEmpty ? "yt-dlp could not resolve this quality." : detail)
+        }
+        return try parseTemporaryMediaURL(result.stdout)
+    }
+
+    static func parseTemporaryMediaURL(_ output: String) throws -> URL {
+        let values = output
+            .split(whereSeparator: \.isNewline)
+            .compactMap { URL(string: String($0).trimmingCharacters(in: .whitespacesAndNewlines)) }
+        guard values.count == 1,
+              let url = values.first,
+              url.scheme?.lowercased() == "https",
+              url.host != nil else {
+            throw ScraperError.extractionFailed("This quality did not resolve to one standalone HTTPS media URL. It may use separate audio and video streams.")
+        }
+        return url
+    }
+
+    private static func isSafeFormatSelector(_ value: String) -> Bool {
+        guard (1...128).contains(value.count),
+              let regex = try? NSRegularExpression(pattern: #"^[A-Za-z0-9._-]+(?:\+[A-Za-z0-9._-]+)?$"#) else {
+            return false
+        }
+        return regex.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)) != nil
+    }
+
     private static func dumpJSON(for url: URL) async throws -> [String: Any] {
         guard let ytDlpPath = findYTDLPath() else {
             throw ScraperError.toolNotInstalled(name: "yt-dlp", installCmd: "brew install yt-dlp")

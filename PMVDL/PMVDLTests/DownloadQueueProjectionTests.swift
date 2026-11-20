@@ -198,15 +198,6 @@ final class DownloadQueueProjectionTests: XCTestCase {
         XCTAssertFalse(DownloadQueueManualStartPolicy.canStartNow(item, isPro: true))
     }
 
-    func testSeedboxMaterializationCompletionProjectsToPreparationState() {
-        let projection = ProgressEvent.completed(msg: "Download complete").seedboxMaterializationProjection
-
-        XCTAssertNotEqual(projection.status, .completed)
-        XCTAssertEqual(projection.status, .verifying)
-        XCTAssertEqual(projection.progress, 99)
-        XCTAssertEqual(projection.message, "Preparing seedbox upload…")
-    }
-
     func testHomeQueueCountsUseNonTerminalVisibleItemsAsRemaining() {
         let items = [
             queueItem(status: .pending),
@@ -435,8 +426,7 @@ final class DownloadQueueProjectionTests: XCTestCase {
         queue.update(id: id, status: .downloading, progress: 10, message: "Materializing HLS…")
         assertQueueItemIsActive(id: id, message: "Materializing HLS…")
 
-        let materialized = ProgressEvent.completed(msg: "Download complete").seedboxMaterializationProjection
-        queue.update(id: id, status: materialized.status, progress: materialized.progress, message: materialized.message, metrics: materialized.metrics)
+        queue.update(id: id, status: .verifying, progress: 99, message: "Preparing seedbox upload…")
         assertQueueItemIsActive(id: id, message: "Preparing seedbox upload…")
 
         queue.update(id: id, status: .uploading, progress: 0, message: "Uploading to seedbox… 0%")

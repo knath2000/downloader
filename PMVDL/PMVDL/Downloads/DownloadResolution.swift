@@ -16,6 +16,35 @@ struct DownloadResolution: Codable, Equatable {
     let mediaKind: DownloadMediaKind
     let headers: [String: String]?
     let sourcePageUrl: String?
+    /// The quality the user actually picked (when known). Deferred yt-dlp qualities
+    /// all share one page URL, so the label is what identifies the chosen quality.
+    let selectedQualityLabel: String?
+    /// Deferred (yt-dlp) format selector for the chosen quality, passed to the Agent.
+    let formatSelector: String?
+
+    init(
+        requestedUrl: String,
+        finalUrl: String,
+        result: ExtractResult,
+        source: VideoSource,
+        title: String,
+        mediaKind: DownloadMediaKind,
+        headers: [String: String]?,
+        sourcePageUrl: String?,
+        selectedQualityLabel: String? = nil,
+        formatSelector: String? = nil
+    ) {
+        self.requestedUrl = requestedUrl
+        self.finalUrl = finalUrl
+        self.result = result
+        self.source = source
+        self.title = title
+        self.mediaKind = mediaKind
+        self.headers = headers
+        self.sourcePageUrl = sourcePageUrl
+        self.selectedQualityLabel = selectedQualityLabel
+        self.formatSelector = formatSelector
+    }
 
     var queueQuality: String {
         switch mediaKind {
@@ -53,6 +82,8 @@ enum DownloadResolver {
     static func resolve(
         requestedUrl url: String,
         in results: [ExtractResult],
+        preferredQualityLabel: String? = nil,
+        formatSelector: String? = nil,
         extractor: @escaping SourceExtractor = ExtractionCoordinator.extract
     ) async throws -> DownloadResolution {
         guard let result = results.first(where: { candidate in
@@ -112,7 +143,9 @@ enum DownloadResolver {
             title: title,
             mediaKind: mediaKind,
             headers: finalQuality?.headers ?? source.headers(forQualityURL: finalUrl) ?? source.headers(forQualityURL: url),
-            sourcePageUrl: finalQuality?.sourcePageUrl
+            sourcePageUrl: finalQuality?.sourcePageUrl,
+            selectedQualityLabel: preferredQualityLabel ?? qualityEntry?.label,
+            formatSelector: formatSelector ?? qualityEntry?.formatSelector ?? finalQuality?.formatSelector
         )
     }
 
@@ -125,6 +158,10 @@ enum DownloadResolver {
         let source = try await extractor(sourcePageURL)
         let result = ExtractResult(url: sourcePageURL, source: source, error: nil)
         let candidates = source.hls.filter { $0.kind != .pageUrl }
+        let labelMatch = source.hls.first {
+            let label = preferredQualityLabel ?? ""
+            return !label.isEmpty && $0.label.caseInsensitiveCompare(label) == .orderedSame
+        }
         let selectedURL = source.hls.first(where: {
             $0.url == preferredQualityURL || $0.sourcePageUrl == preferredQualityURL
         })?.url ?? candidates.first(where: {
@@ -135,7 +172,13 @@ enum DownloadResolver {
         guard let selectedURL else {
             throw DownloadResolutionError.sourceNotFound(sourcePageURL)
         }
-        return try await resolve(requestedUrl: selectedURL, in: [result], extractor: extractor)
+        return try await resolve(
+            requestedUrl: selectedURL,
+            in: [result],
+            preferredQualityLabel: preferredQualityLabel,
+            formatSelector: labelMatch?.formatSelector,
+            extractor: extractor
+        )
     }
 
     static func refreshForDownloadIfNeeded(
@@ -245,7 +288,9 @@ enum DownloadResolver {
             headers: finalQuality?.headers
                 ?? refreshedSource.headers(forQualityURL: finalUrl)
                 ?? resolution.headers,
-            sourcePageUrl: finalQuality?.sourcePageUrl ?? pageURL
+            sourcePageUrl: finalQuality?.sourcePageUrl ?? pageURL,
+            selectedQualityLabel: resolution.selectedQualityLabel,
+            formatSelector: resolution.formatSelector ?? finalQuality?.formatSelector
         )
     }
 

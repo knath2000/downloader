@@ -16,9 +16,13 @@ struct VideoSource: Codable, Equatable {
         let headers: [String: String]?  // e.g. ["Referer": "...", "User-Agent": "..."]
         let sourcePageUrl: String?  // LuluStream embed page URL for URL refresh at download time
         let resolutionMethod: String?
+        /// Deferred (yt-dlp) format selector captured from the Agent, e.g. "720p".
+        /// All deferred qualities of one page share the same `url`, so this is what
+        /// lets the Agent pick the exact quality the user chose.
+        let formatSelector: String?
 
-        init(label: String, url: String, kind: Kind = .hlsManifest, headers: [String: String]? = nil, sourcePageUrl: String? = nil, resolutionMethod: String? = nil) {
-            self.label = label; self.url = url; self.kind = kind; self.headers = headers; self.sourcePageUrl = sourcePageUrl; self.resolutionMethod = resolutionMethod
+        init(label: String, url: String, kind: Kind = .hlsManifest, headers: [String: String]? = nil, sourcePageUrl: String? = nil, resolutionMethod: String? = nil, formatSelector: String? = nil) {
+            self.label = label; self.url = url; self.kind = kind; self.headers = headers; self.sourcePageUrl = sourcePageUrl; self.resolutionMethod = resolutionMethod; self.formatSelector = formatSelector
         }
     }
     let mp4: String?
@@ -52,7 +56,7 @@ struct VideoSource: Codable, Equatable {
         VideoSource(
             mp4: mp4,
             hls: hls.map {
-                Quality(label: $0.label, url: $0.url, kind: $0.kind, headers: $0.headers, sourcePageUrl: $0.sourcePageUrl, resolutionMethod: $0.resolutionMethod ?? method)
+                Quality(label: $0.label, url: $0.url, kind: $0.kind, headers: $0.headers, sourcePageUrl: $0.sourcePageUrl, resolutionMethod: $0.resolutionMethod ?? method, formatSelector: $0.formatSelector)
             },
             title: title,
             thumbnail: thumbnail,
@@ -64,6 +68,16 @@ struct VideoSource: Codable, Equatable {
             headers: headers,
             resolutionMethod: resolutionMethod ?? method
         )
+    }
+
+    /// Number of sources that can be downloaded from this extraction.
+    ///
+    /// Agent/yt-dlp resolutions (e.g. PornHub) are surfaced as `.pageUrl` qualities
+    /// whose URL is the source page; they are materialized at download time via
+    /// yt-dlp, so they ARE downloadable and must be counted here. Filtering out
+    /// `.pageUrl` made yt-dlp-backed sites report "0 downloadable sources".
+    var downloadableSourceCount: Int {
+        hls.count + (mp4 == nil ? 0 : 1)
     }
 }
 
@@ -266,7 +280,7 @@ struct DownloadRetryPayload: Codable, Equatable {
         gdriveMegaRemotePath: String?
     ) {
         self.sourcePageURL = resolution.result.url
-        self.preferredQualityLabel = resolution.source.hls.first(where: {
+        self.preferredQualityLabel = resolution.selectedQualityLabel ?? resolution.source.hls.first(where: {
             $0.url == resolution.requestedUrl || $0.url == resolution.finalUrl
         })?.label
         self.preferredQualityURL = nil

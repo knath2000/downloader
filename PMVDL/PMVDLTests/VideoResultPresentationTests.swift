@@ -56,6 +56,36 @@ final class VideoResultPresentationTests: XCTestCase {
         XCTAssertTrue(presentation.qualities.isEmpty)
     }
 
+    func testDeferredYtDlpSourcesCountAsDownloadable() {
+        // PornHub-style agent/yt-dlp resolution: `mp4` is nil and every quality is a
+        // deferred `.pageUrl` (materialized by yt-dlp at download time) yet still downloadable.
+        let source = VideoSource(
+            mp4: nil,
+            hls: [
+                VideoSource.Quality(label: "1080p MP4", url: "https://site.test/view?key=abc", kind: .pageUrl),
+                VideoSource.Quality(label: "720p MP4", url: "https://site.test/view?key=abc", kind: .pageUrl)
+            ],
+            title: "Example"
+        )
+
+        XCTAssertEqual(source.downloadableSourceCount, 2)
+        XCTAssertEqual(
+            VideoResultPresentation(result: ExtractResult(url: "https://site.test/view?key=abc", source: source, error: nil)).qualities.count,
+            2
+        )
+        // Deferred qualities share a URL, so their choice ids must still be unique.
+        XCTAssertEqual(Set(VideoResultPresentation(result: ExtractResult(url: "https://site.test/view?key=abc", source: source, error: nil)).qualities.map(\.id)).count, 2)
+    }
+
+    func testConcreteDirectAndHLSSourcesCountAsDownloadable() {
+        let source = VideoSource(
+            mp4: "https://cdn.test/one.mp4",
+            hls: [VideoSource.Quality(label: "1080p", url: "https://cdn.test/one.m3u8")]
+        )
+
+        XCTAssertEqual(source.downloadableSourceCount, 2)
+    }
+
     func testErrorResultHasNoQualities() {
         let presentation = VideoResultPresentation(result: ExtractResult(url: "https://example.test/watch", source: nil, error: "failed"))
 

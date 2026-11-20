@@ -261,7 +261,9 @@ struct HomeView: View {
         if let mp4 = source.mp4 {
             return VideoSource.Quality(label: "Video", url: mp4, kind: .direct, headers: source.headers)
         }
-        return source.hls.first { $0.kind != .pageUrl }
+        // Fall back to a deferred yt-dlp source (`.pageUrl`) when there is no
+        // concrete direct/HLS quality, so yt-dlp-backed pages are batchable.
+        return source.hls.first { $0.kind != .pageUrl } ?? source.hls.first
     }
 
     private func batchJobs(excludingExistingQueueItems: Bool) -> [BatchDownloadJob] {
@@ -743,9 +745,9 @@ struct HomeView: View {
                         localState: { tracker.localDownloads[$0] },
                         megaState: { tracker.megaUploads[$0] },
                         onRetry: { retryExtractResult(at: index) },
-                        onLocal: { url in Task { await startDownload(url: url, cloud: .local) } },
-                        onMega: { url in Task { await startDownload(url: url, cloud: .mega) } },
-                        onMultiple: { url, destinations in Task { await startDownload(url: url, destinations: destinations) } }
+                        onLocal: { quality in Task { await startDownload(quality: quality, destinations: [.local]) } },
+                        onMega: { quality in Task { await startDownload(quality: quality, destinations: [.mega]) } },
+                        onMultiple: { quality, destinations in Task { await startDownload(quality: quality, destinations: destinations) } }
                     )
                 }
             }
@@ -782,10 +784,10 @@ struct HomeView: View {
             onAddURL: addURLFromResultsModal,
             onRetryFailed: retryFailedResults,
             onRetry: retryExtractResult,
-            onLocal: { url in Task { await startDownload(url: url, cloud: .local) } },
-            onMega: { url in Task { await startDownload(url: url, cloud: .mega) } },
-            onMultiple: { url, destinations in Task { await startDownload(url: url, destinations: destinations) } },
-            onQueue: { url, target in Task { await queueDownload(url: url, target: target) } },
+            onLocal: { quality in Task { await startDownload(quality: quality, destinations: [.local]) } },
+            onMega: { quality in Task { await startDownload(quality: quality, destinations: [.mega]) } },
+            onMultiple: { quality, destinations in Task { await startDownload(quality: quality, destinations: destinations) } },
+            onQueue: { quality, target in Task { await queueDownload(quality: quality, target: target) } },
             onBatchDownload: batchDownloadAll,
             onBatchQueue: requestBatchQueueAll
         )
@@ -940,11 +942,15 @@ struct HomeView: View {
                                     ?? ExtractionTitleSupport.title(for: res.url)
                                 recordExtractionFailure(res, title: title)
                                 extractionSlots = ExtractionSlotSupport.replacingSlot(id: slotID, in: extractionSlots, with: res)
+                                AppStateManager.shared.pendingPornHubProfileActionURLs.remove(res.url)
                             } else {
                                 extractionSlots = ExtractionSlotSupport.replacingSlot(id: slotID, in: extractionSlots, with: res)
+                                if AppStateManager.shared.pendingPornHubProfileActionURLs.remove(res.url) != nil {
+                                    Task { @MainActor in PornHubProfileActionsRunner.shared.likeAndFavorite(res.url) }
+                                }
                             }
                             results = ExtractionSlotSupport.completedResults(in: extractionSlots)
-                            let resultCount = res.source.map { $0.hls.filter { $0.kind != .pageUrl }.count + ($0.mp4 == nil ? 0 : 1) } ?? 0
+                            let resultCount = res.source?.downloadableSourceCount ?? 0
                             let completion = res.source == nil
                                 ? (res.error ?? "Extraction failed.")
                                 : "Completed: \(resultCount) downloadable source\(resultCount == 1 ? "" : "s")"
@@ -1014,7 +1020,7 @@ struct HomeView: View {
                     extractionSlots = ExtractionSlotSupport.replacingSlot(id: slot.id, in: extractionSlots, with: result)
                 }
                 results = ExtractionSlotSupport.completedResults(in: extractionSlots)
-                let resolvedCount = result.source.map { $0.hls.filter { $0.kind != .pageUrl }.count + ($0.mp4 == nil ? 0 : 1) } ?? 0
+                let resolvedCount = result.source?.downloadableSourceCount ?? 0
                 let completion = result.source == nil
                     ? (result.error ?? "Extraction failed.")
                     : "Completed: \(resolvedCount) downloadable source\(resolvedCount == 1 ? "" : "s")"
@@ -1152,7 +1158,11 @@ struct HomeView: View {
             let context = downloadJobContext
             for (index, job) in jobs.enumerated() {
                 do {
-                    let resolution = try await DownloadResolver.resolve(requestedUrl: job.url, in: currentResults)
+                    let resolution = try await DownloadResolver.resolve(
+                        requestedUrl: job.url,
+                        in: currentResults,
+                        preferredQualityLabel: job.qualityLabel
+                    )
                     guard ProFeatureGate.canDownloadAudio || !resolution.isAudio else {
                         onUpgradeRequired()
                         return
@@ -1219,31 +1229,31 @@ struct HomeView: View {
         }
     }
 
-    private func startDownload(url: String, cloud: CloudTarget) async {
-        await startDownload(url: url, destinations: [cloud])
-    }
-
-    private func queueDownload(url: String, target: CloudTarget) async {
+    private func queueDownload(quality: VideoQualityChoice, target: CloudTarget) async {
         guard let result = results.first(where: {
-            $0.source?.mp4 == url || $0.source?.hls.contains(where: { $0.url == url }) == true
+            $0.source?.mp4 == quality.url || $0.source?.hls.contains(where: { $0.url == quality.url }) == true
         }), let source = result.source else { return }
-        let qualityLabel = source.hls.first(where: { $0.url == url })?.label ?? "Video"
         DownloadJobRunner.shared.queue(
             sourcePageURL: result.url,
-            preferredQualityLabel: qualityLabel,
-            title: source.title ?? displayName(for: url),
+            preferredQualityLabel: quality.label,
+            title: source.title ?? displayName(for: quality.url),
             target: target,
             context: downloadJobContext
         )
     }
 
-    private func startDownload(url: String, destinations: Set<CloudTarget>) async {
+    private func startDownload(quality: VideoQualityChoice, destinations: Set<CloudTarget>) async {
         guard await LicenseManager.shared.preflight() else {
             onUpgradeRequired()
             return
         }
         do {
-            let resolution = try await DownloadResolver.resolve(requestedUrl: url, in: results)
+            let resolution = try await DownloadResolver.resolve(
+                requestedUrl: quality.url,
+                in: results,
+                preferredQualityLabel: quality.label,
+                formatSelector: quality.formatSelector
+            )
             guard ProFeatureGate.canDownloadAudio || !resolution.isAudio else {
                 onUpgradeRequired()
                 return
@@ -1253,8 +1263,8 @@ struct HomeView: View {
             }
         } catch {
             for destination in destinations {
-                tracker.projectFailure(url: url, target: destination, message: error.localizedDescription)
-                NotificationManager.shared.notifyUploadFailed(filename: uploadFileName(for: url), reason: error.localizedDescription)
+                tracker.projectFailure(url: quality.url, target: destination, message: error.localizedDescription)
+                NotificationManager.shared.notifyUploadFailed(filename: uploadFileName(for: quality.url), reason: error.localizedDescription)
             }
         }
     }

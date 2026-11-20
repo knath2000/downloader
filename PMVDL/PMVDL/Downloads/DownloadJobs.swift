@@ -372,11 +372,11 @@ final class DownloadJobRunner {
         let selectedQuality = resolution.source.hls.first {
             $0.url == resolution.requestedUrl || $0.url == resolution.finalUrl
         }
-        let preferredLabel = selectedQuality?.label
+        let preferredLabel = resolution.selectedQualityLabel ?? selectedQuality?.label
         let selector = LustreAgentQualitySelector(
             provider: agentProvider(for: resolution),
             mediaKind: resolution.mediaKind == .hls ? .hls : (resolution.mediaKind == .ytDlp ? .ytDlp : .direct),
-            formatSelector: nil
+            formatSelector: resolution.formatSelector ?? selectedQuality?.formatSelector
         )
         let assisted: LustreAgentAssistedResolution?
         if (selectedQuality?.resolutionMethod ?? resolution.source.resolutionMethod ?? "")

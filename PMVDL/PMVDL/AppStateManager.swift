@@ -10,6 +10,7 @@ class AppStateManager: ObservableObject {
     @Published var windowSize: CGSize = CGSize(width: 1200, height: 800)
     @Published var pendingExtractURL: String?
     @Published var pendingExtractShouldStart = false
+    @Published var pendingPornHubProfileActionURLs: Set<String> = []
     @Published var pendingExtractThumbnailURL: String?
     @Published var pendingExtractThumbnailURLs: [String: String] = [:]
     @Published var pendingExtractTitles: [String: String] = [:]

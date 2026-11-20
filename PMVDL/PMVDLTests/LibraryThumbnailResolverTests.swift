@@ -237,7 +237,8 @@ final class LibraryTimelineTests: XCTestCase {
         let entries = LibraryTimelineBuilder.entries(
             libraryItems: [video],
             historyItems: [link],
-            completedUploads: [upload]
+            completedUploads: [upload],
+            favoriteItems: []
         )
 
         XCTAssertEqual(entries.map(\.id), [
@@ -263,7 +264,8 @@ final class LibraryTimelineTests: XCTestCase {
         let entries = LibraryTimelineBuilder.entries(
             libraryItems: [saved],
             historyItems: [duplicate, other],
-            completedUploads: []
+            completedUploads: [],
+            favoriteItems: []
         )
 
         let links = entries.compactMap { entry -> HistoryItem? in
@@ -291,7 +293,8 @@ final class LibraryTimelineTests: XCTestCase {
         let entries = LibraryTimelineBuilder.entries(
             libraryItems: [saved],
             historyItems: [duplicate],
-            completedUploads: [upload]
+            completedUploads: [upload],
+            favoriteItems: []
         )
 
         XCTAssertTrue(entries.contains { if case .video = $0 { return true }; return false })
@@ -320,7 +323,8 @@ final class LibraryTimelineTests: XCTestCase {
         let entries = LibraryTimelineBuilder.entries(
             libraryItems: [saved],
             historyItems: [link],
-            completedUploads: [upload]
+            completedUploads: [upload],
+            favoriteItems: []
         )
 
         XCTAssertEqual(
@@ -355,7 +359,8 @@ final class LibraryTimelineTests: XCTestCase {
         let entries = LibraryTimelineBuilder.entries(
             libraryItems: [older],
             historyItems: [newest],
-            completedUploads: []
+            completedUploads: [],
+            favoriteItems: []
         )
 
         XCTAssertEqual(
